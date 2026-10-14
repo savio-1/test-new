@@ -34,6 +34,8 @@ MODELS = {
     'shrub_sorrel_01': '1k', 'grass_medium_02': '1k',
     'Ottoman_01': '1k', 'side_table_01': '1k', 'food_avocado_01': '1k', 'food_kiwi_01': '1k', 'food_lime_01': '1k',
     'yellow_onion': '1k', 'wooden_spoon': '1k', 'pot_enamel_01': '1k',
+    # v2 round 3: the warm modern look of the reference images
+    'modern_wooden_cabinet': '1k', 'modern_ceiling_lamp_01': '1k', 'steel_frame_shelves_03': '1k', 'ceramic_vase_04': '1k',
 }
 # panoramas: only the tone-mapped JPG is used, for the distant tree line seen through the window
 HDRIS = ['eilenriede_park']
@@ -44,6 +46,7 @@ TEXTURES = {
     'poly_wool_herringbone': '1k', 'ribbed_corduroy': '1k', 'velour_velvet': '1k', 'curly_teddy_natural': '1k',
     'hessian_230': '1k', 'gingham_check': '1k', 'wool_boucle': '1k', 'leafy_grass': '1k',
     'weathered_planks': '1k', 'white_bricks': '1k',
+    'oak_veneer_01': '2k', 'red_oak_veneer': '1k', 'mocha_oak_veneer': '1k', 'hessian_380': '1k',
 }
 TEX_MAPS = {'Diffuse': 'diff', 'nor_gl': 'nor_gl', 'Rough': 'rough'}
 

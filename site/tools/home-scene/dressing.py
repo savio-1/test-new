@@ -234,22 +234,27 @@ def upgrade_materials(Hm, M):
     """Swap the main procedural materials for textured ones (keeps the procedural ones if a download is missing)."""
     global H
     H = Hm
+    # round 3: the textures of the reference images (honey oak, oatmeal boucle, rust/olive velvet, cream knit,
+    # a shaggy wool rug, a chunky loop rug)
     up = {
-        'floor': dict(tex='wood_floor', size=1.6, rough=(0.3, 0.55), coat=0.15, scratches=True, prints=False),
+        'floor': dict(tex='wood_floor', size=1.6, tint='#d6a874', rough=(0.28, 0.5), coat=0.18, scratches=True, prints=False),
         'walnut': dict(tex='walnut_veneer', size=0.9, rough=(0.3, 0.5), coat=0.25, wear=True, prints=True),
         'walnut_y': dict(tex='walnut_veneer', size=0.9, rough=(0.3, 0.5), coat=0.25, wear=True, prints=True),
-        'oak': dict(tex='white_oak_veneer', size=0.9, rough=(0.35, 0.55), coat=0.1, wear=True, dust=True),
-        'wall': dict(tex='painted_plaster_wall', size=2.2, tint='#ebe5da', rough=(0.8, 0.95), normal=0.6, base_mix=0.85),
-        'counter': dict(tex='marble_01', size=1.2, rough=(0.12, 0.3), coat=0.3, prints=True),
-        'sofa': dict(tex='rough_linen', size=0.35, tint='#d3c8b7', rough=(0.85, 1.0), normal=1.3, sheen=0.6),
-        'cushion_a': dict(tex='velour_velvet', size=0.3, tint='#a65a3d', rough=(0.6, 0.85), normal=1.0, sheen=1.0),
-        'cushion_b': dict(tex='rough_linen', size=0.3, tint='#8e9b80', rough=(0.8, 1.0), normal=1.3, sheen=0.5),
-        'cushion_c': dict(tex='curly_teddy_natural', size=0.25, tint='#e6dbc7', rough=(0.85, 1.0), normal=1.4, sheen=0.6),
-        'throw': dict(tex='knitted_fleece', size=0.3, tint='#b6a489', rough=(0.8, 1.0), normal=1.6, sheen=0.5),
-        'armchair': dict(tex='ribbed_corduroy', size=0.25, tint='#5d6a51', rough=(0.6, 0.9), normal=1.2, sheen=0.9),
-        'rug': dict(tex='poly_wool_herringbone', size=0.6, tint='#d8cab2', rough=(0.9, 1.0), normal=1.5),
-        'rug2': dict(tex='hessian_230', size=0.5, tint='#d2c4ae', rough=(0.9, 1.0), normal=1.4),
-        'cat_bed': dict(tex='curly_teddy_natural', size=0.25, tint='#8f8578', rough=(0.85, 1.0), normal=1.4, sheen=0.7),
+        'oak': dict(tex='oak_veneer_01', size=0.9, rough=(0.35, 0.55), coat=0.1, wear=True, dust=True),
+        'dining_wood': dict(tex='oak_veneer_01', size=1.1, rough=(0.28, 0.45), coat=0.25, wear=True, prints=True),
+        'wall': dict(tex='painted_plaster_wall', size=2.2, tint='#efe8dd', rough=(0.8, 0.95), normal=0.6, base_mix=0.85),
+        'counter': dict(tex='marble_01', size=1.4, tint='#f2efe9', rough=(0.12, 0.3), coat=0.3, prints=True),
+        'sofa': dict(tex='curly_teddy_natural', size=0.14, tint='#d6cab7', rough=(0.85, 1.0), normal=0.8, sheen=0.5),
+        'cushion_a': dict(tex='velour_velvet', size=0.3, tint='#9a4b2d', rough=(0.6, 0.85), normal=1.0, sheen=1.0),
+        'cushion_b': dict(tex='velour_velvet', size=0.3, tint='#66693c', rough=(0.6, 0.85), normal=1.0, sheen=1.0),
+        'cushion_c': dict(tex='knitted_fleece', size=0.14, tint='#e9e0ce', rough=(0.85, 1.0), normal=1.6, sheen=0.5),
+        'throw': dict(tex='knitted_fleece', size=0.22, tint='#d6cfc4', rough=(0.8, 1.0), normal=2.2, sheen=0.5),
+        'armchair': dict(tex='curly_teddy_natural', size=0.14, tint='#c9bda9', rough=(0.85, 1.0), normal=0.8, sheen=0.5),
+        'chair_fabric': dict(tex='poly_wool_herringbone', size=0.35, tint='#bdb3a5', rough=(0.85, 1.0), normal=1.2, sheen=0.4),
+        'rug': dict(tex='curly_teddy_natural', size=0.45, tint='#d2c1a5', rough=(0.9, 1.0), normal=2.2),
+        'rug2': dict(tex='curly_teddy_natural', size=0.6, tint='#b59c7b', rough=(0.9, 1.0), normal=2.4),
+        'cat_bed': dict(tex='curly_teddy_natural', size=0.16, tint='#e4dacb', rough=(0.85, 1.0), normal=1.2, sheen=0.6),
+        'pouf': dict(tex='hessian_380', size=0.12, tint='#6e4b32', rough=(0.85, 1.0), normal=2.5),
     }
     for key, kw in up.items():
         tex = kw.pop('tex')
@@ -734,27 +739,30 @@ def living(M):
         H.box(f'Toy_Block_{i}', (0.04, 0.04, 0.04), (cx + dx, cy + dy, 0.032), MAT[c], bevel=0.004).rotation_euler.z = deg(r)
     teddy('Plush_Rabbit', (sx + 1.35, sy + 0.55, 0.012), 200, 0.8)
     # sofa: blanket over the east arm, a paperback face down, the remote, extra cushions
-    ax = sx + 1.2 + 0.03
+    ax = sx + 1.07  # the arm's centre line (furniture.sofa: arms 0.26 wide, tops at ~0.67)
 
     def blanket(u, v):
         # across the arm top (v 0.3..0.55), falling down both sides with folds
         w = (u - 0.5) * 0.62
         t = v * 1.15
         if t < 0.4:
-            x, z = -0.12 + t * 0.15, 0.6 - (0.4 - t) * 1.05
+            d = 0.4 - t
+            d0 = 0.19 / 1.12  # down the inside of the arm to the seat, then flat across it
+            if d <= d0:
+                x, z = -0.06 - d * 0.15, 0.67 - d * 1.12
+            else:
+                x, z = -0.06 - d0 * 0.15 - (d - d0) * 1.0, 0.48
         elif t < 0.62:
-            x, z = -0.06 + (t - 0.4) * 1.0, 0.6 + 0.02 * math.sin((t - 0.4) / 0.22 * math.pi)
+            x, z = -0.06 + (t - 0.4) * 1.0, 0.67 + 0.02 * math.sin((t - 0.4) / 0.22 * math.pi)
         else:
-            x, z = 0.16 + (t - 0.62) * 0.12, 0.6 - (t - 0.62) * 1.25
+            x, z = 0.16 + (t - 0.62) * 0.12, 0.67 - (t - 0.62) * 1.32
         fold = 0.018 * math.sin(u * 17 + v * 2) * (1 - math.sin(min(1, max(0, (t - 0.4) / 0.22)) * math.pi) * 0.8)
         return (x + fold, w, max(z, 0.02))
-    drape('Sofa_Arm_Blanket', M['plaid'], 0.62, 1.15, (ax, sy + 0.05, 0.0), (0, 0, deg(4)), blanket, res=(30, 46), thick=0.01)
-    g = group('Paperback', (sx - 0.05, sy + 0.12, 0.455), (0, 0, deg(28)))
+    drape('Sofa_Arm_Blanket', M['throw'], 0.62, 1.2, (ax, sy + 0.05, 0.0), (0, 0, deg(4)), blanket, res=(30, 46), thick=0.01)
+    g = group('Paperback', (sx - 0.05, sy + 0.12, 0.478), (0, 0, deg(28)))
     for side in (-1, 1):
         child(H.box(f'Paperback_Half_{side}', (0.11, 0.18, 0.012), (0, 0, 0), MAT['covers'][3], bevel=0.002), g, (side * 0.055, 0, 0.012), (0, side * deg(-14), 0))
-    rounded('TV_Remote', (0.045, 0.17, 0.018), (sx + 0.55, sy + 0.25, 0.455), H.principled('Remote', '#202022', 0.4), rot=(0, 0, deg(-21)), r=0.006)
-    # sits on the seat (the model's base is at its origin), leaning back into the back cushion
-    ph('throw_pillows_01', (sx + 0.72, sy - 0.02, 0.43), rot=8, tilt=(10, 0), scale=0.85, only=['pillow01'], name='Cushion_Pattern')
+    rounded('TV_Remote', (0.045, 0.17, 0.018), (sx + 0.55, sy + 0.25, 0.478), H.principled('Remote', '#202022', 0.4), rot=(0, 0, deg(-21)), r=0.006)
     # floor basket with rolled throws, between the sofa and the bookshelf
     b = ph('wicker_basket_02', (0.32, -3.12, 0.0), rot=14, scale=1.75, skip=['lid'], name='Floor_Basket')
     for i, (dx, dy, tilt, mat) in enumerate(((-0.04, 0.02, 12, M['throw']), (0.05, -0.03, -8, M['linen_white']))):
@@ -860,11 +868,6 @@ def dining(M):
     dx, dy = BH.LAYOUT['dining']
     cx, cy = BH.LAYOUT['cake']
     top = BH.LAYOUT['dining_top']
-    # mismatched chairs: one painted sage, one in walnut
-    for i, mat in ((1, M['walnut']), (2, H.principled('Chair Paint Sage', '#93a08a', 0.5))):
-        for o in ob:
-            if o.name.startswith(f'Chair_Leg_{i}_') or o.name == f'Chair_Back_{i}':
-                o.data.materials[0] = mat
     # table: water jug, kids' cups, napkins, a phone, the cake knife and crumbs, an opened present
     ph('jug_01', (dx + 0.62, dy - 0.12, top), rot=-30, scale=0.85, name='Water_Jug')
     for i, (x, y, m) in enumerate(((dx + 0.42, dy - 0.33, 'cup_kid_a'), (dx - 0.62, dy - 0.3, 'cup_kid_b'))):
@@ -879,13 +882,6 @@ def dining(M):
         a = RNG.uniform(0, math.tau)
         r = RNG.uniform(0.17, 0.26)
         H.sphere(f'Crumb_{i}', RNG.uniform(0.0015, 0.0035), (cx + math.cos(a) * r, cy - abs(math.sin(a)) * r * 0.8, top + 0.0015), MAT['crumb'], scale=(1, 1, 0.6), subd=1)
-    g = group('Gift_Open', (dx - 0.55, dy - 0.05, top), (0, 0, deg(14)))
-    child(H.box('Gift_Box', (0.2, 0.15, 0.1), (0, 0, 0), MAT['wrap_b'], bevel=0.002), g, (0, 0, 0.05))
-    child(H.box('Gift_Lid', (0.21, 0.16, 0.03), (0, 0, 0), MAT['wrap_b'], bevel=0.002), g, (0.0, 0.17, 0.035), (deg(-70), 0, deg(8)))
-
-    def tissue(u, v):
-        return ((u - 0.5) * 0.2, (v - 0.5) * 0.15, 0.095 + 0.015 * math.sin(u * 9) * math.sin(v * 7) + 0.012 * (1 - abs(u - 0.5) * 2))
-    child(drape('Gift_Tissue', MAT['tissue'], 0.24, 0.2, (0, 0, 0), (0, 0, 0), tissue, res=(14, 12), thick=0.001), g)
     hat = H.cyl('Party_Hat', 0.06, 0.15, (dx + 0.75, dy + 0.3, top + 0.075), MAT['party'], r2=0.002, segs=32)
     hat.rotation_euler = (deg(18), deg(-6), 0)
     # wrapping paper and ribbon left on the turned chair
@@ -894,7 +890,8 @@ def dining(M):
     def crumple(u, v):
         return ((u - 0.5) * 0.5, (v - 0.5) * 0.36, 0.02 * math.sin(u * 13 + v * 5) + 0.015 * math.sin(v * 17) + 0.04 * (u - 0.5) ** 2)
     drape('Wrapping_Paper', MAT['wrap_a'], 0.5, 0.36, (ch[0], ch[1], 0.49), (0, deg(4), deg(30)), crumple, res=(30, 22), thick=0.0008)
-    cable('Ribbon_Curl', [(ch[0] - 0.1 + 0.03 * math.cos(t * 1.6), ch[1] + 0.05 * math.sin(t * 1.6), 0.5 + t * 0.006) for t in range(9)], 0.003, MAT['ribbon'])
+    bpy.data.objects['Wrapping_Paper'].location.z = 0.525  # on the upholstered seat
+    cable('Ribbon_Curl', [(ch[0] - 0.1 + 0.03 * math.cos(t * 1.6), ch[1] + 0.05 * math.sin(t * 1.6), 0.535 + t * 0.006) for t in range(9)], 0.003, MAT['ribbon'])
     cable('Ribbon_Fall', [(ch[0] + 0.2, ch[1] - 0.1, 0.49), (ch[0] + 0.24, ch[1] - 0.16, 0.35), (ch[0] + 0.26, ch[1] - 0.2, 0.15), (ch[0] + 0.3, ch[1] - 0.3, 0.003)], 0.0035, MAT['ribbon'])
     # balloons tied to Grandpa's chair
     gch = BH.LAYOUT['dining_chairs'][0]
@@ -1033,8 +1030,6 @@ def kitchen(M):
                    MAT[('magnet_a', 'magnet_b', 'magnet_c', 'plastic_green')[i % 4]], bevel=0.003)
         mg.rotation_euler.y = deg(RNG.uniform(-15, 15))
     # herbs on the window sill, a bin by the island, lunchbox, school bag on a stool, the fruit bowl
-    ph('potted_plant_04', (4.36, 1.9, 0.25), rot=30, scale=1.1, name='Sill_Aloe')
-    ph('potted_plant_04', (4.34, 1.55, 0.25), rot=-50, scale=0.85, name='Sill_Aloe_Small')
     b = group('Pedal_Bin', (-0.22, 2.78, 0), (0, 0, deg(10)))
     child(H.cyl('Bin_Body', 0.14, 0.42, (0, 0, 0), MAT['steel'], segs=40), b, (0, 0, 0.21))
     child(H.cyl('Bin_Lid', 0.142, 0.02, (0, 0, 0), MAT['steel'], segs=40), b, (0, 0, 0.43))
@@ -1354,6 +1349,12 @@ def garden_life(M, lit):
         for j in range(4):
             ph('periwinkle_plant', (6.9 + rng.uniform(-0.12, 0.12), y - 0.36 + j * 0.24, 0.36), rot=rng.uniform(0, 360),
                scale=1.2, only=[f'periwinkle_plant_0{1 + (i + j) % 6}_LOD2'], name=f'Planter_{i}_Plant_{j}', coll=C)
+    # round 3 (the reference images): lush planting right outside the glass, and a tree in the afternoon sun's
+    # path that dapples the light on the floor; the low sun at Milo's moment passes under its crown
+    for i, (x, y, r, sc) in enumerate(((7.6, -1.6, 20, 3.0), (7.8, 1.5, 140, 2.8), (8.2, -0.2, 260, 2.4), (7.3, 3.4, 80, 3.2), (7.4, -3.6, 300, 3.0))):
+        ph('shrub_02', (x, y, -0.07), rot=r, scale=sc, only=['LOD1'], name=f'Lush_Shrub_{i}', coll=C)
+    ph('island_tree_02', (12.0, 3.4, -0.07), rot=110, scale=1.6, only=['island_tree_02_LOD1'], name='Dapple_Tree', coll=C)
+    ph('island_tree_02', (10.6, 6.2, -0.07), rot=20, scale=1.3, only=['island_tree_02_LOD1'], name='Garden_Tree_N', coll=C)
     # the children's ball left on the lawn
     ph('football', (9.6, 1.9, -0.07 + 0.11), rot=35, only=['football_inflated'], name='Lawn_Ball', coll=C)
 

@@ -23,10 +23,10 @@ Clothes and hair fitted to the figures, from the MakeHuman community asset packs
 | mindfront_lusekofta | Grandpa | Mindfront | **CC BY 4.0** |
 | mindfront_knitted_sweater_01 | Zoe | Mindfront | **CC BY 4.0** |
 | elvs_male_shirt_untucked_bd1 | Grandpa, Mira | Elvaerwyn | **CC BY** |
-| elvs_hazel_hair | Mum | Elvaerwyn | **CC BY** |
-| elvs_maxwell_hair | Arlo | Elvaerwyn | **CC BY** |
+| rehmanpolanski_hair_bun_brown | Mum | RehmanPolanski | CC0 (hair01 pack) |
+| cortu_short_messy_hair | Arlo | Cortu | CC0 (hair01 pack) |
 
-**Attribution (needed for the CC BY items):** if the site has a credits or legal page, add a line such as: *"3D clothing and hair: Mindfront and Elvaerwyn via the MakeHuman community (CC BY 4.0)."* Swapping these for CC0 garments in `make_people.py` (`PEOPLE`) removes the requirement.
+**Attribution (needed for the CC BY items):** if the site has a credits or legal page, add a line such as: *"3D clothing: Mindfront and Elvaerwyn via the MakeHuman community (CC BY 4.0)."* Swapping these for CC0 garments in `make_people.py` (`PEOPLE`) removes the requirement.
 
 ## Poly Haven (CC0, https://polyhaven.com/license)
 

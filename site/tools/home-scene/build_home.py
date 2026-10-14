@@ -42,6 +42,7 @@ import build_alaro_camera as alaro  # noqa: E402
 sys.path.insert(0, HERE)
 import statue  # noqa: E402
 import dressing  # noqa: E402
+import furniture  # noqa: E402
 
 PEOPLE_DIR = os.path.join(HERE, 'assets', 'people')
 
@@ -84,7 +85,7 @@ LAYOUT = {
     'floor_lamp': (4.12, -2.15),       # behind the armchair, clear of the intro camera
     # dining chairs (x, y, side, turn): Grandpa's chair pulled out on the north side, Zoe kneels on the
     # south-east one, the south-west one is turned away from the table
-    'dining_chairs': [(1.45, 1.86, 1, 0.0), (0.95, 0.47, -1, -18.0), (1.95, 0.5, -1, 4.0)],
+    'dining_chairs': [(1.45, 1.86, 1, 0.0), (0.95, 0.47, -1, -18.0)],  # Zoe stands at the table (round 3)
     'cake': (1.45, 1.24),
     'stools': [(-1.15, 1.36), (-1.9, 1.38), (-0.5, 1.42)],
     'plane_rot': (math.radians(8), math.radians(-12), math.radians(-146)),  # nose toward the room / Alaro
@@ -326,7 +327,14 @@ def make_materials():
     M['armchair'] = fabric('Armchair Velvet', '#5f6b52', sheen=0.9, scale=1400)
     M['rug'] = textured('Wool Rug', '#d9cbb4', '#c6b49a', rough=0.97, scale=60.0, bump=0.4)
     M['rug2'] = textured('Round Rug', '#d8ccb8', '#c4b59d', rough=0.97, scale=60.0, bump=0.4)
-    M['cabinet'] = textured('Cabinet Sage', '#a9b0a0', '#a3aa9a', rough=0.55, scale=8.0, bump=0.01)
+    # kitchen (round 3, after the reference images): white handleless fronts, a charcoal island
+    M['cabinet'] = textured('Cabinet White', '#eeebe5', '#e9e6df', rough=0.42, scale=8.0, bump=0.004)
+    M['island'] = textured('Island Charcoal', '#3d3e40', '#36373a', rough=0.5, scale=8.0, bump=0.006)
+    M['black_matte'] = principled('Matte Black', '#151515', 0.45, Metallic=0.4)
+    M['dining_wood'] = wood('Warm Oak', '#c4955e', '#8f6236', rough=0.4, scale=6.0, coat=0.2)
+    M['chair_fabric'] = fabric('Chair Tweed', '#bcb2a4', sheen=0.5)
+    M['pouf'] = textured('Woven Pouf', '#6b4a33', '#4b3222', rough=0.9, scale=90.0, bump=0.6)
+    M['led'] = emissive('Cabinet LED', '#ffc98a', 0.0)
     M['counter'] = textured('Stone Counter', '#ebe7df', '#cfc9be', rough=0.25, scale=6.0, bump=0.01, detail=12.0)
     M['brass'] = principled('Brushed Brass', '#c9a560', 0.32, Metallic=1.0)
     M['black_metal'] = principled('Black Metal', '#1c1c1d', 0.38, Metallic=0.9)
@@ -348,7 +356,7 @@ def make_materials():
     M['paper'] = principled('Paper', '#f7f5f0', 0.85, Subsurface_Weight=0.15)
     M['book_red'] = principled('Book Cover Red', '#c44735', 0.6)
     M['book_pages'] = principled('Book Pages', '#f3ecdc', 0.9)
-    M['window_frame'] = principled('Window Frame', '#262626', 0.45, Metallic=0.6)
+    M['window_frame'] = principled('Window Frame', '#2e2a26', 0.45, Metallic=0.6)  # slim dark bronze
     M['window_glass'] = window_glass_mat('Window Glass')
     M['sheer'] = sheer_mat('Sheer Curtain')
     M['lawn'] = textured('Lawn', '#5c7a3a', '#47632c', rough=0.95, scale=4.0, bump=0.3)
@@ -362,7 +370,7 @@ def make_materials():
     M['fruit'] = principled('Lemons', '#e7c23a', 0.35, Coat_Weight=0.3)
     M['mug'] = principled('Mug', '#d6cfc2', 0.3, Coat_Weight=0.5)
     M['induction'] = principled('Induction Top', '#0d0d0e', 0.08, Coat_Weight=1.0)
-    M['tap'] = principled('Steel', '#b9bbbd', 0.2, Metallic=1.0)
+    M['tap'] = principled('Black Tap', '#1a1a1a', 0.35, Metallic=0.5)
     return M
 
 
@@ -495,21 +503,18 @@ def build_room(M):
     box('Wall_Left', (t, D + 0.4, H), (x0 - t / 2, 0, H / 2), M['wall'], bevel=0)
     box('Wall_Back', (W + 0.4, t, H), (0, y1 + t / 2, H / 2), M['wall'], bevel=0)
     box('Wall_Front', (W + 0.4, t, H), (0, y0 - t / 2, H / 2), M['wall'], bevel=0)
-    # right wall with a big window opening y -2.2..2.2, z 0.25..2.55
-    wy0, wy1, wz0, wz1 = -2.2, 2.2, 0.25, 2.55
+    # right wall: floor-to-ceiling glazing y -2.2..2.2 (round 3: the reference images; v1 had a sill at 0.25)
+    wy0, wy1, wz0, wz1 = -2.2, 2.2, 0.0, 2.62
     box('Wall_Right_A', (t, wy0 - y0 + 0.2, H), (x1 + t / 2, (y0 - 0.2 + wy0) / 2, H / 2), M['wall'], bevel=0)
     box('Wall_Right_B', (t, y1 + 0.2 - wy1, H), (x1 + t / 2, (wy1 + y1 + 0.2) / 2, H / 2), M['wall'], bevel=0)
-    box('Wall_Right_Sill', (t, wy1 - wy0, wz0), (x1 + t / 2, 0, wz0 / 2), M['wall'], bevel=0)
     box('Wall_Right_Head', (t, wy1 - wy0, H - wz1), (x1 + t / 2, 0, (wz1 + H) / 2), M['wall'], bevel=0)
     # window frame, mullions and glazing
     fx = x1 + 0.06
     for i, yy in enumerate([wy0 + 0.02, -0.73, 0.73, wy1 - 0.02]):
-        box(f'Mullion_{i}', (0.06, 0.04, wz1 - wz0), (fx, yy, (wz0 + wz1) / 2), M['window_frame'], bevel=0.003)
-    box('Window_Sill_Frame', (0.06, wy1 - wy0, 0.04), (fx, 0, wz0 + 0.02), M['window_frame'], bevel=0.003)
+        box(f'Mullion_{i}', (0.06, 0.045, wz1 - wz0), (fx, yy, (wz0 + wz1) / 2), M['window_frame'], bevel=0.003)
+    box('Window_Sill_Frame', (0.07, wy1 - wy0, 0.03), (fx, 0, wz0 + 0.015), M['window_frame'], bevel=0.003)
     box('Window_Head_Frame', (0.06, wy1 - wy0, 0.04), (fx, 0, wz1 - 0.02), M['window_frame'], bevel=0.003)
-    box('Window_Transom', (0.06, wy1 - wy0, 0.03), (fx, 0, 2.05), M['window_frame'], bevel=0.003)
     plane('Window_Glass', wy1 - wy0, wz1 - wz0, (fx, 0, (wz0 + wz1) / 2), M['window_glass'], rot=(math.pi / 2, 0, math.pi / 2))
-    box('Window_Board', (0.24, wy1 - wy0 + 0.1, 0.03), (x1 - 0.06, 0, wz0 - 0.015), M['trim'], bevel=0.003)
     # skirting
     for nm, size, loc in (
         ('Skirt_Left', (0.015, D, 0.09), (x0 + 0.0075, 0, 0.045)),
@@ -621,29 +626,19 @@ def sideboard_and_alaro(M):
 
 
 def living(M):
-    # rug
-    box('Rug', (3.3, 2.5, 0.012), (-1.25, -1.45, 0.006), M['rug'], bevel=0.004)
-    # sofa against the front wall, facing the room (+Y)
-    sx, sy, sw, sd = -1.25, -2.62, 2.4, 0.98
-    box('Sofa_Base', (sw, sd, 0.22), (sx, sy, 0.17), M['sofa'], bevel=0.04, soft=True)
-    for i in range(3):
-        box(f'Sofa_Seat_{i}', (sw / 3 - 0.24 / 1.5, sd - 0.28, 0.16), (sx - sw / 3 + i * sw / 3, sy + 0.1, 0.36), M['sofa'], bevel=0.05, soft=True)
-        box(f'Sofa_Back_{i}', (sw / 3 - 0.24 / 1.5, 0.22, 0.42), (sx - sw / 3 + i * sw / 3, sy - sd / 2 + 0.2, 0.62), M['sofa'], bevel=0.07, soft=True, rot=0)
-    for side in (-1, 1):
-        box(f'Sofa_Arm_{side}', (0.18, sd, 0.52), (sx + side * (sw / 2 + 0.03), sy, 0.34), M['sofa'], bevel=0.06, soft=True)
-    for i, (dx, m) in enumerate(((-0.85, M['cushion_a']), (-0.55, M['cushion_c']), (0.7, M['cushion_b']))):
-        cu = box(f'Pillow_{i}', (0.42, 0.14, 0.4), (sx + dx, sy - 0.12, 0.66), m, bevel=0.06, soft=True)
-        cu.rotation_euler = (math.radians(-12), math.radians(RNG.uniform(-8, 8)), math.radians(RNG.uniform(-6, 6)))
-    # (v1's flat throw on the east seat is gone: dressing.py drapes a plaid blanket over the arm instead)
-    for i, (xx, yy) in enumerate(((sx - sw / 2, sy - sd / 2 + 0.06), (sx + sw / 2, sy - sd / 2 + 0.06), (sx - sw / 2, sy + sd / 2 - 0.06), (sx + sw / 2, sy + sd / 2 - 0.06))):
-        cyl(f'Sofa_Leg_{i}', 0.02, 0.06, (xx, yy, 0.03), M['walnut'])
+    # shaggy wool rug under the sofa and the round table (round 3: the reference images)
+    furniture.soft_block('Rug', (3.4, 2.6, 0.024), M['rug'], r=0.012, cuts=4, loc=(-1.2, -1.5, 0.012))
+    sx, sy = LAYOUT['sofa']
+    furniture.sofa(M, sx, sy)
+    # throw pillows: rust and olive velvet, cream knit, as in the references
+    for i, (dx, m, w_, rz) in enumerate(((-0.82, M['cushion_a'], 0.5, 6), (-0.4, M['cushion_c'], 0.46, -4), (0.62, M['cushion_b'], 0.48, -5),
+                                         (0.92, M['cushion_a'], 0.5, 8))):
+        furniture.pillow(f'Pillow_{i}', w_, w_ * 0.92, 0.17, m, (sx + dx, sy - 0.03, 0.69),
+                         rot=(math.radians(-16), math.radians(rz), math.radians(RNG.uniform(-6, 6))))
     TRACK['sofa'] = [bpy.data.objects[n] for n in ('Sofa_Seat_0', 'Sofa_Seat_1', 'Sofa_Seat_2', 'Sofa_Back_0', 'Sofa_Back_2')]
 
-    # coffee table (walnut, rounded) with the block tower: game night
     cx, cy = LAYOUT['coffee']
-    box('Coffee_Top', (1.15, 0.62, 0.05), (cx, cy, 0.38), M['walnut'], bevel=0.02)
-    for i, (dx, dy) in enumerate(((-0.5, -0.24), (0.5, -0.24), (-0.5, 0.24), (0.5, 0.24))):
-        box(f'Coffee_Leg_{i}', (0.05, 0.05, 0.36), (cx + dx, cy + dy, 0.18), M['walnut'], bevel=0.008)
+    furniture.round_coffee_table(M, cx, cy, LAYOUT['tower_top'], radius=0.55)
     tower = []
     bl, bw, bh = 0.075, 0.025, 0.015
     tx, ty = LAYOUT['tower']
@@ -748,38 +743,28 @@ def window_corner(M):
     plant('Plant_Fig', (4.05, 0.7, 0.0), 1.55, 26, M, pot_r=0.19, leaf_size=0.2, spread=0.42)
     plant('Plant_Small', (3.95, 1.55, 0.0), 0.75, 14, M, pot_r=0.13, leaf_size=0.14, spread=0.3)
     plant('Plant_Floor', (4.1, -1.15, 0.0), 0.5, 10, M, pot_r=0.11, leaf_size=0.13, spread=0.25)
-    bm = bmesh.new()
-    bmesh.ops.create_cone(bm, cap_ends=True, segments=48, radius1=0.33, radius2=0.36, depth=0.12)
-    bed = obj_from_bm('Cat_Bed', bm, M['cat_bed'], smooth=True)
     bx, by = LAYOUT['catbed']
-    bed.location = (bx, by, 0.06)
-    sub = bed.modifiers.new('Soft', 'SUBSURF')
-    sub.levels = sub.render_levels = 2
-    cush = sphere('Cat_Bed_Cushion', 0.29, (bx, by, 0.1), M['cushion_c'], scale=(1, 1, 0.18))
-    yarn = sphere('Yarn_Ball', 0.045, (bx - 0.55, by + 0.3, 0.045), M['yarn'])
-    bowl = lathe_obj('Cat_Bowl', [(0.0, 0.0), (0.06, 0.0), (0.08, 0.045), (0.075, 0.05), (0.05, 0.012), (0.0, 0.012)], (bx + 0.25, by + 0.55, 0.0), M['ceramic_dark'])
+    # round boucle donut bed on a chunky loop rug, in the sun by the glass (round 3: the reference images)
+    furniture.soft_block('Cat_Rug', (1.7, 1.15, 0.026), M['rug2'], r=0.013, cuts=4, loc=(bx - 0.2, by + 0.05, 0.013), rot=(0, 0, math.radians(-8)))
+    bed, cush = furniture.cat_bed(M, bx, by)
+    bed.location.z = 0.026
+    cush.location.z += 0.026
+    yarn = sphere('Yarn_Ball', 0.045, (bx - 0.55, by + 0.3, 0.071), M['yarn'])
+    bowl = lathe_obj('Cat_Bowl', [(0.0, 0.0), (0.06, 0.0), (0.08, 0.045), (0.075, 0.05), (0.05, 0.012), (0.0, 0.012)], (bx + 0.25, by + 0.55, 0.026), M['ceramic_dark'])
     TRACK['catbed'] = [bed, cush, yarn, bowl]
 
 
 def dining(M):
-    dx, dy = 1.45, 1.15
-    box('Dining_Top', (1.9, 0.95, 0.045), (dx, dy, 0.75), M['oak'], bevel=0.008)
-    for i, (ox, oy) in enumerate(((-0.82, -0.36), (0.82, -0.36), (-0.82, 0.36), (0.82, 0.36))):
-        box(f'Dining_Leg_{i}', (0.055, 0.055, 0.73), (dx + ox, dy + oy, 0.365), M['oak'], bevel=0.01)
-    chair_mat = M['oak']
-    seat_mat = fabric('Chair Seat', '#d9cdb8', sheen=0.5)
+    # long solid warm-oak table with chunky legs, upholstered chairs (round 3: the reference images)
+    dx, dy = LAYOUT['dining']
+    top_z, t = LAYOUT['dining_top'], 0.06
+    box('Dining_Top', (2.2, 1.0, t), (dx, dy, top_z - t / 2), M['dining_wood'], bevel=0.012)
+    for i, (ox, oy) in enumerate(((-0.98, -0.38), (0.98, -0.38), (-0.98, 0.38), (0.98, 0.38))):
+        box(f'Dining_Leg_{i}', (0.085, 0.085, top_z - t), (dx + ox, dy + oy, (top_z - t) / 2), M['dining_wood'], bevel=0.01)
+    box('Dining_Apron', (1.85, 0.8, 0.08), (dx, dy, top_z - t - 0.04), M['dining_wood'], bevel=0.006)
     # chairs: (x, y, side, turn deg). side -1 = south of the table (back to the room), +1 = north
     for i, (cx, cy, side, turn) in enumerate(LAYOUT['dining_chairs']):
-        pivot = bpy.data.objects.new(f'Chair_{i}', None)
-        coll('Home').objects.link(pivot)
-        pivot.location = (cx, cy, 0)
-        pivot.rotation_euler = (0, 0, math.radians(turn))
-        parts = [box(f'Chair_Seat_{i}', (0.44, 0.42, 0.05), (0, 0, 0.46), seat_mat, bevel=0.015, soft=True)]
-        for j, (lx, ly) in enumerate(((-0.19, -0.18), (0.19, -0.18), (-0.19, 0.18), (0.19, 0.18))):
-            parts.append(box(f'Chair_Leg_{i}_{j}', (0.03, 0.03, 0.44), (lx, ly, 0.22), chair_mat, bevel=0.005))
-        parts.append(box(f'Chair_Back_{i}', (0.42, 0.025, 0.3), (0, side * 0.2, 0.78), chair_mat, bevel=0.008, rot=0))
-        for o in parts:
-            o.parent = pivot
+        furniture.dining_chair(M, f'Chair_{i}', (cx, cy), side, turn)
     # birthday cake
     top = 0.7725
     dx, dy = LAYOUT['cake']
@@ -821,14 +806,17 @@ def kitchen(M):
     w = (x_to - x_from) / n
     for i in range(n):
         cx = x_from + w * (i + 0.5)
-        box(f'Base_Cab_{i}', (w - 0.006, cab_d - 0.02, 0.78), (cx, y1 - cab_d / 2, 0.1 + 0.39), M['cabinet'], bevel=0.002)
-        box(f'Base_Pull_{i}', (0.18, 0.015, 0.012), (cx, y1 - cab_d - 0.005, 0.82), M['brass'], bevel=0.002)
+        # handleless white fronts (round 3): a dark finger-pull groove under the counter instead of handles
+        box(f'Base_Cab_{i}', (w - 0.006, cab_d - 0.02, 0.72), (cx, y1 - cab_d / 2, 0.1 + 0.36), M['cabinet'], bevel=0.002)
         if i not in (3, 4):
             box(f'Wall_Cab_{i}', (w - 0.006, 0.34, 0.72), (cx, y1 - 0.17, 1.92), M['cabinet'], bevel=0.002)
-            box(f'Wall_Pull_{i}', (0.012, 0.015, 0.14), (cx + w / 2 - 0.06, y1 - 0.345, 1.64), M['brass'], bevel=0.002)
+    box('Finger_Pull_Groove', (x_to - x_from, cab_d - 0.06, 0.05), ((x_from + x_to) / 2, y1 - cab_d / 2 + 0.01, 0.855), M['black_matte'], bevel=0)
+    # warm LED strip under the wall cabinets, washing the splashback
+    for k, (a, b) in enumerate(((x_from, x_from + w * 3), (x_from + w * 5, x_to))):
+        box(f'Cabinet_LED_{k}', (b - a - 0.04, 0.012, 0.006), ((a + b) / 2, y1 - 0.31, 1.556), M['led'], bevel=0)
     box('Toe_Kick', (x_to - x_from, cab_d - 0.08, 0.1), ((x_from + x_to) / 2, y1 - cab_d / 2 + 0.03, 0.05), M['black_metal'], bevel=0)
     box('Counter', (x_to - x_from + 0.02, cab_d + 0.02, 0.03), ((x_from + x_to) / 2, y1 - cab_d / 2 - 0.01, 0.895), M['counter'], bevel=0.003)
-    box('Backsplash', (x_to - x_from, 0.012, 0.64), ((x_from + x_to) / 2, y1 - 0.006, 1.23), M['counter'], bevel=0)
+    box('Backsplash', (x_to - x_from, 0.012, 0.64), ((x_from + x_to) / 2, y1 - 0.006, 1.23), M.get('tiles', M['counter']), bevel=0)
     # open shelf in the gap
     gx = x_from + w * 4
     box('Open_Shelf', (w * 2, 0.26, 0.035), (gx, y1 - 0.13, 1.72), M['oak'], bevel=0.003)
@@ -845,15 +833,12 @@ def kitchen(M):
 
     # island with the paper plane
     ix, iy = -1.45, 2.05
-    box('Island', (2.1, 0.92, 0.86), (ix, iy, 0.45), M['cabinet'], bevel=0.003)
-    box('Island_Top', (2.2, 1.0, 0.035), (ix, iy, 0.9), M['counter'], bevel=0.004)
+    # charcoal island with a thick white stone top, wooden stools (round 3)
+    box('Island', (2.1, 0.92, 0.85), (ix, iy, 0.445), M['island'], bevel=0.003)
+    box('Island_Top', (2.24, 1.04, 0.045), (ix, iy, 0.895), M['counter'], bevel=0.004)
     for i, (sx, sy) in enumerate(LAYOUT['stools']):
-        cyl(f'Stool_Seat_{i}', 0.18, 0.04, (sx, sy, 0.66), M['oak'])
-        for j in range(4):
-            a = j * math.pi / 2 + math.pi / 4
-            leg = cyl(f'Stool_Leg_{i}_{j}', 0.012, 0.66, (sx + math.cos(a) * 0.12, sy + math.sin(a) * 0.12, 0.32), M['black_metal'], segs=10)
-            leg.rotation_euler = (math.sin(a) * 0.12, -math.cos(a) * 0.12, 0)
-    lathe_obj('Fruit_Bowl', [(0.0, 0.0), (0.07, 0.0), (0.16, 0.08), (0.155, 0.085), (0.065, 0.008), (0.0, 0.008)], (ix - 0.55, iy + 0.15, 0.9175), M['ceramic'])
+        furniture.bar_stool(M, i, sx, sy, seat_z=0.68)
+    lathe_obj('Fruit_Bowl', [(0.0, 0.0), (0.07, 0.0), (0.16, 0.08), (0.155, 0.085), (0.065, 0.008), (0.0, 0.008)], (ix - 0.55, iy + 0.15, 0.9175), M['dining_wood'])
     for i in range(4):
         sphere(f'Lemon_{i}', 0.035, (ix - 0.55 + RNG.uniform(-0.06, 0.06), iy + 0.15 + RNG.uniform(-0.06, 0.06), 0.97 + (0.03 if i == 3 else 0)), M['fruit'], scale=(1, 1, 0.85), subd=2)
     # paper plane: nose toward the room, mid-launch tilt
@@ -869,11 +854,11 @@ def kitchen(M):
     pl.rotation_euler = LAYOUT['plane_rot']
     pl.scale = (1.15, 1.15, 1.15)
     TRACK['plane'] = [pl]
+    # white dome pendants over the island (CC0 model, hung from the ceiling)
     for k, xx in enumerate((ix - 0.6, ix + 0.6)):
-        cyl(f'Pendant_Island_Cord_{k}', 0.003, 1.0, (xx, iy, 2.3), M['black_metal'], segs=8)
-        sphere(f'Pendant_Island_{k}', 0.12, (xx, iy, 1.72), principled(f'Opal Glass {k}', '#f4efe6', 0.3, Transmission_Weight=0.6), subd=3)
-        sphere(f'Pendant_Island_Bulb_{k}', 0.035, (xx, iy, 1.72), M['bulb'])
-        point_light(f'Light_Island_{k}', (xx, iy, 1.72), 0.0, radius=0.1)
+        dressing.ph('modern_ceiling_lamp_01', (xx, iy, 2.8 - 1.173), rot=0, name=f'Pendant_Island_{k}')
+        sphere(f'Pendant_Island_Bulb_{k}', 0.03, (xx, iy, 1.93), M['bulb'])
+        point_light(f'Light_Island_{k}', (xx, iy, 1.9), 0.0, radius=0.1)
 
 
 def reading_nook(M):
@@ -886,33 +871,14 @@ def reading_nook(M):
     rr = obj_from_bm('Rug_Round_Disc', bm, M['rug2'], smooth=True)
     rr.location = (ax - 0.25, ay + 0.25, 0.006)
     bpy.data.objects.remove(bpy.data.objects['Rug_Round'])
-    # armchair (local frame: front is -Y, rotated to face the room)
-    parts = []
-
-    def part(nm, size, loc, bevel, soft=True):
-        o = box(nm, size, loc, M['armchair'], bevel=bevel, soft=soft)
-        parts.append(o)
-        return o
-    part('Arm_Seat', (0.62, 0.6, 0.16), (0, 0.02, 0.36), 0.05)
-    part('Arm_Base', (0.82, 0.78, 0.22), (0, 0, 0.17), 0.04)
-    part('Arm_Back', (0.82, 0.2, 0.62), (0, 0.32, 0.62), 0.07)
-    part('Arm_ArmL', (0.14, 0.74, 0.34), (-0.36, 0.02, 0.42), 0.06)
-    part('Arm_ArmR', (0.14, 0.74, 0.34), (0.36, 0.02, 0.42), 0.06)
-    pivot = bpy.data.objects.new('Armchair', None)
-    coll('Home').objects.link(pivot)
-    pivot.location = (ax, ay, 0.06)
-    pivot.rotation_euler = (0, 0, rot)
-    for p in parts:
-        p.parent = pivot
-    for i, (lx, ly) in enumerate(((-0.33, -0.3), (0.33, -0.3), (-0.33, 0.3), (0.33, 0.3))):
-        leg = cyl(f'Arm_Leg_{i}', 0.018, 0.08, (lx, ly, -0.02), M['walnut'])
-        leg.parent = pivot
+    # plush reclining armchair (round 3: the reference images; local frame: front is -Y, rotated to face the room)
+    pivot, parts = furniture.armchair(M, ax, ay, LAYOUT['armchair'][2])
     # the open picture book (placed in Mira's lap by place_props from the pose anchors): red boards, page
     # blocks printed with the picture-book spread, and one page caught mid-turn
     bk = bpy.data.objects.new('Book_Pivot', None)
     coll('Home').objects.link(bk)
     bk.parent = pivot
-    bk.location = (0.02, -0.04, 0.455)
+    bk.location = (0.02, -0.06, 0.5)
     bk.rotation_euler = (0, 0, math.radians(10))
     book_parts = []
     spread = dressing.art_material('Picture Book Spread', 'picture_book', rough=0.7)
@@ -952,9 +918,17 @@ def reading_nook(M):
     page.parent = bk
     book_parts.append(page)
     TRACK['book'] = book_parts
-    # knit throw over the arm
-    th = box('Nook_Throw', (0.16, 0.6, 0.36), (0.36, 0.0, 0.48), M['throw'], bevel=0.05, soft=True)
-    th.parent = pivot
+    # chunky knit throw folded over the arm
+    furniture.soft_block('Nook_Throw', (0.21, 0.5, 0.28), M['throw'], r=0.05, puff=(0.01, 0, 0.01), loc=(0.35, 0.06, 0.56), parent=pivot)
+    # behind the chair: a fluted dark-wood cabinet with a ceramic gourd lamp, a woven pouf beside it
+    cab = dressing.ph('modern_wooden_cabinet', (3.25, -3.5 + 0.27, 0.0), rot=0, name='Nook_Cabinet')
+    cab.scale = (0.72, 1.0, 1.0)
+    bulb = furniture.gourd_lamp(M, 'Nook_Lamp', 3.82, -3.27, 0.68, scale=1.05)
+    point_light('Light_NookLamp', bulb, 0.0, color=LAMP_2700K, radius=0.06)
+    npool = spot_light('Light_NookLamp_Pool', bulb - Vector((0, 0, 0.04)), 0.0, angle=95, color=LAMP_2700K, radius=0.05)
+    npool.rotation_euler = (math.pi, 0, 0)
+    furniture.pouf(M, 'Nook_Pouf', 2.5, -2.6, r=0.28, h=0.34)
+    dressing.ph('ceramic_vase_04', (2.78, -3.27, 0.68), rot=30, scale=0.9, name='Nook_Vase')
     # floor lamp behind the chair
     lx, ly = LAYOUT['floor_lamp']
     cyl('Floor_Lamp_Base', 0.16, 0.025, (lx, ly, 0.0125), M['black_metal'])
@@ -967,10 +941,9 @@ def reading_nook(M):
     # side table + mug
     tx_, ty_ = LAYOUT['nook_table']
     cyl('Nook_Table_Top', 0.22, 0.03, (tx_, ty_, 0.52), M['walnut'])
-    cyl('Nook_Table_Stem', 0.025, 0.5, (tx_, ty_, 0.26), M['black_metal'], segs=12)
-    cyl('Nook_Table_Foot', 0.14, 0.02, (tx_, ty_, 0.01), M['black_metal'])
+    cyl('Nook_Table_Stem', 0.035, 0.5, (tx_, ty_, 0.26), M['walnut'], segs=24, r2=0.028)
+    cyl('Nook_Table_Foot', 0.15, 0.025, (tx_, ty_, 0.0125), M['walnut'])
     cyl('Nook_Mug', 0.04, 0.09, (tx_ + 0.05, ty_ + 0.04, 0.58), M['mug'])
-    plant('Plant_Nook', (2.25, -3.25, 0.0), 1.1, 18, M, pot_r=0.16, leaf_size=0.17, spread=0.35)
 
 
 # ---------------------------------------------------------------- lighting rig
@@ -988,6 +961,8 @@ def build_world_and_sun():
     sky.sun_disc = False
     sky.sun_elevation = math.radians(25)
     sky.sun_rotation = math.radians(90)
+    if hasattr(sky, 'aerosol_density'):  # a little late-afternoon haze warms the sky
+        sky.aerosol_density = 2.0
     bg_day = node(nt, 'ShaderNodeBackground', (250, 150), Strength=1.0)
     nt.links.new(sky.outputs['Color'], bg_day.inputs['Color'])
     bg_night = node(nt, 'ShaderNodeBackground', (250, -100), Color=srgb('#0b1630'), Strength=0.3)
@@ -1004,10 +979,10 @@ def build_world_and_sun():
     # portal in the window so Cycles samples the sky through it efficiently
     pl = bpy.data.lights.new('Window_Portal', 'AREA')
     pl.shape = 'RECTANGLE'
-    pl.size, pl.size_y = 4.4, 2.3
+    pl.size, pl.size_y = 4.4, 2.62
     pl.cycles.is_portal = True
     po = bpy.data.objects.new('Window_Portal', pl)
-    po.location = (4.5 + 0.08, 0, 1.4)
+    po.location = (4.5 + 0.08, 0, 1.31)
     po.rotation_euler = (0, -math.pi / 2, 0)
     coll('Lights').objects.link(po)
     # soft ceiling bounce so night corners are not pitch black
@@ -1243,10 +1218,11 @@ def set_lighting(R, f):
     d = Vector((-math.cos(el) * math.cos(az), -math.cos(el) * math.sin(az), -math.sin(el)))
     R.sun.rotation_euler = d.to_track_quat('-Z', 'Y').to_euler()
     warm = smooth((h - 16.3) / 2.5)
-    R.sun.data.color = (1.0, 0.93 - 0.35 * warm, 0.84 - 0.6 * warm)
+    # golden from the start, deepening toward sunset (round 3: the reference images' warm low light)
+    R.sun.data.color = (1.0, 0.87 - 0.3 * warm, 0.7 - 0.48 * warm)
     # the sky follows the real sun, but the light lingers as a low golden beam until ~19:45 so Milo
     # stretches in the last of the sun (the sun lamp never drops below 5 degrees)
-    R.sun.data.energy = max(0.0, 5.0 * (1 - smooth((h - 18.95) / 0.8)))
+    R.sun.data.energy = max(0.0, 6.0 * (1 - smooth((h - 18.95) / 0.8)))
     R.sky.sun_elevation = max(el, math.radians(-2))
     el_light = max(el, math.radians(5))
     d = Vector((-math.cos(el_light) * math.cos(az), -math.cos(el_light) * math.sin(az), -math.sin(el_light)))
@@ -1274,7 +1250,13 @@ def set_lighting(R, f):
     R.lamps['Light_Dining'].data.energy = 40 * lamps
     R.lamps['Light_Island_0'].data.energy = 9 * lamps
     R.lamps['Light_Island_1'].data.energy = 9 * lamps
+    for nm, e in (('Light_NookLamp', 6), ('Light_NookLamp_Pool', 12)):
+        if nm in bpy.data.objects:
+            bpy.data.objects[nm].data.energy = e * lamps
     R.bulb.node_tree.nodes['Emission'].inputs['Strength'].default_value = 25 * lamps
+    led = bpy.data.materials.get('Cabinet LED')
+    if led is not None:  # the under-cabinet strip is on all evening, brighter once the lamps are
+        led.node_tree.nodes['Emission'].inputs['Strength'].default_value = 3.0 + 9.0 * lamps
     R.fill.data.energy = 9 * lamps  # just enough that night corners are not pitch black
     candle = 1.0 if 84 <= f <= 112 else 0.0
     flicker = 0.85 + 0.15 * math.sin(f * 2.3) * math.sin(f * 0.9 + 1)
@@ -1361,10 +1343,9 @@ def place_props(anchors):
         bk.parent = None
         bk.location = anchors['book']
         bk.rotation_euler = anchors['book_rot']
-    if 'zoe_cushion' in anchors and 'Pillow_0' in ob:
-        ob['Pillow_0'].location = anchors['zoe_cushion']
-        ob['Pillow_0'].rotation_euler = anchors.get('zoe_cushion_rot', (0, 0, 0))
-        ob['Pillow_0'].scale = (0.62, 0.9, 0.62)
+    if 'zoe_cushion' in anchors and 'Pillow_1' in ob:  # the cream knit cushion Zoe hugs
+        ob['Pillow_1'].location = anchors['zoe_cushion']
+        ob['Pillow_1'].rotation_euler = anchors.get('zoe_cushion_rot', (0, 0, 0))
     bpy.context.view_layer.update()
 
 
@@ -1379,6 +1360,7 @@ def add_people():
 
 
 def build_scene(people=True):
+    furniture.H = sys.modules[__name__]
     alaro.reset_scene()
     scn = bpy.context.scene
     scn.unit_settings.length_unit = 'METERS'
@@ -1566,11 +1548,11 @@ def bake_keyframes(R):
         R.sun.keyframe_insert('rotation_euler', frame=f)
         R.sun.data.keyframe_insert('energy', frame=f)
         R.sun.data.keyframe_insert('color', frame=f)
-        for L in list(R.lamps.values()) + [R.candles, R.fill]:
+        for L in list(R.lamps.values()) + [R.candles, R.fill] + [bpy.data.objects[n] for n in ('Light_NookLamp', 'Light_NookLamp_Pool') if n in bpy.data.objects]:
             L.data.keyframe_insert('energy', frame=f)
         R.wmix.inputs['Fac'].keyframe_insert('default_value', frame=f)
         R.bg_day.inputs['Strength'].keyframe_insert('default_value', frame=f)
-        for m in (R.status, R.bulb, R.flame):
+        for m in (R.status, R.bulb, R.flame) + ((bpy.data.materials['Cabinet LED'],) if 'Cabinet LED' in bpy.data.materials else ()):
             m.node_tree.nodes['Emission'].inputs['Strength'].keyframe_insert('default_value', frame=f)
         if R.garden is not None:
             R.garden.inputs['Strength'].keyframe_insert('default_value', frame=f)
