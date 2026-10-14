@@ -12,7 +12,7 @@ The website's 3D home is 240 frames rendered in Blender. Version 2 adds the clay
   - Intel Arc (oneAPI)
 
   The script finds it by itself. Without one it still works, but falls back to the CPU, which is far slower.
-- **Memory:** 8 GB of video memory is comfortable (the scene uses about 4–5 GB at 4K).
+- **Memory:** a card with 8 GB or more of video memory is recommended. The whole Blender process used about 6 GB of RAM on the CPU test machine; the GPU's share is smaller. On NVIDIA cards with less memory, Cycles can spill into system RAM, which works but is slower. 16 GB of system RAM is recommended.
 - **Disk space:** about 5 GB free (240 PNG masters at 4K are 3–4 GB; the WebP copies are about 0.3–0.6 GB).
 
 ## Steps

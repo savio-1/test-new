@@ -65,7 +65,7 @@ LAYOUT = {
     'catbed': (3.55, -0.35),            # v1: (3.45, 1.05), hidden behind the dining table from Alaro
     'armchair': (3.45, -1.95, 189.0),   # x, y, rotation (deg); v1 (3.25, -2.55, 145): out of the corner, three-quarter to Alaro
     'nook_table': (2.8, -2.08),
-    'floor_lamp': (3.55, -2.6),
+    'floor_lamp': (4.12, -2.15),       # behind the armchair, clear of the intro camera
     # dining chairs (x, y, side, turn): Grandpa's chair pulled out on the north side, Zoe kneels on the
     # south-east one, the south-west one is turned away from the table
     'dining_chairs': [(1.45, 1.86, 1, 0.0), (0.95, 0.47, -1, -18.0), (1.95, 0.5, -1, 4.0)],
@@ -1625,7 +1625,7 @@ def write_render_info(path, w, h, samples, final, frames_done, seconds):
         'Alaro home story v2 (clay statues)',
         f'resolution: {w} x {h}',
         f'frames: {frames_done} / {FRAMES}',
-        f'quality: {"final" if final else "draft"}; samples {samples}, adaptive threshold {c.adaptive_threshold}, denoiser {c.denoiser}',
+        f'quality: {"final" if final else "draft"}; samples {samples}, adaptive threshold {c.adaptive_threshold:.3f}, denoiser {c.denoiser}',
         f'bounces: max {c.max_bounces}, diffuse {c.diffuse_bounces}, glossy {c.glossy_bounces}, transmission {c.transmission_bounces}, volume {c.volume_bounces}',
         f'statue finish: {statue.STATUE_MATERIAL}',
         f'device: {DEVICE}',
