@@ -11,18 +11,17 @@ Clothes and hair fitted to the figures, from the MakeHuman community asset packs
 | Asset | Used on | Author | Licence |
 |---|---|---|---|
 | toigo_fisherman_sweater | Dad | MargaretToigo (MRT) | CC0 |
-| toigo_wool_pants | Dad, Grandpa | MargaretToigo (MRT) | CC0 |
-| toigo_shift_dress | Mum | MargaretToigo (MRT) | CC0 |
+| toigo_wool_pants | Dad, Mum, Grandpa | MargaretToigo (MRT) | CC0 |
 | toigo_harem_pants | Zoe, Mira | MargaretToigo (MRT) | CC0 |
-| toigo_blunt_bob_with_bangs (hair) | Mira | MargaretToigo (MRT) | CC0 |
+| littleright_bobcut_hair | Mira | littleright | CC0 (hair01 pack) |
 | cortu_strawberry_cloud_hair | Zoe | Cortu | CC0 (hair01 pack) |
 | joepal_crude_t-shirt_female | Leo | Joel Palmius | CC0 |
+| elvs_crude_t-shirt_male | Arlo | Elvaerwyn | CC0 (shirts01 pack) |
+| janexx_old_female_sweater | Mum | janexx | CC0 |
 | cortu_cargo_pants | Arlo, Leo | Cortu | CC0 (pants01 pack) |
 | shoes04, shoes05, eyes high-poly, hair short01/02/04 | several | MakeHuman team | CC0 (system assets) |
-| mindfront_cardigan_long_open_front | Mum | Mindfront | **CC BY 4.0** |
 | mindfront_lusekofta | Grandpa | Mindfront | **CC BY 4.0** |
 | mindfront_knitted_sweater_01 | Zoe | Mindfront | **CC BY 4.0** |
-| mindfront_knitted_sweater_02 | Arlo | Mindfront | **CC BY 4.0** |
 | elvs_male_shirt_untucked_bd1 | Grandpa, Mira | Elvaerwyn | **CC BY** |
 | elvs_hazel_hair | Mum | Elvaerwyn | **CC BY** |
 | elvs_maxwell_hair | Arlo | Elvaerwyn | **CC BY** |

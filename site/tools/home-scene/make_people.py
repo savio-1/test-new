@@ -74,7 +74,7 @@ PEOPLE = {
                 hair='short02'),
     'mum': dict(macro=dict(gender=0.0, age=mh_age(38), muscle=0.45, weight=0.42, height=0.52, proportions=0.6, cupsize=0.5),
                 race=dict(caucasian=0.5, african=0.2, asian=0.3),
-                wear=[('toigo_shift_dress', COTTON), ('mindfront_cardigan_long_open_front', KNIT), ('shoes04', SHOE)],
+                wear=[('janexx_old_female_sweater', KNIT), ('toigo_wool_pants', WEAVE), ('shoes04', SHOE)],
                 hair='elvs_hazel_hair'),
     'grandpa': dict(macro=dict(gender=1.0, age=mh_age(70), muscle=0.4, weight=0.6, height=0.48, proportions=0.5),
                     race=dict(caucasian=0.7, african=0.15, asian=0.15),
@@ -82,7 +82,7 @@ PEOPLE = {
                     hair='short04'),
     'arlo': dict(macro=dict(gender=1.0, age=mh_age(9), muscle=0.5, weight=0.5, height=0.5, proportions=0.5),
                  race=dict(caucasian=0.6, african=0.2, asian=0.2),
-                 wear=[('mindfront_knitted_sweater_02', KNIT), ('cortu_cargo_pants', WEAVE)],
+                 wear=[('elvs_crude_t-shirt_male', COTTON), ('cortu_cargo_pants', WEAVE)],
                  hair='elvs_maxwell_hair'),
     'zoe': dict(macro=dict(gender=0.0, age=mh_age(6), muscle=0.5, weight=0.5, height=0.5, proportions=0.5),
                 race=dict(caucasian=0.4, african=0.4, asian=0.2),
@@ -95,7 +95,7 @@ PEOPLE = {
     'mira': dict(macro=dict(gender=0.0, age=mh_age(4), muscle=0.5, weight=0.55, height=0.5, proportions=0.5),
                  race=dict(caucasian=0.5, african=0.2, asian=0.3),
                  wear=[('elvs_male_shirt_untucked_bd1', COTTON), ('toigo_harem_pants', COTTON)],
-                 hair='toigo_blunt_bob_with_bangs'),
+                 hair='littleright_bobcut_hair'),
 }
 
 # ---------------------------------------------------------------- posing helpers
@@ -147,12 +147,34 @@ def solve_two_bone(S, T, a, b, pole):
     return S + u * x + p.normalized() * h, S + u * d
 
 
+POSE_DIRS = []
+
+
+def find_pose(name):
+    import glob
+    for d in POSE_DIRS + [os.path.join(LocationService.get_user_data(), 'poses')]:
+        hits = glob.glob(os.path.join(d, name, '*.bvh')) + glob.glob(os.path.join(d, '*', 'poses', name, '*.bvh'))
+        if hits:
+            return hits[0]
+    raise FileNotFoundError(f'MakeHuman pose {name} not found (install the poses01-04 / system poses packs)')
+
+
 class Poser:
-    def __init__(self, rig):
+    def __init__(self, rig, base_pose=None):
         self.rig = rig
         self.P = rig.pose.bones
+        if base_pose:
+            # an artist-made MakeHuman pose (CC0) gives the natural body language: spine curve, weight,
+            # relaxed hands; the moment then only moves what has to touch a prop
+            import addon_utils
+            addon_utils.enable('io_anim_bvh', default_set=True)
+            from bl_ext.user_default.mpfb.services.animationservice import AnimationService
+            AnimationService.import_bvh_file_as_pose(rig, find_pose(base_pose))
         for pb in self.P:
-            pb.rotation_mode = 'QUATERNION'
+            if pb.rotation_mode != 'QUATERNION':
+                q = pb.rotation_euler.to_quaternion() if pb.rotation_mode not in ('AXIS_ANGLE',) else Quaternion()
+                pb.rotation_mode = 'QUATERNION'
+                pb.rotation_quaternion = q
         upd()
 
     def b(self, n):
@@ -207,9 +229,22 @@ class Poser:
         world_rotate(c, Quaternion(self.fwd(), -sx * math.radians(up)))
         world_rotate(c, Quaternion(V(0, 0, 1), sx * math.radians(fwd)))
 
-    def arm(self, side, wrist, pole, twist=0.0):
-        """Two-bone IK: the wrist joint goes to a world point; the elbow bends toward pole (world vector)."""
+    def arm(self, side, wrist, pole=None, twist=0.0, clavicle=0.35):
+        """Two-bone IK: the wrist joint goes to a world point. The collarbone takes a share of any lift above the
+        shoulder (as a real shoulder does), and by default the elbow falls down, a little back and out."""
         ua, la, wr = self.b('upperarm01.' + side), self.b('lowerarm01.' + side), self.b('wrist.' + side)
+        sx = 1 if side == 'L' else -1
+        f, l, up = self.frame()
+        if pole is None:
+            pole = -up * 1.0 - f * 0.35 + l * sx * 0.45
+        S = ua.head.copy()
+        d = (V(wrist) - S)
+        if d.length > 1e-6 and clavicle:
+            elev = math.asin(max(-1.0, min(1.0, d.normalized().z)))
+            lift = max(0.0, elev + math.radians(10)) * clavicle
+            reach = max(0.0, d.normalized().dot(f)) * math.radians(8)
+            if lift or reach:
+                self.shrug(side, up=math.degrees(min(lift, math.radians(28))), fwd=math.degrees(reach))
         S, E, W = ua.head.copy(), la.head.copy(), wr.head.copy()
         a, b = (E - S).length, (W - E).length
         E2, T = solve_two_bone(S, V(wrist), a, b, V(pole))
@@ -217,30 +252,40 @@ class Poser:
         E, W = la.head.copy(), wr.head.copy()
         swing(la, W - E, T - E)
         if twist:
-            sx = 1 if side == 'L' else -1
-            local_rotate(la, 1, sx * math.radians(twist) * 0.4)
-            local_rotate(self.b('lowerarm02.' + side), 1, sx * math.radians(twist) * 0.6)
+            self.forearm_twist(side, twist)
 
-    def hand(self, side, direction, palm=None, bend=0.0):
-        """Point the hand (wrist -> knuckles) along a world direction; optionally turn the palm toward a world
-        direction by twisting the forearm."""
+    def forearm_twist(self, side, deg_):
+        deg_ = max(-80.0, min(80.0, deg_))
+        for n in ('lowerarm01.', 'lowerarm02.'):
+            pb = self.b(n + side)
+            world_rotate(pb, Quaternion(axis_of(pb, 1), math.radians(deg_) * 0.5))
+
+    def hand(self, side, direction, palm=None, bend=0.0, max_bend=55.0):
+        """Point the hand (wrist -> knuckles) toward a world direction, without breaking the wrist (at most
+        max_bend degrees off the forearm). palm turns the forearm (split over both bones, at most 80 degrees)
+        so the palm faces a world direction."""
         wr = self.b('wrist.' + side)
+        la2 = self.b('lowerarm02.' + side)
         if palm is not None:
-            la2 = self.b('lowerarm02.' + side)
-            for _ in range(3):
-                swing(wr, axis_of(wr, 1), V(direction).normalized())
-                ax = axis_of(la2, 1)
-                cur = self.palm_normal(side)
-                want = V(palm).normalized()
-                cur_p = (cur - ax * cur.dot(ax))
-                want_p = (want - ax * want.dot(ax))
-                if cur_p.length < 1e-4 or want_p.length < 1e-4:
-                    break
+            ax = axis_of(la2, 1)
+            cur = self.palm_normal(side)
+            want = V(palm).normalized()
+            cur_p = cur - ax * cur.dot(ax)
+            want_p = want - ax * want.dot(ax)
+            if cur_p.length > 1e-4 and want_p.length > 1e-4:
                 ang = cur_p.angle(want_p)
                 if cur_p.cross(want_p).dot(ax) < 0:
                     ang = -ang
-                world_rotate(la2, Quaternion(ax, ang))
-        swing(wr, axis_of(wr, 1), V(direction).normalized())
+                ang = max(-math.radians(80), min(math.radians(80), ang))
+                for n in ('lowerarm01.', 'lowerarm02.'):
+                    pb = self.b(n + side)
+                    world_rotate(pb, Quaternion(axis_of(pb, 1), ang * 0.5))
+        fore = axis_of(la2, 1)
+        want = V(direction).normalized()
+        a = fore.angle(want)
+        if a > math.radians(max_bend):
+            want = fore.slerp(want, math.radians(max_bend) / a) if hasattr(fore, 'slerp') else want
+        swing(wr, axis_of(wr, 1), want)
 
     def palm_normal(self, side):
         """World vector out of the palm, from the hand's bone layout (index and pinky knuckles vs. wrist)."""
@@ -304,6 +349,8 @@ class Poser:
 
     def frame(self):
         """Figure-relative world axes: forward, left, up."""
+        if not hasattr(self, 'R'):
+            self.R = Matrix.Identity(3)
         f = self.fwd()
         f2 = V(f.x, f.y, 0).normalized()
         return f2, V(-f2.y, f2.x, 0), V(0, 0, 1)
@@ -316,6 +363,7 @@ EXPR_DIR = None
 
 def expression(body, units):
     for unit, w in units.items():
+        w *= 0.6  # face units at full strength read as grimaces on a statue
         path = os.path.join(EXPR_DIR, unit + '.target.gz')
         if not os.path.exists(path):
             print('missing expression unit', unit)
@@ -353,6 +401,10 @@ def create_person(key):
     add(f"hair/{spec['hair']}/{mh}", 'Hair', HAIR)
     sub = body.modifiers.new('Subdivide', 'SUBSURF')
     sub.levels = sub.render_levels = 1
+    for o, _ in parts:
+        for m in o.modifiers:
+            if m.type == 'ARMATURE':
+                m.use_deform_preserve_volume = True  # dual quaternion: no collapsing elbows or candy-wrap wrists
     return body, rig, parts
 
 
@@ -422,13 +474,13 @@ def sculpt_folds(me, src, rig, fabric, height):
             t = max(0.0, min(1.0, d.dot(u) / Ln))
             r = d - u * d.dot(u)
             th = math.atan2(r.dot(b2), r.dot(b1))
-            phase = t * Ln / lam + 0.22 * math.sin(th + 1.3) + 0.55 * wob
-            ridge = abs(math.sin(math.pi * phase)) ** 0.45
+            phase = t * Ln / lam + 0.45 * math.sin(th + 1.3) + 0.35 * math.sin(2 * th + 0.4) + 1.1 * wob
+            ridge = abs(math.sin(math.pi * phase)) ** 0.8
             joint_t = 1.0 if limb in ('uarm', 'thigh') else 0.0
             near = math.exp(-((t - joint_t) / 0.3) ** 2)
-            amp = 0.002 + 0.014 * scale * near * min(1.0, bend * 2.2 + 0.3)
+            amp = 0.001 + 0.0055 * scale * near * min(1.0, bend * 2.0 + 0.15)
             if limb in ('farm', 'shin'):
-                amp += 0.007 * scale * math.exp(-((t - 1.0) / 0.12) ** 2)  # cuff / hem bunching
+                amp += 0.003 * scale * math.exp(-((t - 1.0) / 0.12) ** 2)  # cuff / hem bunching
             disp[i] = amp * ridge
         else:
             # body: soft vertical drape, strongest toward the hem
@@ -439,8 +491,8 @@ def sculpt_folds(me, src, rig, fabric, height):
             th = math.atan2(r.dot(u.cross(fwd)), r.dot(fwd))
             hem = max(0.0, min(1.0, 1.0 - (h + 0.15) / 0.45))
             ridge = abs(math.sin(th * 5.0 + 1.6 * wob)) ** 0.7
-            disp[i] = (0.0015 + 0.007 * scale * hem) * ridge
-        disp[i] += 0.0012 * scale * (noise.noise(p * 18.0) * 0.5 + 0.5)
+            disp[i] = (0.0008 + 0.0035 * scale * hem) * ridge
+        disp[i] += 0.0008 * scale * (noise.noise(p * 14.0) * 0.5 + 0.5)
     print(f'  folds on {src.name}: {nv} verts, grouped {sum(1 for v in me.vertices if len(v.groups))}, disp max {disp.max()*1000:.1f} mm mean {disp.mean()*1000:.1f} mm', flush=True)
     co += nor * disp[:, None]
     me.vertices.foreach_set('co', co.ravel())
@@ -556,38 +608,52 @@ def stand(P, center, face, hip_h=None, spread=0.1, pitch=0.0):
     return f, l
 
 
+def plant_feet(P, floor=0.0, sides=('L', 'R')):
+    """Bring the feet of a base pose down to a floor height, keeping each knee's direction."""
+    for sd in sides:
+        hip, knee, ankle = P.joint(f'upperleg01.{sd}'), P.joint(f'lowerleg01.{sd}'), P.joint(f'foot.{sd}')
+        target = V(ankle.x, ankle.y, floor + 0.075 * P.height / 1.75)
+        mid = (hip + target) / 2
+        P.leg(sd, target, pole=(knee - mid))
+        ft = P.b(f'foot.{sd}')
+        fd = axis_of(ft, 1)
+        P.foot(sd, V(fd.x, fd.y, 0).normalized() + V(0, 0, -0.45))
+
+
 def moment_tower(F):
     import build_home as H
     tx, ty = H.LAYOUT['tower']
     tz = H.LAYOUT['tower_top']
     blk_z = tz + 0.0075 + H.LAYOUT['pulled_layer'] * 0.015
     tower = V(tx, ty, tz + 0.12)
-    # Dad kneels on the sofa side, leaning in, hands up around the tower as if it might fall
+    # Dad kneels on the sofa side, leaning in, both hands raised round the tower in case it falls
     P = F['dad']
-    kneel(P, (tx - 0.08, ty - 0.5), (0, 1), lean=14, spread=0.13)
-    P.spine(bend=22, twist=6)
-    P.look(tower + V(0.04, 0, 0.02))
-    for s, dx in (('L', -0.17), ('R', 0.15)):
-        sx = 1 if s == 'L' else -1
-        w = V(tx + dx, ty - 0.2, tz + 0.27 + (0.03 if s == 'R' else 0))
-        P.arm(s, w, pole=V(-sx * 0.9, -0.4, -1.0))
-        P.hand(s, V(-dx * 0.6, 0.15, 1.0), palm=V(-dx * 2.5, 1.0, 0.1))
-        P.fingers(s, (0.05, 0.08, 0.12, 0.16, 0.2), spread=7)
-    P.expr = {'eyebrows-left-up': 0.7, 'eyebrows-right-up': 0.7, 'mouth-open': 0.25, 'eye-left-opened-up': 0.4, 'eye-right-opened-up': 0.4}
-    # Arlo kneels at the east end, pulling the block between finger and thumb, tongue out
+    kneel(P, (tx - 0.08, ty - 0.5), (0, 1), lean=10, spread=0.14)
+    f, l, up = P.frame()
+    P.spine(bend=20, twist=4)
+    P.look(tower + V(0.03, 0, 0.0), share=(0.15, 0.1, 0.1))
+    for sd, sx in (('L', 1), ('R', -1)):
+        side = -l * sx  # his left hand on the tower's west side
+        w = tower + side * 0.0 - l * sx * 0.0
+        w = V(tx, ty, tz) + l * sx * 0.15 - f * 0.17 + V(0, 0, 0.24 + (0.03 if sd == 'R' else 0))
+        P.arm(sd, w)
+        P.hand(sd, V(0, 0, 1) + f * 0.35 - l * sx * 0.25, palm=-l * sx + f * 0.6)
+        P.fingers(sd, (0.0, 0.03, 0.06, 0.1, 0.14), spread=5)
+    P.expr = {'eyebrows-left-up': 0.6, 'eyebrows-right-up': 0.6, 'mouth-open': 0.2}
+    # Arlo kneels at the table's end, pulling the block out between finger and thumb
     P = F['arlo']
     kneel(P, (tx + 0.47, ty - 0.17), (-0.94, 0.34), lean=14, spread=0.1)
+    f, l, up = P.frame()
     P.spine(bend=24, side=-3, twist=-6)
     pinch = V(tx + 0.036 + 0.0375 + 0.006, ty, blk_z)
-    P.look(pinch + V(-0.02, 0, -0.01))
-    P.arm('R', pinch + V(0.12, -0.03, 0.03), pole=V(0.3, -1, -0.6))
-    P.hand('R', V(-1, 0.1, -0.25), palm=V(0, 1, 0))
-    P.fingers('R', (0.35, 0.3, 0.75, 0.85, 0.9), thumb_in=10)
-    P.arm('L', V(tx + 0.3, ty + 0.0, tz + 0.05), pole=V(0.2, 1, -0.5))
-    P.hand('L', V(-1, 0.2, -0.3), palm=V(0, 0, -1))
-    P.fingers('L', (0.2, 0.25, 0.3, 0.35, 0.4))
-    P.expr = {'mouth-open': 0.35, 'eye-left-slit': 0.35, 'eye-right-slit': 0.35, 'eyebrows-left-down': 0.4, 'eyebrows-right-down': 0.4}
-    P.tongue = 1.0
+    P.look(pinch + V(-0.02, 0, -0.01), share=(0.15, 0.1, 0.1))
+    P.arm('R', pinch + V(0.11, -0.02, 0.025))
+    P.hand('R', (pinch - P.joint('wrist.R')).normalized(), palm=V(0, 1, -0.3))
+    P.fingers('R', (0.25, 0.3, 0.7, 0.8, 0.85), thumb_in=8)
+    P.arm('L', V(tx + 0.3, ty - 0.02, tz + 0.03))
+    P.hand('L', -l * 0.3 + f, palm=V(0, 0, -1))
+    P.fingers('L', (0.1, 0.12, 0.15, 0.18, 0.22))
+    P.expr = {'mouth-open': 0.3, 'eye-left-slit': 0.3, 'eye-right-slit': 0.3, 'eyebrows-left-down': 0.4, 'eyebrows-right-down': 0.4}
     return {}
 
 
@@ -597,31 +663,17 @@ def moment_sofa(F):
     P = F['zoe']
     x = sx - 0.82
     f = unit(0.25, 1)
-    thigh, shin = P.lengths('leg', 'L')
-    hips = V(x, sy - 0.02, 0.53)
-    P.place(hips, f, pitch=-26)
-    l = V(-f.y, f.x, 0)
-    for s, sxn in (('L', 1), ('R', -1)):
-        knee = hips + f * thigh * 0.5 + V(0, 0, thigh * 0.86) + l * sxn * 0.075
-        ankle = hips + f * 0.2 + l * sxn * 0.07 + V(0, 0, -0.03)
-        P.limb('leg', s, knee, ankle)
-        P.foot(s, f + V(0, 0, -0.25))
-    P.spine(bend=-8, side=3, twist=10)
-    head = P.joint('head')
-    P.look(head + V(0, 0, 0.4) + f * 0.25 + l * 0.2)
-    P.head_rot(nod=-14, tilt=8)
-    # right hand over the mouth
-    mouth = P.joint('head') + f * 0.12 + V(0, 0, 0.02)
-    P.arm('R', mouth + f * 0.06 - l * 0.06 + V(0, 0, -0.07), pole=V(-l.x, -l.y, -1))
-    P.hand('R', l * 0.8 + V(0, 0, 0.6), palm=-f)
-    P.fingers('R', (0.15, 0.15, 0.2, 0.25, 0.3))
-    # left arm hugging the cushion against her side
-    P.arm('L', hips + f * 0.2 + l * 0.12 + V(0, 0, 0.22), pole=V(l.x, l.y, -0.6))
-    P.hand('L', -l + f * 0.4, palm=-l)
-    P.fingers('L', (0.4, 0.55, 0.6, 0.65, 0.7))
-    P.expr = {'mouth-open': 0.75, 'mouth-corner-puller': 0.9, 'eye-left-slit': 0.8, 'eye-right-slit': 0.8, 'eyebrows-left-up': 0.3, 'eyebrows-right-up': 0.3}
-    # the cushion she hugs, held against her shins and chest
-    # the cushion she half hugs sits against her right hip, away from Alaro so her face and knees show
+    hips = V(x, sy - 0.03, 0.52)
+    # base pose: sitting with her knees hugged to her chest; she leans back into the cushions laughing
+    P.place(hips, f, pitch=-14)
+    f, l, up = P.frame()
+    P.spine(bend=-6, side=3, twist=8)
+    P.head_rot(nod=-22, tilt=6)
+    mouth = P.joint('head') + f * 0.11 + up * 0.02
+    P.arm('R', mouth + f * 0.04 - l * 0.05 - up * 0.06)
+    P.hand('R', l * 0.6 + up * 0.8, palm=-f)
+    P.fingers('R', (0.1, 0.12, 0.16, 0.2, 0.25))
+    P.expr = {'mouth-open': 0.7, 'mouth-corner-puller': 0.9, 'eye-left-slit': 0.7, 'eye-right-slit': 0.7}
     c = hips - l * 0.2 + f * 0.06 + V(0, 0, 0.1)
     return {'zoe_cushion': list(c), 'zoe_cushion_rot': [math.radians(-8), math.radians(-14), math.atan2(f.y, f.x)]}
 
@@ -631,40 +683,32 @@ def moment_cake(F):
     cx, cy = H.LAYOUT['cake']
     top = H.LAYOUT['dining_top']
     candles = V(cx, cy, top + 0.27)
-    # Grandpa on the north chair, leaning right over the cake, cheeks puffed, blowing
+    # Grandpa on the north chair, leaning right over the cake to blow the candles out
     P = F['grandpa']
     ch = H.LAYOUT['dining_chairs'][0]
-    f = unit(0, -1)
-    l = V(-f.y, f.x, 0)
-    thigh, shin = P.lengths('leg', 'L')
-    hips = V(ch[0], ch[1] - 0.05, 0.57)
-    P.place(hips, f, pitch=34)
-    for s, sxn in (('L', 1), ('R', -1)):
-        knee = hips + f * thigh * 0.98 + l * sxn * 0.12 + V(0, 0, 0.02)
-        P.limb('leg', s, knee, V(knee.x, knee.y + 0.04, 0.09))
-        P.foot(s, f + V(0, 0, -0.35))
-    P.spine(bend=30, twist=-4)
-    P.look(candles + V(0, 0, -0.03))
-    P.head_rot(nod=-4)
-    P.arm('L', V(cx + 0.3, cy + 0.33, top + 0.04), pole=V(1, 0.2, -0.4))
-    P.hand('L', V(0.2, -1, -0.1), palm=V(0, 0, -1))
-    P.fingers('L', (0.2, 0.25, 0.3, 0.35, 0.4), spread=4)
-    P.arm('R', V(cx - 0.3, cy + 0.36, top + 0.04), pole=V(-1, 0.2, -0.4))
-    P.hand('R', V(-0.2, -1, -0.1), palm=V(0, 0, -1))
-    P.fingers('R', (0.2, 0.3, 0.35, 0.4, 0.45))
-    P.expr = {'mouth-pursing': 0.9, 'mouth-protusion': 0.7, 'eye-left-slit': 0.5, 'eye-right-slit': 0.5, 'eyebrows-left-up': 0.3, 'eyebrows-right-up': 0.3}
-    P.puff = 1.0
-    # Mum at the east end, mid-clap
+    P.place(V(ch[0], ch[1] - 0.06, 0.56), unit(0, -1), pitch=26)
+    f, l, up = P.frame()
+    plant_feet(P)
+    P.spine(bend=16, twist=-3)
+    P.look(candles + V(0, 0, -0.04), share=(0.2, 0.15, 0.15))
+    for sd, sx in (('L', 1), ('R', -1)):
+        P.arm(sd, V(cx + sx * 0.19, cy + 0.36, top + 0.035))
+        P.hand(sd, f - l * sx * 0.25, palm=V(0, 0, -1))
+        P.fingers(sd, (0.1, 0.05, 0.08, 0.1, 0.14), spread=3)
+    P.expr = {'mouth-pursing': 0.8, 'mouth-protusion': 0.5, 'eye-left-slit': 0.5, 'eye-right-slit': 0.5, 'eyebrows-left-up': 0.3, 'eyebrows-right-up': 0.3}
+    P.puff = 0.8
+    # Mum at the east end of the table, mid-clap
     P = F['mum']
     f, l = stand(P, (2.78, cy - 0.06), (-1, 0.08))
+    plant_feet(P)
     P.spine(bend=6, twist=4)
-    P.look(candles + V(0.05, 0.1, 0.05))
-    chest = P.joint('spine02') + f * 0.3 + V(0, 0, 0.02)
-    for s, sxn in (('L', 1), ('R', -1)):
-        P.arm(s, chest + l * sxn * 0.05, pole=l * sxn * 0.7 - f * 0.2 + V(0, 0, -1))
-        P.hand(s, f * 0.7 + V(0, 0, 0.7) - l * sxn * 0.25, palm=-l * sxn)
-        P.fingers(s, (0.05, 0.05, 0.08, 0.1, 0.12))
-    P.expr = {'mouth-corner-puller': 0.9, 'mouth-open': 0.35, 'eye-left-slit': 0.25, 'eye-right-slit': 0.25}
+    P.look(candles + V(0.05, 0.1, 0.05), share=(0.15, 0.1, 0.1))
+    chest = P.joint('spine02') + f * 0.27
+    for sd, sx in (('L', 1), ('R', -1)):
+        P.arm(sd, chest + l * sx * 0.06 - V(0, 0, 0.02))
+        P.hand(sd, f * 0.5 + V(0, 0, 0.85), palm=-l * sx)
+        P.fingers(sd, (0.05, 0.04, 0.06, 0.08, 0.1))
+    P.expr = {'mouth-corner-puller': 0.85, 'mouth-open': 0.3, 'eye-left-slit': 0.25, 'eye-right-slit': 0.25}
     # Zoe kneels up on the south-east chair to see
     P = F['zoe']
     ch = H.LAYOUT['dining_chairs'][2]
@@ -673,30 +717,31 @@ def moment_cake(F):
     thigh, shin = P.lengths('leg', 'L')
     seat = 0.485
     hips = V(ch[0], ch[1] + 0.06, seat + 0.05 + thigh * 0.95)
-    P.place(hips, f, pitch=22)
-    for s, sxn in (('L', 1), ('R', -1)):
+    P.place(hips, f, pitch=14)
+    for sd, sxn in (('L', 1), ('R', -1)):
         knee = V(ch[0], ch[1] + 0.12, seat + 0.05) + l * sxn * 0.08
-        P.limb('leg', s, knee, knee - f * shin * 0.97 + V(0, 0, 0.02))
-        P.foot(s, -f + V(0, 0, -0.5))
-    P.spine(bend=12)
-    P.look(candles)
-    for s, sxn in (('L', 1), ('R', -1)):
-        P.arm(s, V(ch[0] + sxn * -0.13, 0.69, top + 0.04), pole=V(-sxn * 0.8, -0.3, -0.5))
-        P.hand(s, V(0, 1, -0.2), palm=V(0, 0, -1))
-        P.fingers(s, (0.1, 0.15, 0.2, 0.25, 0.3), spread=5)
-    P.expr = {'mouth-open': 0.5, 'mouth-corner-puller': 0.7, 'eyebrows-left-up': 0.5, 'eyebrows-right-up': 0.5}
-    # Dad filming with his phone, south-west of the table
+        P.limb('leg', sd, knee, knee - f * shin * 0.97 + V(0, 0, 0.02))
+        P.foot(sd, -f + V(0, 0, -0.5))
+    P.spine(bend=10)
+    P.look(candles, share=(0.15, 0.1, 0.1))
+    for sd, sxn in (('L', 1), ('R', -1)):
+        P.arm(sd, V(ch[0] + sxn * -0.13, 0.7, top + 0.03))
+        P.hand(sd, V(0, 1, -0.2), palm=V(0, 0, -1))
+        P.fingers(sd, (0.08, 0.08, 0.1, 0.12, 0.15), spread=4)
+    P.expr = {'mouth-open': 0.45, 'mouth-corner-puller': 0.7, 'eyebrows-left-up': 0.5, 'eyebrows-right-up': 0.5}
+    # Dad filming with his phone held up in both hands
     P = F['dad']
     f, l = stand(P, (2.62, 1.98), (-0.72, -0.62))
-    P.spine(bend=-3, twist=-6)
+    plant_feet(P)
+    P.spine(bend=-2, twist=-4)
     head = P.joint('head')
-    phone = head + f * 0.36 + V(0, 0, 0.04)
-    P.look(phone)
-    for s, sxn in (('L', 1), ('R', -1)):
-        P.arm(s, phone + l * sxn * 0.06 - f * 0.05 + V(0, 0, -0.06), pole=V(l.x * sxn, l.y * sxn, -1))
-        P.hand(s, -l * sxn * 0.6 + V(0, 0, 0.8), palm=f)
-        P.fingers(s, (0.3, 0.45, 0.5, 0.55, 0.6))
-    P.expr = {'mouth-corner-puller': 0.6}
+    phone = head + f * 0.34 + V(0, 0, 0.02)
+    P.look(phone, share=(0.15, 0.1, 0.1))
+    for sd, sxn in (('L', 1), ('R', -1)):
+        P.arm(sd, phone + l * sxn * 0.065 - f * 0.05 - V(0, 0, 0.05))
+        P.hand(sd, -l * sxn * 0.5 + V(0, 0, 0.9), palm=f)
+        P.fingers(sd, (0.25, 0.35, 0.4, 0.45, 0.5))
+    P.expr = {'mouth-corner-puller': 0.55}
     P.phone = (phone, f)
     return {}
 
@@ -705,50 +750,47 @@ def moment_plane(F):
     import build_home as H
     sx, sy = H.LAYOUT['leo_stool']
     seat = 0.68
-    # Leo on tiptoe on the stool, throwing arm fully extended, the plane just leaving his fingers
+    # Leo on tiptoe on the stool (base pose: a tennis serve), throwing arm fully out, the plane just leaving
     P = F['leo']
-    # he throws across Alaro's view, toward the living room, so the plane reads side-on
     f = unit(0.3, -1)
     l = V(-f.y, f.x, 0)
     thigh, shin = P.lengths('leg', 'L')
-    hips = V(sx, sy, seat + 0.06 + (thigh + shin) * 0.97) + f * 0.03
-    P.place(hips, f, pitch=8)
-    for s, sxn in (('L', 1), ('R', -1)):
+    hips = V(sx, sy, seat + 0.06 + (thigh + shin) * 0.97) + f * 0.02
+    P.place(hips, f, pitch=4)
+    f, l, up = P.frame()
+    for sd, sxn in (('L', 1), ('R', -1)):
         heel = V(sx, sy, seat + 0.075) + l * sxn * 0.07 - f * 0.02
-        P.leg(s, heel, pole=f)
-        P.foot(s, f + V(0, 0, -1.5), toes=-35)
-    P.spine(bend=10, side=4, twist=-22)
+        P.leg(sd, heel, pole=f)
+        P.foot(sd, f + V(0, 0, -1.4), toes=-30)
+    P.spine(bend=6, side=3, twist=-14)
     sh = P.joint('upperarm01.R')
     a, b = P.lengths('arm', 'R')
-    throw = (f * 0.9 + V(0, 0, 0.32) - l * 0.12).normalized()
-    wrist = sh + throw * (a + b) * 0.97
-    P.arm('R', wrist, pole=V(0, 0, -1) - l)
-    print('LEO sh', sh, 'target', wrist, 'got', P.joint('wrist.R'), 'f', f, 'l', l, flush=True)
-    P.hand('R', throw + V(0, 0, 0.1), palm=-l + V(0, 0, -0.6))
-    P.fingers('R', (0.05, 0.0, 0.05, 0.25, 0.35), spread=3)
-    P.arm('L', P.joint('upperarm01.L') + l * 0.22 - f * 0.18 + V(0, 0, -0.2), pole=V(0, 0, -1))
-    P.hand('L', l * 0.6 - f * 0.5 + V(0, 0, -0.4), palm=V(0, 0, -1))
-    P.fingers('L', (0.1, 0.1, 0.15, 0.2, 0.25), spread=8)
+    throw = (f * 0.9 + V(0, 0, 0.3) - l * 0.12).normalized()
+    P.arm('R', sh + throw * (a + b) * 0.96)
+    P.hand('R', throw + V(0, 0, 0.08), palm=-l + V(0, 0, -0.6))
+    P.fingers('R', (0.05, 0.0, 0.04, 0.12, 0.2), spread=4)
+    P.arm('L', P.joint('upperarm01.L') + l * 0.2 - f * 0.1 - up * 0.22)
+    P.fingers('L', (0.08, 0.08, 0.12, 0.16, 0.2), spread=6)
     tip = P.joint('finger3-3.R') + throw * 0.03
     plane = tip + throw * 0.36
-    P.look(plane + throw * 0.3)
-    P.expr = {'mouth-open': 0.5, 'mouth-corner-puller': 0.5, 'eye-left-opened-up': 0.5, 'eye-right-opened-up': 0.5}
-    # Mum behind him, one hand on the stool, the other at his back, looking up at the plane
+    P.look(plane + throw * 0.3, share=(0.15, 0.1, 0.1))
+    P.expr = {'mouth-open': 0.45, 'mouth-corner-puller': 0.5, 'eye-left-opened-up': 0.4, 'eye-right-opened-up': 0.4}
+    # Mum beside him, one hand on the stool, the other at his side, looking up at the plane
     P = F['mum']
     f2, l2 = stand(P, (sx - 0.55, sy + 0.0), (0.85, -0.53))
-    P.spine(bend=18, twist=8, side=-3)
-    P.look(plane + V(0, 0, 0.1))
-    P.arm('R', V(sx - 0.17, sy - 0.04, seat + 0.0), pole=V(-0.3, -0.8, 0.2))
+    plant_feet(P)
+    P.spine(bend=16, twist=8, side=-3)
+    P.look(plane + V(0, 0, 0.1), share=(0.2, 0.15, 0.15))
+    P.arm('R', V(sx - 0.17, sy - 0.04, seat + 0.0))
     P.hand('R', V(0.5, 0.1, -1), palm=V(1, 0.1, 0.2))
-    P.fingers('R', (0.4, 0.5, 0.55, 0.6, 0.65))
+    P.fingers('R', (0.3, 0.4, 0.45, 0.5, 0.55))
     side_l = F['leo'].joint('spine04') - l * 0.1 - f * 0.03
-    P.arm('L', side_l, pole=V(-0.2, 0.9, -1))
+    P.arm('L', side_l)
     P.hand('L', V(0.6, 0.3, 0.5), palm=l)
-    P.fingers('L', (0.15, 0.2, 0.25, 0.3, 0.3))
-    P.expr = {'mouth-corner-puller': 0.55, 'mouth-open': 0.3, 'eyebrows-left-up': 0.5, 'eyebrows-right-up': 0.5}
-    nose_dir = throw
-    yaw = math.atan2(nose_dir.y, nose_dir.x)
-    pitch = math.asin(max(-1, min(1, nose_dir.z)))
+    P.fingers('L', (0.12, 0.15, 0.2, 0.25, 0.25))
+    P.expr = {'mouth-corner-puller': 0.5, 'mouth-open': 0.25, 'eyebrows-left-up': 0.4, 'eyebrows-right-up': 0.4}
+    yaw = math.atan2(throw.y, throw.x)
+    pitch = math.asin(max(-1, min(1, throw.z)))
     return {'plane': list(plane), 'plane_rot': [0.0, -pitch, yaw]}
 
 
@@ -762,60 +804,50 @@ def moment_book(F):
         return V(ax, ay, 0) + Rz @ V(x, y, z)
     f = (Rz @ V(0, -1, 0)).normalized()
     l = V(-f.y, f.x, 0)
-    # the book rests on Mira's knees, tilted up toward both readers and turned a little toward Alaro
     tilt, yaw = math.radians(-38), rot - math.radians(18)
     Rb = Matrix.Rotation(yaw, 3, 'Z') @ Matrix.Rotation(tilt, 3, 'X')
-    book = C(0.0, -0.4, 0.8)
+    book = C(0.0, -0.34, 0.79)
     ang = math.radians(H.BOOK_PAGE_ANGLE)
 
     def Bk(x, y, z):
         return book + Rb @ V(x, y, z)
     page_tip = Bk(-0.185 * math.cos(ang) + 0.01, 0.085, 0.016 + 0.185 * math.sin(ang))
+    # Mum (base pose: sitting), arms round Mira, holding the book and turning a page
     P = F['mum']
-    thigh, shin = P.lengths('leg', 'L')
-    hips = C(0, 0.1, 0.6)
-    P.place(hips, f, pitch=-8)
-    for s, sxn in (('L', 1), ('R', -1)):
-        knee = hips + f * thigh * 0.97 + l * sxn * 0.11 + V(0, 0, 0.04)
-        P.limb('leg', s, knee, V(knee.x, knee.y, 0.09) + f * 0.06)
-        P.foot(s, f + V(0, 0, -0.3))
+    P.place(C(0, 0.02, 0.58), f, pitch=4)
+    plant_feet(P)
     P.spine(bend=16, twist=-4)
-    P.look(Bk(0.03, 0, 0), share=(0.25, 0.2, 0.2))
-    P.head_rot(tilt=-12)
-    # left hand holds the left board; right hand lifts the turning page by its corner
-    P.arm('L', Bk(-0.2, -0.02, -0.01) + V(0, 0, 0.02), pole=V(l.x, l.y, -1))
-    P.hand('L', Rb @ V(0.1, 0.5, -0.4), palm=Rb @ V(0.4, 0, -1))
-    P.fingers('L', (0.35, 0.3, 0.35, 0.4, 0.45))
-    P.arm('R', page_tip + Rb @ V(0.05, 0.03, 0.02), pole=V(-l.x, -l.y, -1))
+    P.look(Bk(0.03, 0, 0), share=(0.2, 0.15, 0.15))
+    P.head_rot(tilt=-10)
+    P.arm('L', Bk(-0.19, 0.06, -0.01) + V(0, 0, 0.02))
+    P.hand('L', Rb @ V(0.2, -0.6, -0.3), palm=Rb @ V(0.4, 0, -1))
+    P.fingers('L', (0.3, 0.25, 0.3, 0.35, 0.4))
+    P.arm('R', page_tip + Rb @ V(0.05, 0.03, 0.02))
     P.hand('R', Rb @ V(-0.5, 0.2, 0.6), palm=Rb @ V(-0.3, 0, -1))
-    P.fingers('R', (0.4, 0.15, 0.3, 0.45, 0.55))
+    P.fingers('R', (0.35, 0.12, 0.25, 0.4, 0.5))
     P.expr = {'mouth-corner-puller': 0.45, 'eye-left-slit': 0.3, 'eye-right-slit': 0.3}
-    # Mira on her lap, in pyjamas, hands on the book's lower corners, both looking at the picture
+    # Mira (base pose: sitting) on her lap, in pyjamas, hands on the book's lower corners
     P = F['mira']
-    t2, s2 = P.lengths('leg', 'L')
-    mh = C(0.02, -0.12, 0.72)
-    P.place(mh, f, pitch=-4)
-    for s, sxn in (('L', 1), ('R', -1)):
-        knee = mh + f * t2 * 0.97 + l * sxn * 0.06 + V(0, 0, -0.04)
-        P.limb('leg', s, knee, knee + f * 0.04 + V(0, 0, -s2 * 0.97))
-        P.foot(s, f + V(0, 0, -0.6))
-    P.spine(bend=14)
-    P.look(Bk(0.06, 0.0, 0.0), share=(0.25, 0.2, 0.2))
-    for s, sxn in (('L', 1), ('R', -1)):
-        P.arm(s, Bk(sxn * 0.15, -0.14, 0.01) + V(0, 0, 0.03), pole=V(l.x * sxn, l.y * sxn, -1))
-        P.hand(s, Rb @ V(-sxn * 0.3, 0.6, -0.3), palm=Rb @ V(0, 0, -1))
-        P.fingers(s, (0.3, 0.3, 0.35, 0.4, 0.45))
-    P.expr = {'mouth-open': 0.25, 'eyebrows-left-up': 0.4, 'eyebrows-right-up': 0.4}
+    P.place(C(0.02, -0.19, 0.71), f, pitch=-2)
+    P.spine(bend=12)
+    P.look(Bk(0.06, 0.0, 0.0), share=(0.2, 0.15, 0.15))
+    for sd, sxn in (('L', 1), ('R', -1)):
+        P.arm(sd, Bk(sxn * 0.12, 0.1, 0.01) + V(0, 0, 0.03))
+        P.hand(sd, Rb @ V(-sxn * 0.2, -0.8, -0.2), palm=Rb @ V(0, 0, -1))
+        P.fingers(sd, (0.25, 0.25, 0.3, 0.35, 0.4))
+    P.expr = {'mouth-open': 0.2, 'eyebrows-left-up': 0.4, 'eyebrows-right-up': 0.4}
     eul = Rb.to_euler('XYZ')
     return {'book': list(book), 'book_rot': [eul.x, eul.y, eul.z], 'page': list(page_tip)}
 
 
+# moment -> ({person: MakeHuman base pose}, pose function)
 MOMENTS = {
-    'tower': (['dad', 'arlo'], moment_tower),
-    'sofa': (['zoe'], moment_sofa),
-    'cake': (['grandpa', 'mum', 'zoe', 'dad'], moment_cake),
-    'plane': (['leo', 'mum'], moment_plane),
-    'book': (['mum', 'mira'], moment_book),
+    'tower': ({'dad': 'callharvey3d_standingatease', 'arlo': 'callharvey3d_standingnatural'}, moment_tower),
+    'sofa': ({'zoe': 'callharvey3d_sittingfloor2'}, moment_sofa),
+    'cake': ({'grandpa': 'callharvey3d_sittingdefault', 'mum': 'callharvey3d_standingatease',
+              'zoe': 'callharvey3d_standingnatural', 'dad': 'callharvey3d_standingnatural'}, moment_cake),
+    'plane': ({'leo': 'joachip_tennis_serve', 'mum': 'callharvey3d_standingatease'}, moment_plane),
+    'book': ({'mum': 'callharvey3d_sittingdefault', 'mira': 'callharvey3d_sittingnatural'}, moment_book),
 }
 HOLD = {'tower': 74, 'sofa': 82, 'cake': 104, 'plane': 130, 'catbed': 154, 'book': 182}
 
@@ -842,7 +874,7 @@ def cheek_puff(body, amount):
             d = (v.co - c).length
             if d < r and v.normal.y < 0.2:
                 k = (1 - d / r) ** 2
-                sk.data[v.index].co = sk.data[v.index].co + v.normal * 0.009 * scale * k
+                sk.data[v.index].co = sk.data[v.index].co + v.normal * 0.005 * scale * k
     sk.value = amount
 
 
@@ -974,12 +1006,13 @@ def build_cat():
 
 
 def make_moment(moment):
-    keys, fn = MOMENTS[moment]
+    bases, fn = MOMENTS[moment]
     made = {}
-    for k in keys:
+    for k, base in bases.items():
         body, rig, parts = create_person(k)
-        P = Poser(rig)
-        P.key, P.body, P.parts, P.height = k, body, parts, body_height(body)
+        height = body_height(body)
+        P = Poser(rig, base)
+        P.key, P.body, P.parts, P.height = k, body, parts, height
         made[k] = P
     anchors = fn(made) or {}
     statues = []
