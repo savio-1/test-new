@@ -1335,7 +1335,7 @@ def place_props(anchors):
     if 'zoe_cushion' in anchors and 'Pillow_0' in ob:
         ob['Pillow_0'].location = anchors['zoe_cushion']
         ob['Pillow_0'].rotation_euler = anchors.get('zoe_cushion_rot', (0, 0, 0))
-        ob['Pillow_0'].scale = (0.72, 0.9, 0.72)
+        ob['Pillow_0'].scale = (0.62, 0.9, 0.62)
     bpy.context.view_layer.update()
 
 

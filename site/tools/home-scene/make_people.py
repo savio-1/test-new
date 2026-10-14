@@ -621,10 +621,9 @@ def moment_sofa(F):
     P.fingers('L', (0.4, 0.55, 0.6, 0.65, 0.7))
     P.expr = {'mouth-open': 0.75, 'mouth-corner-puller': 0.9, 'eye-left-slit': 0.8, 'eye-right-slit': 0.8, 'eyebrows-left-up': 0.3, 'eyebrows-right-up': 0.3}
     # the cushion she hugs, held against her shins and chest
-    knee = (P.joint('lowerleg01.L') + P.joint('lowerleg01.R')) / 2
-    chest = P.joint('spine03')
-    c = knee.lerp(chest, 0.45) + f * 0.1 + l * 0.04
-    return {'zoe_cushion': list(c), 'zoe_cushion_rot': [math.radians(-20), 0.0, math.atan2(f.y, f.x) - math.pi / 2]}
+    # the cushion she half hugs sits against her right hip, away from Alaro so her face and knees show
+    c = hips - l * 0.2 + f * 0.06 + V(0, 0, 0.1)
+    return {'zoe_cushion': list(c), 'zoe_cushion_rot': [math.radians(-8), math.radians(-14), math.atan2(f.y, f.x)]}
 
 
 def moment_cake(F):
