@@ -63,9 +63,9 @@ LAYOUT = {
     'leo_stool': (-1.9, 1.38),          # Leo and Mum stay left of the birthday shot in Alaro's view
     'plane': (-2.02, 0.98, 1.66),       # paper plane just leaving Leo's fingers
     'catbed': (3.55, -0.35),            # v1: (3.45, 1.05), hidden behind the dining table from Alaro
-    'armchair': (3.45, -1.95, 225.0),   # x, y, rotation (deg); v1 (3.25, -2.55, 145): out of the corner, facing Alaro
-    'nook_table': (3.0, -2.4),
-    'floor_lamp': (3.92, -2.42),
+    'armchair': (3.45, -1.95, 189.0),   # x, y, rotation (deg); v1 (3.25, -2.55, 145): out of the corner, three-quarter to Alaro
+    'nook_table': (2.8, -2.08),
+    'floor_lamp': (3.55, -2.6),
     # dining chairs (x, y, side, turn): Grandpa's chair pulled out on the north side, Zoe kneels on the
     # south-east one, the south-west one is turned away from the table
     'dining_chairs': [(1.45, 1.86, 1, 0.0), (0.95, 0.47, -1, -18.0), (1.95, 0.5, -1, 4.0)],
@@ -437,6 +437,7 @@ def plane(name, w, h, loc, mat, rot=(0, 0, 0), collection='Home'):
 
 
 LAMP_2700K = '#ffad5e'  # warm practical bulbs
+BOOK_PAGE_ANGLE = 100.0  # degrees the turning page is lifted from the right-hand page
 
 
 def point_light(name, loc, energy, color='#ffcf8f', radius=0.05, collection='Lights'):
@@ -891,13 +892,15 @@ def reading_nook(M):
     for i, (lx, ly) in enumerate(((-0.33, -0.3), (0.33, -0.3), (-0.33, 0.3), (0.33, 0.3))):
         leg = cyl(f'Arm_Leg_{i}', 0.018, 0.08, (lx, ly, -0.02), M['walnut'])
         leg.parent = pivot
-    # open picture book on the seat
+    # the open picture book (placed in Mira's lap by place_props from the pose anchors): red boards, page
+    # blocks printed with the picture-book spread, and one page caught mid-turn
     bk = bpy.data.objects.new('Book_Pivot', None)
     coll('Home').objects.link(bk)
     bk.parent = pivot
     bk.location = (0.02, -0.04, 0.455)
     bk.rotation_euler = (0, 0, math.radians(10))
     book_parts = []
+    spread = dressing.art_material('Picture Book Spread', 'picture_book', rough=0.7)
     for side in (-1, 1):
         cover = box(f'Book_Cover_{side}', (0.2, 0.26, 0.006), (side * 0.1, 0, 0.0), M['book_red'], bevel=0.002)
         cover.parent = bk
@@ -905,7 +908,34 @@ def reading_nook(M):
         pages = box(f'Book_Pages_{side}', (0.19, 0.25, 0.012), (side * 0.098, 0, 0.009), M['book_pages'], bevel=0.003)
         pages.parent = bk
         pages.rotation_euler = (0, side * math.radians(-8), 0)
+        # the reader sits at the book's +Y edge facing -Y, so their left is +X
+        u0, u1 = (0.0, 0.5) if side > 0 else (0.5, 1.0)
+        art = dressing.quad_uv(f'Book_Art_{side}', 0.185, 0.245, spread, uv=((u1, 0), (u0, 0), (u0, 1), (u1, 1)))
+        art.parent = pages
+        art.location = (0, 0, 0.0065)
+        art.rotation_euler = (math.radians(90), 0, 0)
         book_parts += [cover, pages]
+    # the turning page: hinged at the spine, lifted past vertical, its corner in Mum's hand
+    bm = bmesh.new()
+    lay = bm.loops.layers.uv.new('UVMap')
+    nx, ny = 10, 4
+    ang = math.radians(BOOK_PAGE_ANGLE)
+    grid = []
+    for j in range(ny + 1):
+        row = []
+        for i in range(nx + 1):
+            r = i / nx * 0.185
+            a = ang * (0.82 + 0.18 * (i / nx) ** 2) + 0.05 * (j / ny) * (i / nx)  # a soft curl toward the held corner
+            row.append(bm.verts.new((-r * math.cos(a), (j / ny - 0.5) * 0.245, 0.016 + r * math.sin(a))))
+        grid.append(row)
+    for j in range(ny):
+        for i in range(nx):
+            f_ = bm.faces.new((grid[j][i], grid[j][i + 1], grid[j + 1][i + 1], grid[j + 1][i]))
+            for loop, (a_, b_) in zip(f_.loops, ((i, j), (i + 1, j), (i + 1, j + 1), (i, j + 1))):
+                loop[lay].uv = (0.5 + 0.5 * a_ / nx, b_ / ny)
+    page = obj_from_bm('Book_Turning_Page', bm, spread, smooth=True)
+    page.parent = bk
+    book_parts.append(page)
     TRACK['book'] = book_parts
     # knit throw over the arm
     th = box('Nook_Throw', (0.16, 0.6, 0.36), (0.36, 0.0, 0.48), M['throw'], bevel=0.05, soft=True)
@@ -1028,7 +1058,7 @@ CLOCK = [(0, 15.67), (43, 16.17), (60, 16.5), (86, 17.75), (115, 18.33), (139, 1
 
 
 # exposure per frame (AgX), tuned on test renders
-EXPOSURE = [(0, 1.7), (43, 1.8), (60, 1.8), (61, 1.9), (100, 2.0), (128, 2.2), (150, 1.9), (165, 1.5), (199, 1.4), (239, 1.4)]
+EXPOSURE = [(0, 1.7), (25, 2.0), (43, 1.8), (60, 1.8), (61, 1.9), (100, 2.0), (128, 2.2), (150, 1.9), (165, 1.5), (199, 1.4), (239, 1.4)]
 
 
 def time_at(f):

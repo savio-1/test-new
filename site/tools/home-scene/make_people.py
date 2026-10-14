@@ -763,44 +763,52 @@ def moment_book(F):
         return V(ax, ay, 0) + Rz @ V(x, y, z)
     f = (Rz @ V(0, -1, 0)).normalized()
     l = V(-f.y, f.x, 0)
+    # the book rests on Mira's knees, tilted up toward both readers and turned a little toward Alaro
+    tilt, yaw = math.radians(-38), rot - math.radians(18)
+    Rb = Matrix.Rotation(yaw, 3, 'Z') @ Matrix.Rotation(tilt, 3, 'X')
+    book = C(0.0, -0.4, 0.8)
+    ang = math.radians(H.BOOK_PAGE_ANGLE)
+
+    def Bk(x, y, z):
+        return book + Rb @ V(x, y, z)
+    page_tip = Bk(-0.185 * math.cos(ang) + 0.01, 0.085, 0.016 + 0.185 * math.sin(ang))
     P = F['mum']
     thigh, shin = P.lengths('leg', 'L')
-    hips = C(0, 0.08, 0.6)
-    P.place(hips, f, pitch=-12)
+    hips = C(0, 0.1, 0.6)
+    P.place(hips, f, pitch=-8)
     for s, sxn in (('L', 1), ('R', -1)):
-        knee = hips + f * thigh * 0.97 + l * sxn * 0.1 + V(0, 0, 0.05)
+        knee = hips + f * thigh * 0.97 + l * sxn * 0.11 + V(0, 0, 0.04)
         P.limb('leg', s, knee, V(knee.x, knee.y, 0.09) + f * 0.06)
         P.foot(s, f + V(0, 0, -0.3))
-    P.spine(bend=4, twist=-6)
-    book = C(0.0, -0.36, 0.86)
-    P.look(book + V(0, 0, -0.03))
-    P.head_rot(tilt=10)
-    # left hand holds the left cover; right hand lifts the turning page
-    P.arm('L', book + l * 0.2 + V(0, 0, -0.04) - f * 0.02, pole=V(l.x, l.y, -1))
-    P.hand('L', f * 0.6 - l * 0.4 + V(0, 0, 0.2), palm=-l + V(0, 0, 0.5))
-    P.fingers('L', (0.4, 0.35, 0.4, 0.45, 0.5))
-    page = book - l * 0.06 + V(0, 0, 0.16)
-    P.arm('R', page - l * 0.02 + V(0, 0, -0.02) - f * 0.03, pole=V(-l.x, -l.y, -1))
-    P.hand('R', f * 0.4 + l * 0.6 + V(0, 0, 0.3), palm=l)
-    P.fingers('R', (0.35, 0.1, 0.25, 0.4, 0.5))
+    P.spine(bend=16, twist=-4)
+    P.look(Bk(0.03, 0, 0), share=(0.25, 0.2, 0.2))
+    P.head_rot(tilt=-12)
+    # left hand holds the left board; right hand lifts the turning page by its corner
+    P.arm('L', Bk(-0.2, -0.02, -0.01) + V(0, 0, 0.02), pole=V(l.x, l.y, -1))
+    P.hand('L', Rb @ V(0.1, 0.5, -0.4), palm=Rb @ V(0.4, 0, -1))
+    P.fingers('L', (0.35, 0.3, 0.35, 0.4, 0.45))
+    P.arm('R', page_tip + Rb @ V(0.05, 0.03, 0.02), pole=V(-l.x, -l.y, -1))
+    P.hand('R', Rb @ V(-0.5, 0.2, 0.6), palm=Rb @ V(-0.3, 0, -1))
+    P.fingers('R', (0.4, 0.15, 0.3, 0.45, 0.55))
     P.expr = {'mouth-corner-puller': 0.45, 'eye-left-slit': 0.3, 'eye-right-slit': 0.3}
-    # Mira on her lap, in pyjamas, both looking at the picture book
+    # Mira on her lap, in pyjamas, hands on the book's lower corners, both looking at the picture
     P = F['mira']
     t2, s2 = P.lengths('leg', 'L')
-    mh = C(0.0, -0.16, 0.71)
-    P.place(mh, f, pitch=-6)
+    mh = C(0.02, -0.12, 0.72)
+    P.place(mh, f, pitch=-4)
     for s, sxn in (('L', 1), ('R', -1)):
-        knee = mh + f * t2 * 0.97 + l * sxn * 0.06 + V(0, 0, -0.03)
-        P.limb('leg', s, knee, knee + f * 0.05 + V(0, 0, -s2 * 0.97))
+        knee = mh + f * t2 * 0.97 + l * sxn * 0.06 + V(0, 0, -0.04)
+        P.limb('leg', s, knee, knee + f * 0.04 + V(0, 0, -s2 * 0.97))
         P.foot(s, f + V(0, 0, -0.6))
-    P.spine(bend=10)
-    P.look(book)
+    P.spine(bend=14)
+    P.look(Bk(0.06, 0.0, 0.0), share=(0.25, 0.2, 0.2))
     for s, sxn in (('L', 1), ('R', -1)):
-        P.arm(s, book + l * sxn * 0.12 - f * 0.05 + V(0, 0, -0.1), pole=V(l.x * sxn, l.y * sxn, -1))
-        P.hand(s, f + V(0, 0, 0.3), palm=V(0, 0, -1) - l * sxn * 0.3)
+        P.arm(s, Bk(sxn * 0.15, -0.14, 0.01) + V(0, 0, 0.03), pole=V(l.x * sxn, l.y * sxn, -1))
+        P.hand(s, Rb @ V(-sxn * 0.3, 0.6, -0.3), palm=Rb @ V(0, 0, -1))
         P.fingers(s, (0.3, 0.3, 0.35, 0.4, 0.45))
-    P.expr = {'mouth-open': 0.2, 'eyebrows-left-up': 0.4, 'eyebrows-right-up': 0.4}
-    return {'book': list(book), 'book_rot': [math.radians(-50), 0.0, rot], 'page': list(page)}
+    P.expr = {'mouth-open': 0.25, 'eyebrows-left-up': 0.4, 'eyebrows-right-up': 0.4}
+    eul = Rb.to_euler('XYZ')
+    return {'book': list(book), 'book_rot': [eul.x, eul.y, eul.z], 'page': list(page_tip)}
 
 
 MOMENTS = {
@@ -922,6 +930,20 @@ def build_cat():
         ell(head_c + V((0.05, sy * 0.016, -0.02)), (1.0, 1.0, 0.85), 0.017)  # whisker pads
         ell(head_c + V((0.005, sy * 0.042, -0.008)), (1.0, 1.0, 1.0), 0.03)  # cheeks
     ell(head_c + V((0.072, 0, -0.008)), (0.8, 1.0, 0.7), 0.009, stiff=1.6)  # nose
+    from mathutils import Euler
+    for sy in (1, -1):
+        # ears: a soft rounded triangle from two flattened ellipsoids, leaning out a little
+        rot = Euler((sy * math.radians(-18), math.radians(-12), 0)).to_quaternion()
+        ell(head_c + V((-0.008, sy * 0.034, 0.05)), (0.45, 1.0, 1.0), 0.021, stiff=2.0, rot=rot)
+        ell(head_c + V((-0.012, sy * 0.04, 0.072)), (0.4, 0.75, 1.0), 0.012, stiff=2.0, rot=rot)
+        # closed eyes: a small carved crease
+        e = mb.elements.new(type='ELLIPSOID')
+        e.co = head_c + V((0.05, sy * 0.024, 0.012))
+        e.size_x, e.size_y, e.size_z = 0.35, 1.0, 0.25
+        e.radius = 0.012 * K
+        e.stiffness = 2.0
+        e.use_negative = True
+        e.rotation = Euler((0, 0, sy * math.radians(20))).to_quaternion()
     # tail curling up behind
     tail = [(-0.24, 0, 0.26 + lift), (-0.31, 0.0, 0.31 + lift), (-0.35, 0.02, 0.38 + lift), (-0.35, 0.05, 0.45 + lift), (-0.32, 0.07, 0.5 + lift)]
     for a, b, r in zip(tail, tail[1:], (0.03, 0.027, 0.024, 0.021)):
@@ -933,22 +955,6 @@ def build_cat():
     me = bpy.data.meshes.new_from_object(mo.evaluated_get(dg))
     bpy.data.objects.remove(mo, do_unlink=True)
     bpy.data.metaballs.remove(mb)
-    # ears: two soft pyramids, joined to the head
-    bm = bmesh.new()
-    bm.from_mesh(me)
-    for sy in (1, -1):
-        base_c = head_c + V((-0.014, sy * 0.036, 0.052))
-        tip = base_c + V((-0.012, sy * 0.016, 0.06))
-        ring = []
-        for k in range(6):
-            a = k / 6 * math.tau
-            ring.append(bm.verts.new(base_c + V((math.cos(a) * 0.027, math.sin(a) * 0.022, -0.012))))
-        t = bm.verts.new(tip)
-        for k in range(6):
-            bm.faces.new((ring[k], ring[(k + 1) % 6], t))
-        bm.faces.new(list(reversed(ring)))
-    bm.to_mesh(me)
-    bm.free()
     for p in me.polygons:
         p.use_smooth = True
     me.uv_layers.new(name='UVMap')
