@@ -33,10 +33,37 @@ from bpy_extras.object_utils import world_to_camera_view
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.normpath(os.path.join(HERE, '..', '..', '..', 'alaro-camera')))
 import build_alaro_camera as alaro  # noqa: E402
+sys.path.insert(0, HERE)
+import statue  # noqa: E402
+
+PEOPLE_DIR = os.path.join(HERE, 'assets', 'people')
 
 srgb = alaro.srgb
 FRAMES = 240
 RNG = random.Random(7)
+
+# Where the furniture of each moment stands. The statue poses (make_people.py) read the same numbers,
+# so a figure's hands land on the prop it touches.
+LAYOUT = {
+    'coffee': (-1.2, -1.22),            # coffee table centre (v1: -1.2, -1.32), moved 10 cm so Dad can kneel
+    'tower': (-0.9, -1.22),              # block tower base on the coffee table
+    'tower_top': 0.405,                 # table top height
+    'pulled_layer': 8,                  # Arlo's block: middle block of this layer, half pulled toward +X
+    'sofa': (-1.25, -2.62),
+    'dining': (1.45, 1.15),
+    'dining_top': 0.7725,
+    'island': (-1.45, 2.05),
+    'leo_stool': (-1.45, 1.3),
+    'plane': (-2.02, 0.98, 1.66),       # paper plane just leaving Leo's fingers
+    'catbed': (3.55, -0.35),            # v1: (3.45, 1.05), hidden behind the dining table from Alaro
+    'armchair': (3.25, -2.55, 215.0),   # x, y, rotation (deg; v1 145): turned to face the room
+    # dining chairs (x, y, side, turn): Grandpa's chair pulled out on the north side, Zoe kneels on the
+    # south-east one, the south-west one is turned away from the table
+    'dining_chairs': [(1.45, 1.86, 1, 0.0), (0.95, 0.47, -1, -18.0), (1.95, 0.5, -1, 4.0)],
+    'cake': (1.45, 1.24),
+    'stools': [(-2.2, 1.32), (-1.45, 1.3), (-0.55, 1.62)],
+    'plane_rot': (math.radians(8), math.radians(-12), math.radians(-146)),  # nose toward the room / Alaro
+}
 
 # ---------------------------------------------------------------- materials
 
@@ -582,16 +609,18 @@ def living(M):
     TRACK['sofa'] = [bpy.data.objects[n] for n in ('Sofa_Seat_0', 'Sofa_Seat_1', 'Sofa_Seat_2', 'Sofa_Back_0', 'Sofa_Back_2')]
 
     # coffee table (walnut, rounded) with the block tower: game night
-    cx, cy = -1.2, -1.32
+    cx, cy = LAYOUT['coffee']
     box('Coffee_Top', (1.15, 0.62, 0.05), (cx, cy, 0.38), M['walnut'], bevel=0.02)
     for i, (dx, dy) in enumerate(((-0.5, -0.24), (0.5, -0.24), (-0.5, 0.24), (0.5, 0.24))):
         box(f'Coffee_Leg_{i}', (0.05, 0.05, 0.36), (cx + dx, cy + dy, 0.18), M['walnut'], bevel=0.008)
     tower = []
     bl, bw, bh = 0.075, 0.025, 0.015
-    tx, ty, tz = cx + 0.18, cy + 0.02, 0.405
+    tx, ty = LAYOUT['tower']
+    tz = LAYOUT['tower_top']
+    pulled = LAYOUT['pulled_layer']
     for layer in range(15):
         for k in range(3):
-            if layer in (5, 9, 12) and k == 1:
+            if layer in (5, 11, 12) and k == 1:
                 continue  # blocks already pulled
             if layer == 7 and k == 0:
                 continue
@@ -601,9 +630,13 @@ def living(M):
                 loc, rot = (tx + jit, ty + off, tz + bh / 2 + layer * bh), 0.0
             else:
                 loc, rot = (tx + off, ty + jit, tz + bh / 2 + layer * bh), math.pi / 2
-            b = box(f'Block_{layer}_{k}', (bl, bw, bh), loc, M['block'], bevel=0.0015, rot=rot + RNG.uniform(-0.02, 0.02))
+            name = f'Block_{layer}_{k}'
+            if layer == pulled and k == 1:
+                loc = (loc[0] + 0.036, loc[1], loc[2] + 0.001)  # Arlo's block, half out of the tower
+                name = 'Block_Pulled'
+            b = box(name, (bl, bw, bh), loc, M['block'], bevel=0.0015, rot=rot + RNG.uniform(-0.02, 0.02))
             tower.append(b)
-    for i, (dx, dy, r) in enumerate(((-0.12, 0.12, 0.4), (-0.05, -0.16, 1.2), (0.32, -0.1, 0.2))):  # pulled blocks on the table
+    for i, (dx, dy, r) in enumerate(((-0.14, 0.13, 0.4), (-0.08, -0.17, 1.2), (-0.3, -0.05, 0.2))):  # pulled blocks on the table
         tower.append(box(f'Block_Loose_{i}', (bl, bw, bh), (tx + dx, ty + dy, tz + bh / 2), M['block'], bevel=0.0015, rot=r))
     TRACK['tower'] = tower
     # mug + book on the table
@@ -683,16 +716,17 @@ def window_corner(M):
     # cat's spot by the window, with plants
     plant('Plant_Fig', (4.05, 0.7, 0.0), 1.55, 26, M, pot_r=0.19, leaf_size=0.2, spread=0.42)
     plant('Plant_Small', (3.95, 1.55, 0.0), 0.75, 14, M, pot_r=0.13, leaf_size=0.14, spread=0.3)
-    plant('Plant_Floor', (4.1, -0.25, 0.0), 0.5, 10, M, pot_r=0.11, leaf_size=0.13, spread=0.25)
+    plant('Plant_Floor', (4.1, -1.15, 0.0), 0.5, 10, M, pot_r=0.11, leaf_size=0.13, spread=0.25)
     bm = bmesh.new()
     bmesh.ops.create_cone(bm, cap_ends=True, segments=48, radius1=0.33, radius2=0.36, depth=0.12)
     bed = obj_from_bm('Cat_Bed', bm, M['cat_bed'], smooth=True)
-    bed.location = (3.45, 1.05, 0.06)
+    bx, by = LAYOUT['catbed']
+    bed.location = (bx, by, 0.06)
     sub = bed.modifiers.new('Soft', 'SUBSURF')
     sub.levels = sub.render_levels = 2
-    cush = sphere('Cat_Bed_Cushion', 0.29, (3.45, 1.05, 0.1), M['cushion_c'], scale=(1, 1, 0.18))
-    yarn = sphere('Yarn_Ball', 0.045, (3.05, 0.78, 0.045), M['yarn'])
-    bowl = lathe_obj('Cat_Bowl', [(0.0, 0.0), (0.06, 0.0), (0.08, 0.045), (0.075, 0.05), (0.05, 0.012), (0.0, 0.012)], (3.75, 1.5, 0.0), M['ceramic_dark'])
+    cush = sphere('Cat_Bed_Cushion', 0.29, (bx, by, 0.1), M['cushion_c'], scale=(1, 1, 0.18))
+    yarn = sphere('Yarn_Ball', 0.045, (bx - 0.55, by + 0.3, 0.045), M['yarn'])
+    bowl = lathe_obj('Cat_Bowl', [(0.0, 0.0), (0.06, 0.0), (0.08, 0.045), (0.075, 0.05), (0.05, 0.012), (0.0, 0.012)], (bx + 0.25, by + 0.55, 0.0), M['ceramic_dark'])
     TRACK['catbed'] = [bed, cush, yarn, bowl]
 
 
@@ -703,14 +737,21 @@ def dining(M):
         box(f'Dining_Leg_{i}', (0.055, 0.055, 0.73), (dx + ox, dy + oy, 0.365), M['oak'], bevel=0.01)
     chair_mat = M['oak']
     seat_mat = fabric('Chair Seat', '#d9cdb8', sheen=0.5)
-    for i, (ox, side) in enumerate(((-0.45, -1), (0.45, -1), (-0.45, 1), (0.45, 1))):
-        cx, cy = dx + ox, dy + side * 0.62
-        box(f'Chair_Seat_{i}', (0.44, 0.42, 0.05), (cx, cy, 0.46), seat_mat, bevel=0.015, soft=True)
+    # chairs: (x, y, side, turn deg). side -1 = south of the table (back to the room), +1 = north
+    for i, (cx, cy, side, turn) in enumerate(LAYOUT['dining_chairs']):
+        pivot = bpy.data.objects.new(f'Chair_{i}', None)
+        coll('Home').objects.link(pivot)
+        pivot.location = (cx, cy, 0)
+        pivot.rotation_euler = (0, 0, math.radians(turn))
+        parts = [box(f'Chair_Seat_{i}', (0.44, 0.42, 0.05), (0, 0, 0.46), seat_mat, bevel=0.015, soft=True)]
         for j, (lx, ly) in enumerate(((-0.19, -0.18), (0.19, -0.18), (-0.19, 0.18), (0.19, 0.18))):
-            box(f'Chair_Leg_{i}_{j}', (0.03, 0.03, 0.44), (cx + lx, cy + ly, 0.22), chair_mat, bevel=0.005)
-        box(f'Chair_Back_{i}', (0.42, 0.025, 0.3), (cx, cy + side * 0.2, 0.78), chair_mat, bevel=0.008, rot=0)
+            parts.append(box(f'Chair_Leg_{i}_{j}', (0.03, 0.03, 0.44), (lx, ly, 0.22), chair_mat, bevel=0.005))
+        parts.append(box(f'Chair_Back_{i}', (0.42, 0.025, 0.3), (0, side * 0.2, 0.78), chair_mat, bevel=0.008, rot=0))
+        for o in parts:
+            o.parent = pivot
     # birthday cake
     top = 0.7725
+    dx, dy = LAYOUT['cake']
     lathe_obj('Cake_Stand', [(0.0, 0.0), (0.06, 0.0), (0.04, 0.02), (0.03, 0.08), (0.17, 0.09), (0.17, 0.1), (0.0, 0.1)], (dx, dy, top), M['ceramic'])
     ck = top + 0.1
     lathe_obj('Cake', [(0.0, 0.0), (0.13, 0.0), (0.135, 0.01), (0.135, 0.105), (0.125, 0.115), (0.0, 0.118)], (dx, dy, ck), M['cake'])
@@ -775,12 +816,11 @@ def kitchen(M):
     ix, iy = -1.45, 2.05
     box('Island', (2.1, 0.92, 0.86), (ix, iy, 0.45), M['cabinet'], bevel=0.003)
     box('Island_Top', (2.2, 1.0, 0.035), (ix, iy, 0.9), M['counter'], bevel=0.004)
-    for i in range(3):
-        sx = ix - 0.65 + i * 0.65
-        cyl(f'Stool_Seat_{i}', 0.18, 0.04, (sx, iy - 0.75, 0.66), M['oak'])
+    for i, (sx, sy) in enumerate(LAYOUT['stools']):
+        cyl(f'Stool_Seat_{i}', 0.18, 0.04, (sx, sy, 0.66), M['oak'])
         for j in range(4):
             a = j * math.pi / 2 + math.pi / 4
-            leg = cyl(f'Stool_Leg_{i}_{j}', 0.012, 0.66, (sx + math.cos(a) * 0.12, iy - 0.75 + math.sin(a) * 0.12, 0.32), M['black_metal'], segs=10)
+            leg = cyl(f'Stool_Leg_{i}_{j}', 0.012, 0.66, (sx + math.cos(a) * 0.12, sy + math.sin(a) * 0.12, 0.32), M['black_metal'], segs=10)
             leg.rotation_euler = (math.sin(a) * 0.12, -math.cos(a) * 0.12, 0)
     lathe_obj('Fruit_Bowl', [(0.0, 0.0), (0.07, 0.0), (0.16, 0.08), (0.155, 0.085), (0.065, 0.008), (0.0, 0.008)], (ix - 0.55, iy + 0.15, 0.9175), M['ceramic'])
     for i in range(4):
@@ -794,9 +834,9 @@ def kitchen(M):
     bm.faces.new((v[0], v[4], v[1]))
     pl = obj_from_bm('Paper_Plane', bm, M['paper'])
     # mid-flight over the island, heading into the room
-    pl.location = (ix + 0.25, iy - 0.35, 1.28)
-    pl.rotation_euler = (math.radians(-14), math.radians(-6), math.radians(-25))
-    pl.scale = (1.35, 1.35, 1.35)
+    pl.location = LAYOUT['plane']
+    pl.rotation_euler = LAYOUT['plane_rot']
+    pl.scale = (1.15, 1.15, 1.15)
     TRACK['plane'] = [pl]
     for k, xx in enumerate((ix - 0.6, ix + 0.6)):
         cyl(f'Pendant_Island_Cord_{k}', 0.003, 1.0, (xx, iy, 2.3), M['black_metal'], segs=8)
@@ -806,8 +846,8 @@ def kitchen(M):
 
 
 def reading_nook(M):
-    ax, ay = 3.25, -2.55
-    rot = math.radians(145)
+    ax, ay, rot = LAYOUT['armchair']
+    rot = math.radians(rot)
     box('Rug_Round', (1.6, 1.6, 0.01), (ax - 0.25, ay + 0.25, 0.005), M['rug2'], bevel=0.0)
     bpy.data.objects['Rug_Round'].modifiers.clear()
     bm = bmesh.new()
@@ -955,7 +995,7 @@ ZONES = {
     'living': Vector((-1.15, -1.75, 0.45)),
     'dining': Vector((1.45, 1.15, 0.92)),
     'kitchen': Vector((-1.25, 1.75, 1.2)),
-    'catbed': Vector((3.45, 1.0, 0.1)),
+    'catbed': Vector((3.5, -0.35, 0.16)),  # v1 (3.45, 1.0, 0.1): the bed moved into Alaro's line of sight
     'book': Vector((3.15, -2.45, 0.5)),
     'room': Vector((1.2, -0.2, 0.9)),
 }
@@ -1206,7 +1246,42 @@ def frame_data(R, f):
 
 # ---------------------------------------------------------------- build / render
 
-def build_scene():
+def load_anchors():
+    path = os.path.join(PEOPLE_DIR, 'anchors.json')
+    if os.path.exists(path):
+        with open(path) as fh:
+            return json.load(fh)
+    return {}
+
+
+def place_props(anchors):
+    """Props that sit in a statue's hand follow the pose (make_people.py writes anchors.json)."""
+    ob = bpy.data.objects
+    if 'plane' in anchors and 'Paper_Plane' in ob:
+        ob['Paper_Plane'].location = anchors['plane']
+        ob['Paper_Plane'].rotation_euler = anchors['plane_rot']
+    if 'book' in anchors and 'Book_Pivot' in ob:
+        bk = ob['Book_Pivot']
+        bk.parent = None
+        bk.location = anchors['book']
+        bk.rotation_euler = anchors['book_rot']
+    if 'zoe_cushion' in anchors and 'Pillow_0' in ob:
+        ob['Pillow_0'].location = anchors['zoe_cushion']
+        ob['Pillow_0'].rotation_euler = (math.radians(-70), math.radians(10), math.radians(15))
+    bpy.context.view_layer.update()
+
+
+def add_people():
+    """Link the clay-statue figures and add them to their moment's tracked box."""
+    found = statue.link_people(['tower', 'sofa', 'cake', 'plane', 'catbed', 'book'], PEOPLE_DIR)
+    for mo, objs in found.items():
+        TRACK[mo] = TRACK.get(mo, []) + objs
+    if found.get('sofa') and 'Pillow_0' in bpy.data.objects:
+        TRACK['sofa'] = found['sofa'] + [bpy.data.objects['Pillow_0'], bpy.data.objects['Sofa_Seat_0']]
+    return found
+
+
+def build_scene(people=True):
     alaro.reset_scene()
     scn = bpy.context.scene
     scn.unit_settings.length_unit = 'METERS'
@@ -1218,6 +1293,9 @@ def build_scene():
     dining(M)
     kitchen(M)
     reading_nook(M)
+    place_props(load_anchors())
+    if people:
+        add_people()
     R = build_rig(root)
     scn.frame_start, scn.frame_end = 0, FRAMES - 1
     return R
