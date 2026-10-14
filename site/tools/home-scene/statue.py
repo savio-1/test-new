@@ -143,6 +143,11 @@ def statue_material(preset=None, name='Statue Clay'):
     cav = n('ShaderNodeMapRange', 400, 500, From_Min=0.0, From_Max=1.0, To_Min=0.72, To_Max=1.0)
     L.new(ao.outputs['AO'], cav.inputs['Value'])
     shade = math('ADD', cav.outputs['Result'], edge.outputs['Result'], 600, 600)
+    # scanned figures (scans.py) carry the photo's fine light/dark detail as scan_tone (0 = neutral, and 0 where
+    # the attribute is missing): eyes, brows and lips read as on a patinated cast
+    tone = n('ShaderNodeAttribute', 200, 850, attribute_name='scan_tone')
+    tk = math('ADD', math('MULTIPLY', tone.outputs['Fac'], 0.65, 350, 850), 1.0, 450, 850)
+    shade = math('MULTIPLY', shade, tk, 650, 650)
     base = n('ShaderNodeMix', 800, 300, data_type='RGBA', blend_type='MULTIPLY')
     base.inputs['Factor'].default_value = 1.0
     for s in base.inputs:

@@ -4,29 +4,39 @@ Everything in the v2 home that was not modelled from scratch in `build_home.py` 
 
 ## Clay-statue figures (`assets/people/*.blend`)
 
-Built by `make_people.py` with **MPFB 2.0.18** (MakeHuman for Blender, GPL-3.0 add-on; the characters it generates are **CC0**, see https://static.makehumancommunity.org/about/license.html). Each figure's body, face and expression come from MakeHuman's CC0 base mesh, targets and face units. Poses, the clay finish, the sculpted folds and Milo the cat are made in the script.
+Built by `family.py` (round 3).
 
-Clothes and hair fitted to the figures, from the MakeHuman community asset packs (https://static.makehumancommunity.org/assets/assetpacks/index.html):
+### Dad, Mum, Grandpa and Milo: real 3D scans (Sketchfab, CC BY 4.0)
+
+Downloaded from Sketchfab, then turned into one closed matte clay surface, rigged and posed by `scans.py` and `scan_pose.py`. The colour photo texture is not used. The raw downloads and working files stay local in `assets/scans/` (gitignored).
+
+| Figure | Sketchfab model | Author | Licence |
+|---|---|---|---|
+| Dad | [Character Scan Photogrammetry](https://sketchfab.com/3d-models/e62179794eae4e74b06a8f8f5153c0cc) | danteg | **CC BY 4.0** |
+| Mum | [S "A" pose - Lenscloud Scanner Hi-Poly](https://sketchfab.com/3d-models/3d1ba75f9b714e55b3a1e82755c02ed4) | Lenscloud3D | **CC BY 4.0** |
+| Grandpa | [Shannon Norrell-A- Pose](https://sketchfab.com/3d-models/bbd77e5070624713b5f8b2c2a081506f) | webdood | **CC BY 4.0** |
+| Milo (cat) | [Cat Stretching](https://sketchfab.com/3d-models/3524218d6a804e29901c4324ee47aa10) | kingofrichland | **CC BY 4.0** |
+
+### Arlo, Zoe, Leo and Mira: MakeHuman (the round-2 children)
+
+Built by `make_people.py` with **MPFB 2.0.18** (MakeHuman for Blender, GPL-3.0 add-on; the characters it generates are **CC0**, see https://static.makehumancommunity.org/about/license.html). Each figure's body, face and expression come from MakeHuman's CC0 base mesh, targets and face units. The poses, the clay finish and the sculpted folds are made in the script.
+
+Clothes and hair fitted to the children, from the MakeHuman community asset packs (https://static.makehumancommunity.org/assets/assetpacks/index.html):
 
 | Asset | Used on | Author | Licence |
 |---|---|---|---|
-| toigo_fisherman_sweater | Dad | MargaretToigo (MRT) | CC0 |
-| toigo_wool_pants | Dad, Mum, Grandpa | MargaretToigo (MRT) | CC0 |
 | toigo_harem_pants | Zoe, Mira | MargaretToigo (MRT) | CC0 |
 | littleright_bobcut_hair | Mira | littleright | CC0 (hair01 pack) |
 | cortu_strawberry_cloud_hair | Zoe | Cortu | CC0 (hair01 pack) |
 | joepal_crude_t-shirt_female | Leo | Joel Palmius | CC0 |
 | elvs_crude_t-shirt_male | Arlo | Elvaerwyn | CC0 (shirts01 pack) |
-| janexx_old_female_sweater | Mum | janexx | CC0 |
 | cortu_cargo_pants | Arlo, Leo | Cortu | CC0 (pants01 pack) |
-| shoes04, shoes05, eyes high-poly, hair short01/02/04 | several | MakeHuman team | CC0 (system assets) |
-| mindfront_lusekofta | Grandpa | Mindfront | **CC BY 4.0** |
+| shoes, eyes high-poly, hair short01 | several | MakeHuman team | CC0 (system assets) |
 | mindfront_knitted_sweater_01 | Zoe | Mindfront | **CC BY 4.0** |
-| elvs_male_shirt_untucked_bd1 | Grandpa, Mira | Elvaerwyn | **CC BY** |
-| rehmanpolanski_hair_bun_brown | Mum | RehmanPolanski | CC0 (hair01 pack) |
-| cortu_short_messy_hair | Arlo | Cortu | CC0 (hair01 pack) |
+| elvs_male_shirt_untucked_bd1 | Mira | Elvaerwyn | **CC BY** |
+| elvs_maxwell_hair | Arlo | Elvaerwyn | **CC BY** |
 
-**Attribution (needed for the CC BY items):** if the site has a credits or legal page, add a line such as: *"3D clothing: Mindfront and Elvaerwyn via the MakeHuman community (CC BY 4.0)."* Swapping these for CC0 garments in `make_people.py` (`PEOPLE`) removes the requirement.
+**Attribution (needed for the CC BY items):** the site's credits or legal page needs a line such as: *"3D people: scans by danteg, Lenscloud3D and webdood, cat by kingofrichland (Sketchfab, CC BY 4.0); clothing and hair by Mindfront and Elvaerwyn via the MakeHuman community (CC BY 4.0)."*
 
 ## Poly Haven (CC0, https://polyhaven.com/license)
 

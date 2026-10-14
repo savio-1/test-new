@@ -85,7 +85,7 @@ LAYOUT = {
     'floor_lamp': (4.12, -2.15),       # behind the armchair, clear of the intro camera
     # dining chairs (x, y, side, turn): Grandpa's chair pulled out on the north side, Zoe kneels on the
     # south-east one, the south-west one is turned away from the table
-    'dining_chairs': [(1.45, 1.86, 1, 0.0), (0.95, 0.47, -1, -18.0)],  # Zoe stands at the table (round 3)
+    'dining_chairs': [(1.45, 1.86, 1, 0.0), (0.95, 0.47, -1, -18.0), (1.95, 0.5, -1, 4.0)],  # chair 2: Zoe kneels up on it
     'cake': (1.45, 1.24),
     'stools': [(-1.15, 1.36), (-1.9, 1.38), (-0.5, 1.42)],
     'plane_rot': (math.radians(8), math.radians(-12), math.radians(-146)),  # nose toward the room / Alaro

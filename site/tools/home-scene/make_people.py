@@ -83,7 +83,7 @@ PEOPLE = {
     'arlo': dict(macro=dict(gender=1.0, age=mh_age(9), muscle=0.5, weight=0.5, height=0.5, proportions=0.5),
                  race=dict(caucasian=0.6, african=0.2, asian=0.2),
                  wear=[('elvs_crude_t-shirt_male', COTTON), ('cortu_cargo_pants', WEAVE)],
-                 hair='cortu_short_messy_hair'),
+                 hair='elvs_maxwell_hair'),
     'zoe': dict(macro=dict(gender=0.0, age=mh_age(6), muscle=0.5, weight=0.5, height=0.5, proportions=0.5),
                 race=dict(caucasian=0.4, african=0.4, asian=0.2),
                 wear=[('mindfront_knitted_sweater_01', KNIT), ('toigo_harem_pants', COTTON)],
