@@ -28,7 +28,15 @@ MODELS = {
     'carved_wooden_elephant': '1k', 'rubber_duck_toy': '1k',
     'watering_can_metal_01': '1k', 'croissant': '1k', 'throw_pillows_01': '1k',
     'shrub_01': '1k', 'shrub_02': '1k', 'shrub_04': '1k', 'tree_small_02': '1k',
+    # v2 round 2: the garden and the street beyond it, and more of daily life indoors
+    'island_tree_02': '1k', 'outdoor_table_chair_set_01': '1k', 'planter_box_01': '1k', 'planter_box_03': '1k',
+    'planter_pot_clay': '1k', 'football': '1k', 'street_lamp_01': '1k', 'periwinkle_plant': '1k', 'shrub_03': '1k',
+    'shrub_sorrel_01': '1k', 'grass_medium_02': '1k',
+    'Ottoman_01': '1k', 'side_table_01': '1k', 'food_avocado_01': '1k', 'food_kiwi_01': '1k', 'food_lime_01': '1k',
+    'yellow_onion': '1k', 'wooden_spoon': '1k', 'pot_enamel_01': '1k',
 }
+# panoramas: only the tone-mapped JPG is used, for the distant tree line seen through the window
+HDRIS = ['eilenriede_park']
 # textures: id -> resolution; maps: colour, OpenGL normal, roughness
 TEXTURES = {
     'wood_floor': '2k', 'painted_plaster_wall': '2k', 'walnut_veneer': '2k', 'white_oak_veneer': '2k',
@@ -76,6 +84,11 @@ def main():
             if key in info:
                 get(info[key][res]['jpg']['url'], os.path.join(folder, f'{asset}_{short}.jpg'))
         print('texture', asset, flush=True)
+    for asset in HDRIS:
+        if only and asset not in only:
+            continue
+        get(files(asset)['tonemapped']['url'], os.path.join(DEST, 'hdris', f'{asset}.jpg'))
+        print('panorama', asset, flush=True)
 
 
 if __name__ == '__main__':

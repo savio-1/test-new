@@ -618,8 +618,7 @@ def living(M):
     for i, (dx, m) in enumerate(((-0.85, M['cushion_a']), (-0.55, M['cushion_c']), (0.7, M['cushion_b']))):
         cu = box(f'Pillow_{i}', (0.42, 0.14, 0.4), (sx + dx, sy - 0.12, 0.66), m, bevel=0.06, soft=True)
         cu.rotation_euler = (math.radians(-12), math.radians(RNG.uniform(-8, 8)), math.radians(RNG.uniform(-6, 6)))
-    throw = box('Throw', (0.55, 0.9, 0.025), (sx + 1.02, sy + 0.05, 0.47), M['throw'], bevel=0.01, soft=True)
-    throw.rotation_euler = (0, math.radians(6), math.radians(4))
+    # (v1's flat throw on the east seat is gone: dressing.py drapes a plaid blanket over the arm instead)
     for i, (xx, yy) in enumerate(((sx - sw / 2, sy - sd / 2 + 0.06), (sx + sw / 2, sy - sd / 2 + 0.06), (sx - sw / 2, sy + sd / 2 - 0.06), (sx + sw / 2, sy + sd / 2 - 0.06))):
         cyl(f'Sofa_Leg_{i}', 0.02, 0.06, (xx, yy, 0.03), M['walnut'])
     TRACK['sofa'] = [bpy.data.objects[n] for n in ('Sofa_Seat_0', 'Sofa_Seat_1', 'Sofa_Seat_2', 'Sofa_Back_0', 'Sofa_Back_2')]
@@ -1245,6 +1244,13 @@ def set_lighting(R, f):
     R.bg_night.inputs['Strength'].default_value = 0.25
     # lamps fade on from 18:50; candles burn while the birthday plays
     lamps = smooth((h - 18.75) / 0.9)
+    # the far tree line dims and warms with the light; the street lamp comes on with the house lamps
+    tl = dressing.OUTSIDE.get('treeline')
+    if tl is not None:
+        tl.inputs['Strength'].default_value = 2.2 * day * (1 - 0.35 * warm) + 0.004
+        dressing.OUTSIDE['treeline_tint'].inputs['B'].default_value = (1.0, 0.95 - 0.2 * warm, 0.88 - 0.35 * warm, 1.0)
+    if 'street' in dressing.OUTSIDE:
+        dressing.OUTSIDE['street'].energy = 60 * smooth((h - 18.9) / 0.6)
     R.lamps['Light_TableLamp'].data.energy = 7 * lamps
     R.lamps['Light_FloorLamp'].data.energy = 14 * lamps
     R.lamps['Light_TableLamp_Pool'].data.energy = 14 * lamps
@@ -1547,6 +1553,11 @@ def bake_keyframes(R):
             R.garden.inputs['Strength'].keyframe_insert('default_value', frame=f)
         if getattr(R, 'neighbour', None) is not None:
             R.neighbour.node_tree.nodes['Emission'].inputs['Strength'].keyframe_insert('default_value', frame=f)
+        if 'treeline' in dressing.OUTSIDE:
+            dressing.OUTSIDE['treeline'].inputs['Strength'].keyframe_insert('default_value', frame=f)
+            dressing.OUTSIDE['treeline_tint'].inputs['B'].keyframe_insert('default_value', frame=f)
+        if 'street' in dressing.OUTSIDE:
+            dressing.OUTSIDE['street'].keyframe_insert('energy', frame=f)
         bpy.context.scene.view_settings.keyframe_insert('exposure', frame=f)
         for fl in R.flames:
             fl.keyframe_insert('hide_render', frame=f)

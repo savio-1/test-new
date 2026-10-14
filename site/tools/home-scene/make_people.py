@@ -655,9 +655,10 @@ def moment_tower(F):
     P.arm('R', pinch + V(0.09, -0.015, 0.02))
     P.hand('R', (pinch - P.joint('wrist.R')).normalized(), palm=V(0, 1, -0.4))
     P.fingers('R', (0.3, 0.32, 0.7, 0.8, 0.85), thumb_in=8)
-    P.arm('L', V(tx + 0.27, ty + 0.05, tz + 0.035))
-    P.hand('L', f + V(0, 0, -0.15), palm=V(0, 0, -1))
-    P.fingers('L', (0.12, 0.12, 0.15, 0.18, 0.22))
+    # left hand flat on the table top beside the tower (his left is south), steadying himself
+    P.arm('L', V(tx + 0.17, ty - 0.17, tz + 0.03), pole=-up - f * 0.2 + l * 0.6)
+    P.hand('L', f + l * 0.2 + V(0, 0, -0.2), palm=V(0, 0, -1))
+    P.fingers('L', (0.12, 0.1, 0.12, 0.15, 0.18), spread=4)
     P.expr = {'mouth-open': 0.25, 'eye-left-slit': 0.3, 'eye-right-slit': 0.3, 'eyebrows-left-down': 0.4, 'eyebrows-right-down': 0.4}
     return {}
 

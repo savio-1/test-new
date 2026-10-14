@@ -1254,7 +1254,107 @@ def garden(M):
         H.box(f'Neighbour_Frame_{i}', (0.08, 1.24, 1.54), (23.86, y, z), M['trim'], bevel=0.01, collection=C)
     # a curtain behind each lit window so it glows instead of reading as a hole
     H.box('Neighbour_Interior', (0.05, 14.0, 6.0), (24.1, -9.0, 3.0), H.principled('Neighbour Interior', '#2a2420', 0.9), bevel=0, collection=C)
+    garden_life(M, lit)
     return lit
+
+
+# animated outside pieces, read by build_home.set_lighting: the far tree line's brightness and the street lamp
+OUTSIDE = {}
+
+
+def far_treeline():
+    """A tree line about 75 m away (cut from a CC0 panorama, make_backdrop.py) on a cylinder centred on the room,
+    seen only by the camera (through the glass): no shadows, no bounce light, so the room's lighting is unchanged.
+    The scene's own animated sky shows between the trees."""
+    path = os.path.join(ART, 'treeline.png')
+    if not os.path.exists(path):
+        print('missing', path, '(run make_backdrop.py)')
+        return
+    el_low, el_high, span = math.radians(-3.6), math.radians(25.0), math.radians(160)
+    r, eye, n = 75.0, 1.2, 64
+    bm = bmesh.new()
+    uv = bm.loops.layers.uv.new('UVMap')
+    rows = []
+    for el in (el_low, el_high):
+        row = []
+        for i in range(n + 1):
+            a = span / 2 - span * i / n  # left edge of the picture (u = 0) is north (+Y) when looking out (+X)
+            row.append(bm.verts.new((r * math.cos(a), r * math.sin(a), eye + r * math.tan(el))))
+        rows.append(row)
+    for i in range(n):
+        f = bm.faces.new((rows[0][i], rows[1][i], rows[1][i + 1], rows[0][i + 1]))
+        for loop, (u, v) in zip(f.loops, ((i / n, 0), (i / n, 1), ((i + 1) / n, 1), ((i + 1) / n, 0))):
+            loop[uv].uv = (u, v)
+    m, nt, out = H.new_mat('Far Tree Line')
+    tex = H.node(nt, 'ShaderNodeTexImage', (-400, 0))
+    tex.image = bpy.data.images.load(path, check_existing=True)
+    tex.extension = 'EXTEND'
+    tint = H.node(nt, 'ShaderNodeMix', (-150, 100))
+    tint.data_type = 'RGBA'
+    tint.blend_type = 'MULTIPLY'
+    tint.inputs['Factor'].default_value = 1.0
+    nt.links.new(tex.outputs['Color'], tint.inputs['A'])
+    tint.inputs['B'].default_value = (1, 1, 1, 1)
+    em = H.node(nt, 'ShaderNodeEmission', (100, 100), Strength=2.0)
+    nt.links.new(tint.outputs['Result'], em.inputs['Color'])
+    tr = H.node(nt, 'ShaderNodeBsdfTransparent', (100, -100))
+    mx = H.node(nt, 'ShaderNodeMixShader', (300, 0))
+    nt.links.new(tex.outputs['Alpha'], mx.inputs['Fac'])
+    nt.links.new(tr.outputs[0], mx.inputs[1])
+    nt.links.new(em.outputs[0], mx.inputs[2])
+    nt.links.new(mx.outputs[0], out.inputs['Surface'])
+    o = mesh_obj('Far_Tree_Line', bm, m, smooth=False, coll='Outside')
+    for attr in ('visible_diffuse', 'visible_glossy', 'visible_shadow', 'visible_volume_scatter'):
+        setattr(o, attr, False)
+    OUTSIDE['treeline'] = em
+    OUTSIDE['treeline_tint'] = tint
+
+
+def garden_life(M, lit):
+    """Round 2: a garden a family uses, with the neighbourhood beyond it. Everything stays out of the low
+    sun's path (azimuth ~18 degrees from the window), so Milo keeps his sunbeam."""
+    C = 'Outside'
+    far_treeline()
+    # long grass and weeds along the foot of the fence
+    rng = random.Random(7)
+    for i in range(40):
+        k = 'abcde'[rng.randrange(5)]
+        ph('grass_medium_02', (14.25 - rng.uniform(0, 0.25), -11.5 + i * 0.58 + rng.uniform(-0.1, 0.1), -0.07),
+           rot=rng.uniform(0, 360), scale=rng.uniform(1.4, 2.2), only=[f'grass_medium_02_{k}'], skip=['_geo', 'geometry'],
+           name=f'Fence_Grass_{i}', coll=C)
+    # two more trees in the neighbours' gardens, one each side of the sun's path
+    ph('island_tree_02', (18.5, -8.5, -0.07), rot=40, scale=2.1, only=['island_tree_02_LOD1'], name='Neighbour_Tree_S', coll=C)
+    ph('island_tree_02', (17.0, 12.5, -0.07), rot=200, scale=2.4, only=['island_tree_02_LOD1'], name='Neighbour_Tree_N', coll=C)
+    # a second house to the north-east, well north of the sun's path
+    H.box('Neighbour2_Wall', (10.0, 0.3, 5.6), (27.0, 15.0, 2.7), M['brick'], bevel=0, collection=C)
+    H.box('Neighbour2_Gable', (0.3, 9.0, 5.6), (22.0, 19.5, 2.7), M['brick'], bevel=0, collection=C)
+    H.box('Neighbour2_Roof', (10.6, 9.6, 0.2), (27.0, 19.5, 5.55), H.principled('Roof Tile', '#6b4a3c', 0.75), bevel=0, collection=C)
+    dark = H.principled('Neighbour Glass 2', '#1c252d', 0.05, Coat_Weight=1.0)
+    for i, (y, z, on) in enumerate(((16.5, 1.5, True), (21.5, 1.5, False), (16.5, 4.0, False), (21.5, 4.0, True))):
+        H.box(f'Neighbour2_Window_{i}', (0.06, 1.2, 1.3), (21.83, y, z), lit if on else dark, bevel=0.01, collection=C)
+        H.box(f'Neighbour2_Frame_{i}', (0.08, 1.34, 1.44), (21.84, y, z), M['trim'], bevel=0.01, collection=C)
+    H.box('Neighbour2_Interior', (0.05, 8.6, 5.4), (22.2, 19.5, 2.7), H.principled('Neighbour Interior 2', '#2a2420', 0.9), bevel=0, collection=C)
+    # a street lamp beyond the fence that comes on at dusk
+    ph('street_lamp_01', (15.6, 5.5, -0.07), rot=90, scale=1.0, name='Street_Lamp', coll=C)
+    sl = bpy.data.lights.new('Street_Lamp_Light', 'POINT')
+    sl.shadow_soft_size = 0.08
+    sl.color = H.srgb('#ffb066')[:3]
+    sl.energy = 0.0
+    so = bpy.data.objects.new('Street_Lamp_Light', sl)
+    so.location = (15.6, 5.5, 3.45)
+    H.coll(C).objects.link(so)
+    OUTSIDE['street'] = sl
+    # the patio: a bistro table with two chairs, a clay pot, planters along the edge
+    ph('outdoor_table_chair_set_01', (6.1, -2.6, -0.03), rot=200, name='Patio_Set', coll=C)
+    ph('planter_pot_clay', (5.25, 2.4, -0.03), rot=10, scale=1.3, name='Patio_Pot', coll=C)
+    ph('shrub_03', (5.25, 2.4, 0.2), rot=30, scale=1.6, only=['shrub_03_a_LOD1'], name='Patio_Pot_Plant', coll=C)
+    for i, (y, r) in enumerate(((4.3, 90), (-5.0, 90))):
+        ph('planter_box_01', (6.9, y, -0.03), rot=r, scale=1.1, name=f'Planter_{i}', coll=C)
+        for j in range(4):
+            ph('periwinkle_plant', (6.9 + rng.uniform(-0.12, 0.12), y - 0.36 + j * 0.24, 0.36), rot=rng.uniform(0, 360),
+               scale=1.2, only=[f'periwinkle_plant_0{1 + (i + j) % 6}_LOD2'], name=f'Planter_{i}_Plant_{j}', coll=C)
+    # the children's ball left on the lawn
+    ph('football', (9.6, 1.9, -0.07 + 0.11), rot=35, only=['football_inflated'], name='Lawn_Ball', coll=C)
 
 
 def dress(Hm, M):
