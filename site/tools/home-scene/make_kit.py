@@ -3,6 +3,8 @@ Package the GPU render kit: alaro-render-kit-4k.zip, self-contained (scripts, la
 assets/, the camera model) with the folder layout the scripts expect.
 
     python3 make_kit.py [--out ../../../out/alaro-render-kit-4k.zip]
+    python3 make_kit.py --split 450      # the same kit as parts of at most ~450 MB each (for upload limits):
+                                         # -part1.zip, -part2.zip, ... unzipped into one folder make the kit
 """
 
 import os
@@ -27,6 +29,12 @@ site/tools/home-scene/RENDER_ON_GPU.md. Asset licences: site/tools/home-scene/as
 What changed in v2: CHANGES.md.
 """
 
+SPLIT_NOTE = """
+This kit comes in {n} parts (alaro-render-kit-4k-part1.zip ... part{n}.zip). Unzip ALL of them into the
+SAME folder (say yes to merging folders; README.txt is the same in each). Part {n} holds only home.blend,
+the scene packed for opening in Blender's own interface; the launchers do not need it.
+"""
+
 
 def main():
     out = sys.argv[sys.argv.index('--out') + 1] if '--out' in sys.argv else os.path.join(ROOT, 'out', 'alaro-render-kit-4k.zip')
@@ -46,12 +54,37 @@ def main():
     entries.append((os.path.join(ROOT, 'docs', 'v2', 'CHANGES.md'), 'CHANGES.md'))
     if not os.path.exists(os.path.join(HERE, 'home.blend')):
         print('warning: home.blend is missing (run build_home.py --blend first)')
+    missing = [full for full, arc in entries if not os.path.exists(full)]
+    for full in missing:
+        print('missing', full)
+    entries = [e for e in entries if e[0] not in missing]
+    if '--split' not in sys.argv:
+        write_zip(out, entries, README)
+        return
+    # split: home.blend alone in the last part, everything else packed greedily under the limit
+    limit = float(sys.argv[sys.argv.index('--split') + 1]) * 1e6
+    blend = [e for e in entries if e[1].endswith('/home.blend')]
+    rest = sorted((e for e in entries if e not in blend), key=lambda e: -os.path.getsize(e[0]))
+    parts = []
+    for e in rest:
+        size = os.path.getsize(e[0])
+        for p_ in parts:
+            if p_[0] + size <= limit:
+                p_[0] += size
+                p_[1].append(e)
+                break
+        else:
+            parts.append([size, [e]])
+    groups = [p_[1] for p_ in parts] + ([blend] if blend else [])
+    base = out[:-4] if out.endswith('.zip') else out
+    for i, g in enumerate(groups, 1):
+        write_zip(f'{base}-part{i}.zip', sorted(g, key=lambda e: e[1]), README + SPLIT_NOTE.format(n=len(groups)))
+
+
+def write_zip(out, entries, readme):
     with zipfile.ZipFile(out + '.part', 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=6) as z:
-        z.writestr('README.txt', README)
+        z.writestr('README.txt', readme)
         for full, arc in entries:
-            if not os.path.exists(full):
-                print('missing', full)
-                continue
             if arc.endswith('.bat'):
                 data = open(full, 'rb').read().replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
                 z.writestr(arc, data)
@@ -66,7 +99,6 @@ def main():
                 z.write(full, arc)
     os.replace(out + '.part', out)
     print(f'{len(entries) + 1} files -> {out} ({os.path.getsize(out) / 1e6:.0f} MB)')
-
 
 if __name__ == '__main__':
     main()

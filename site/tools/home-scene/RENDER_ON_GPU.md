@@ -17,7 +17,7 @@ The website's 3D home is a sequence of frames rendered in Blender. Version 2 add
 
 ## Steps
 
-1. Unzip `alaro-render-kit-4k.zip` on the GPU computer. Keep its folders as they are: the scene script loads the Alaro camera model from `alaro-camera/`, three folders up, and the figures and textures from `assets/`.
+1. Unzip the kit on the GPU computer. If it came in parts (`alaro-render-kit-4k-part1.zip`, `-part2.zip`, `-part3.zip`), unzip **all of them into the same folder**, merging folders when asked. Part 3 only holds `home.blend`, which the launchers don't need. Keep the folders as they are: the scene script loads the Alaro camera model from `alaro-camera/`, three folders up, and the figures and textures from `assets/`.
 2. Open `site/tools/home-scene/` and start the render:
    - **Windows:** double-click `render_gpu.bat`.
    - **Mac:** double-click `render_gpu.command`. If macOS blocks it, open Terminal in this folder and run `bash render_gpu.command`.
