@@ -46,7 +46,23 @@ import dressing  # noqa: E402
 PEOPLE_DIR = os.path.join(HERE, 'assets', 'people')
 
 srgb = alaro.srgb
-FRAMES = 240
+# The story is timed in 240 story frames (AIM, CLOCK, POV, EXPOSURE, ... below are all in these units). The
+# render divides each story frame into STEP output frames for a smoother scroll: STEP 2 gives 479 frames,
+# f000-f478, where output frame 2n is story frame n. --step 1 renders the original 240.
+STORY_FRAMES = 240
+STEP = 2
+FRAMES = (STORY_FRAMES - 1) * STEP + 1
+
+
+def set_step(step):
+    global STEP, FRAMES
+    STEP = max(1, int(step))
+    FRAMES = (STORY_FRAMES - 1) * STEP + 1
+
+
+def story(f):
+    """Output frame -> story frame (may be fractional)."""
+    return f / STEP
 RNG = random.Random(7)
 
 # Where the furniture of each moment stands. The statue poses (make_people.py) read the same numbers,
@@ -1274,10 +1290,16 @@ def set_lighting(R, f):
 
 
 def apply_frame(R, f):
-    bpy.context.scene.frame_set(f)
-    set_alaro_aim(R, f)
-    set_camera(R, f)
-    set_lighting(R, f)
+    """Set everything for output frame f."""
+    apply_story(R, story(f), f)
+
+
+def apply_story(R, s, f=None):
+    """Set everything for story frame s (fractional between beats); f is the output frame for Blender's timeline."""
+    bpy.context.scene.frame_set(int(round(s * STEP)) if f is None else int(f))
+    set_alaro_aim(R, s)
+    set_camera(R, s)
+    set_lighting(R, s)
     bpy.context.view_layer.update()
 
 
@@ -1305,7 +1327,8 @@ def project(R, objs):
 
 
 def frame_data(R, f):
-    d = {'f': f, 'time': round(time_at(f), 3), 'pov': POV[0] <= f < POV[1]}
+    s = story(f)
+    d = {'f': f, 'time': round(time_at(s), 3), 'pov': POV[0] <= s < POV[1]}
     for k, objs in TRACK.items():
         b = project(R, objs)
         if b:
@@ -1625,7 +1648,7 @@ def write_track(R, paths):
     for path in paths:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, 'w') as fh:
-            json.dump({'frames': FRAMES, 'data': data}, fh, separators=(',', ':'))
+            json.dump({'frames': FRAMES, 'step': STEP, 'story_frames': STORY_FRAMES, 'data': data}, fh, separators=(',', ':'))
     print('wrote track.json', flush=True)
 
 
@@ -1635,7 +1658,7 @@ def write_render_info(path, w, h, samples, final, frames_done, seconds):
     lines = [
         'Alaro home story v2 (clay statues)',
         f'resolution: {w} x {h}',
-        f'frames: {frames_done} / {FRAMES}',
+        f'frames: {frames_done} / {FRAMES} ({STEP} per story frame; story frame n = output frame {STEP}n)',
         f'quality: {"final" if final else "draft"}; samples {samples}, adaptive threshold {c.adaptive_threshold:.3f}, denoiser {c.denoiser}',
         f'bounces: max {c.max_bounces}, diffuse {c.diffuse_bounces}, glossy {c.glossy_bounces}, transmission {c.transmission_bounces}, volume {c.volume_bounces}',
         f'statue finish: {statue.STATUE_MATERIAL}',
@@ -1673,6 +1696,7 @@ def main(argv):
             return default
         return argv[len(argv) - 1 - argv[::-1].index(name) + 1]
 
+    set_step(arg('--step', STEP))
     out = arg('--out', os.path.join(HERE, 'frames'))
     os.makedirs(out, exist_ok=True)
     R = build_scene(people='--no-people' not in argv)

@@ -753,7 +753,8 @@ def living(M):
     for side in (-1, 1):
         child(H.box(f'Paperback_Half_{side}', (0.11, 0.18, 0.012), (0, 0, 0), MAT['covers'][3], bevel=0.002), g, (side * 0.055, 0, 0.012), (0, side * deg(-14), 0))
     rounded('TV_Remote', (0.045, 0.17, 0.018), (sx + 0.55, sy + 0.25, 0.455), H.principled('Remote', '#202022', 0.4), rot=(0, 0, deg(-21)), r=0.006)
-    ph('throw_pillows_01', (sx + 0.72, sy - 0.12, 0.58), rot=8, tilt=(-14, 0), scale=0.85, only=['pillow01'], name='Cushion_Pattern')
+    # sits on the seat (the model's base is at its origin), leaning back into the back cushion
+    ph('throw_pillows_01', (sx + 0.72, sy - 0.02, 0.43), rot=8, tilt=(10, 0), scale=0.85, only=['pillow01'], name='Cushion_Pattern')
     # floor basket with rolled throws, between the sofa and the bookshelf
     b = ph('wicker_basket_02', (0.32, -3.12, 0.0), rot=14, scale=1.75, skip=['lid'], name='Floor_Basket')
     for i, (dx, dy, tilt, mat) in enumerate(((-0.04, 0.02, 12, M['throw']), (0.05, -0.03, -8, M['linen_white']))):
@@ -1357,6 +1358,33 @@ def garden_life(M, lit):
     ph('football', (9.6, 1.9, -0.07 + 0.11), rot=35, only=['football_inflated'], name='Lawn_Ball', coll=C)
 
 
+def round2_details(M):
+    """Round 2: more of daily life. A pan on the hob, the spoon jar, the veg basket, ceiling downlights."""
+    ct = 0.91
+    # an enamel pot on the front burner, lid on
+    ph('pot_enamel_01', (-3.27, 3.17, ct + 0.003), rot=-15, name='Hob_Pot')
+    # utensil jar with wooden spoons in the corner by the spices
+    H.lathe_obj('Utensil_Jar', [(0.0, 0.0), (0.06, 0.0), (0.062, 0.01), (0.064, 0.15), (0.067, 0.16), (0.0, 0.16)], (-4.15, 3.25, ct), M['ceramic'], segs=32)
+    for i, (dx, dy, lean, turn) in enumerate(((-0.015, 0.01, 8, 20), (0.02, -0.01, -10, 160), (0.0, 0.025, 4, 80))):
+        ph('wooden_spoon', (-4.15 + dx, 3.25 + dy, ct + 0.2), rot=turn, tilt=(-90 + lean, 0), name=f'Jar_Spoon_{i}')
+    # a basket of onions, avocados and limes by the coffee maker; a kiwi rolled out of it
+    bx, by = 0.16, 3.2
+    ph('wicker_basket_01', (bx, by, ct), rot=-8, name='Veg_Basket')
+    for i, (a, dx, dy, dz, r) in enumerate((('yellow_onion', -0.1, 0.03, 0.012, 20), ('yellow_onion', -0.04, -0.05, 0.012, 140),
+                                            ('yellow_onion', -0.07, -0.0, 0.07, 75), ('food_avocado_01', 0.06, 0.04, 0.012, 30),
+                                            ('food_avocado_01', 0.1, -0.04, 0.012, 200), ('food_lime_01', 0.02, -0.07, 0.012, 0),
+                                            ('food_lime_01', 0.04, 0.0, 0.07, 90))):
+        tilt = (70, 0) if a == 'food_avocado_01' else (0, 0)
+        ph(a, (bx + dx, by + dy, ct + dz + (0.045 if tilt[0] else 0)), rot=r, tilt=tilt, skip=['.001'], name=f'Veg_{i}')
+    ph('food_kiwi_01', (bx + 0.27, by - 0.14, ct + 0.034), rot=50, tilt=(85, 0), name='Veg_Kiwi')
+    # recessed downlights in the ceiling (off: the story's evening light comes from the lamps)
+    trim = H.principled('Downlight Trim', '#f4f2ee', 0.4)
+    lens = H.principled('Downlight Lens', '#d9d6cf', 0.15, Coat_Weight=0.5)
+    for i, (x, y) in enumerate(((-3.2, -1.7), (-1.4, -1.7), (0.4, -1.7), (2.2, -1.7), (-3.2, 0.4), (0.4, 0.9), (2.2, 2.4), (-3.4, 2.6))):
+        H.cyl(f'Downlight_{i}', 0.05, 0.008, (x, y, 2.796), trim, segs=32)
+        H.cyl(f'Downlight_Lens_{i}', 0.036, 0.004, (x, y, 2.791), lens, segs=32)
+
+
 def dress(Hm, M):
     global H
     H = Hm
@@ -1368,4 +1396,5 @@ def dress(Hm, M):
     window_wall(M)
     nook(M)
     fittings(M)
+    round2_details(M)
     return garden(M)

@@ -32,14 +32,15 @@ def font(size):
 
 def main():
     src = arg('--frames', 'frames/test')
-    track = json.load(open(arg('--track', 'frames/track.json')))['data']
+    tj = json.load(open(arg('--track', 'frames/track.json')))
+    track, step = tj['data'], tj.get('step', 1)  # windows below are in story frames; output frame f = story f/step
     out = arg('--out', 'contact-sheet.jpg')
     compare = arg('--compare', None)
     w = int(arg('--w', 960))
-    files = sorted(glob.glob(os.path.join(src, 'f[0-9][0-9][0-9].png')))
+    files = sorted(glob.glob(os.path.join(src, 'f[0-9][0-9][0-9].png')) + glob.glob(os.path.join(src, 'f[0-9][0-9][0-9][0-9].png')))
     tiles = []
     for fp in files:
-        f = int(os.path.basename(fp)[1:4])
+        f = int(os.path.basename(fp)[1:-4])
         im = Image.open(fp).convert('RGB')
         im = im.resize((w, w * im.height // im.width), Image.LANCZOS)
         d = ImageDraw.Draw(im)
@@ -51,7 +52,7 @@ def main():
             if key == 'alaro':
                 if data.get('pov'):
                     continue
-            elif not (MOMENT_WINDOWS[key][0] <= f <= MOMENT_WINDOWS[key][1]):
+            elif not (MOMENT_WINDOWS[key][0] <= f / step <= MOMENT_WINDOWS[key][1]):
                 continue
             x0, y0, x1, y1 = data[key]
             box = [x0 * im.width, y0 * im.height, x1 * im.width, y1 * im.height]

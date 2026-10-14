@@ -356,6 +356,159 @@ class Poser:
         return f2, V(-f2.y, f2.x, 0), V(0, 0, 1)
 
 
+# ---------------------------------------------------------------- posing from a reference photo
+#
+# Pose landmarks (MediaPipe, refs/pose_landmarks.py) of a person in a reference image, taken in the same camera as
+# the empty-room render, drive the rig bone by bone: each limb is swung onto the photo's direction and turned so
+# its joint bends in the photo's plane (elbows bend toward the bone's front, +Z; knees toward its back, +Z).
+# Only directions are used, so each figure keeps its own proportions; contacts are then fixed with IK.
+
+MP_IDX = {'nose': 0, 'eyeL': 2, 'eyeR': 5, 'earL': 7, 'earR': 8, 'shL': 11, 'shR': 12, 'elL': 13, 'elR': 14,
+          'wrL': 15, 'wrR': 16, 'piL': 17, 'piR': 18, 'inL': 19, 'inR': 20, 'thL': 21, 'thR': 22, 'hipL': 23,
+          'hipR': 24, 'knL': 25, 'knR': 26, 'anL': 27, 'anR': 28, 'heL': 29, 'heR': 30, 'toL': 31, 'toR': 32}
+
+
+def cam_to_world(cam_rot, p):
+    """MediaPipe axes (x right, y down, z away from the camera) -> world, for a camera with this rotation."""
+    return cam_rot @ V(p[0], -p[1], -p[2])
+
+
+def ref_landmarks(person, cam_rot):
+    return {k: cam_to_world(cam_rot, person['world'][i]) for k, i in MP_IDX.items()}
+
+
+def ref_hand(hand, cam_rot):
+    return [cam_to_world(cam_rot, p) for p in hand['world']]
+
+
+def _frame(left, up):
+    x = left.normalized()
+    z = x.cross(up).normalized()  # forward
+    y = z.cross(x).normalized()
+    return Matrix((x, y, z)).transposed()
+
+
+def _twist_to(pb, axis_i, want, about):
+    """Turn a bone about the world axis `about` so its local axis axis_i points as close to `want` as possible."""
+    about = about.normalized()
+    cur = axis_of(pb, axis_i)
+    a = cur - about * cur.dot(about)
+    b = want - about * want.dot(about)
+    if a.length < 1e-4 or b.length < 1e-4:
+        return
+    ang = a.angle(b)
+    if a.cross(b).dot(about) < 0:
+        ang = -ang
+    world_rotate(pb, Quaternion(about, ang))
+
+
+def match_reference(P, L, hands=None, spine_share=(0.15, 0.2, 0.25, 0.2, 0.2), limbs=('arm', 'leg'), head=True):
+    """Pose the rig from reference landmarks L (world directions; position is set afterwards)."""
+    hip_mid = (L['hipL'] + L['hipR']) / 2
+    sh_mid = (L['shL'] + L['shR']) / 2
+    # 1. pelvis: hip line and the torso's up direction
+    cur = _frame(P.joint('upperleg01.L') - P.joint('upperleg01.R'),
+                 (P.joint('upperarm01.L') + P.joint('upperarm01.R')) / 2 - (P.joint('upperleg01.L') + P.joint('upperleg01.R')) / 2)
+    tgt = _frame(L['hipL'] - L['hipR'], sh_mid - hip_mid)
+    world_rotate(P.b('root'), (tgt @ cur.transposed()).to_quaternion())
+    # the Poser's frame: figure-local -Y is forward, +X left, +Z up
+    lx, uy, fz = tgt.col[0], tgt.col[1], tgt.col[2]
+    P.R = Matrix((lx, -fz, uy)).transposed()
+    # 2. chest: bend the spine onto the torso line, then twist onto the shoulder line
+    bones = ('spine05', 'spine04', 'spine03', 'spine02', 'spine01')
+    for _ in range(2):
+        for name, sh in zip(bones, spine_share):
+            mid_now = (P.joint('upperarm01.L') + P.joint('upperarm01.R')) / 2
+            pb = P.b(name)
+            swing(pb, mid_now - pb.head, (P.joint('upperleg01.L') + P.joint('upperleg01.R')) / 2 + (sh_mid - hip_mid) - pb.head, sh * 2.5)
+    up = (sh_mid - hip_mid).normalized()
+    for name, sh in zip(bones, spine_share):
+        cur_l = P.joint('upperarm01.L') - P.joint('upperarm01.R')
+        want_l = L['shL'] - L['shR']
+        a = cur_l - up * cur_l.dot(up)
+        b = want_l - up * want_l.dot(up)
+        if a.length > 1e-4 and b.length > 1e-4:
+            ang = a.angle(b) * (1 if a.cross(b).dot(up) > 0 else -1)
+            world_rotate(P.b(name), Quaternion(up, ang * sh))
+    fwd = (L['shL'] - L['shR']).normalized().cross(up).normalized()
+    # 3. limbs
+    for side in ('L', 'R'):
+        if 'arm' in limbs:
+            S, E, W = L['sh' + side], L['el' + side], L['wr' + side]
+            u, v = (E - S).normalized(), (W - E).normalized()
+            ua, la = P.b('upperarm01.' + side), P.b('lowerarm01.' + side)
+            swing(ua, P.joint('lowerarm01.' + side) - P.joint('upperarm01.' + side), u)
+            bend = v - u * v.dot(u)
+            front = bend if bend.length > 0.2 else (fwd - u * fwd.dot(u))
+            _twist_to(ua, 2, front.normalized(), u)
+            swing(la, P.joint('wrist.' + side) - P.joint('lowerarm01.' + side), v)
+        if 'leg' in limbs:
+            S, K, A = L['hip' + side], L['kn' + side], L['an' + side]
+            u, v = (K - S).normalized(), (A - K).normalized()
+            ul, ll = P.b('upperleg01.' + side), P.b('lowerleg01.' + side)
+            swing(ul, P.joint('lowerleg01.' + side) - P.joint('upperleg01.' + side), u)
+            bend = v - u * v.dot(u)
+            back = bend if bend.length > 0.15 else -(fwd - u * fwd.dot(u))
+            _twist_to(ul, 2, back.normalized(), u)
+            swing(ll, P.joint('foot.' + side) - P.joint('lowerleg01.' + side), v)
+            foot = L['to' + side] - L['he' + side]
+            if foot.length > 1e-3:
+                P.foot(side, foot.normalized())
+    # 4. head: face direction from nose and ears, shared down the neck
+    if head:
+        ear_mid = (L['earL'] + L['earR']) / 2
+        face = (L['nose'] - ear_mid).normalized()
+        left = (L['earL'] - L['earR']).normalized()
+        upv = left.cross(face).normalized()
+        face = upv.cross(left).normalized()
+        hb = P.b('head')
+        cur = Matrix((axis_of(hb, 0), axis_of(hb, 1), axis_of(hb, 2))).transposed()
+        want = Matrix((left, upv, face)).transposed()
+        q = (want @ cur.transposed()).to_quaternion()
+        for name, sh in (('neck01', 0.2), ('neck02', 0.2), ('neck03', 0.15)):
+            world_rotate(P.b(name), Quaternion().slerp(q, sh))
+        hb = P.b('head')
+        cur = Matrix((axis_of(hb, 0), axis_of(hb, 1), axis_of(hb, 2))).transposed()
+        world_rotate(hb, (want @ cur.transposed()).to_quaternion())
+    # 5. hands
+    for side in ('L', 'R'):
+        hp = (hands or {}).get(side)
+        if hp:
+            wr, i5, m9, p17 = hp[0], hp[5], hp[9], hp[17]
+            direction = (m9 - wr).normalized()
+            across = (i5 - p17).normalized()
+            palm = direction.cross(across) if side == 'L' else across.cross(direction)
+            P.hand(side, direction, palm=palm, max_bend=70)
+            curls = []
+            for f0 in (1, 5, 9, 13, 17):
+                pts = [hp[0]] + hp[f0:f0 + 4]
+                angs = [(pts[k + 1] - pts[k]).angle(pts[k + 2] - pts[k + 1], 0.0) for k in range(len(pts) - 2)]
+                lim = (55, 60, 70) if f0 == 1 else (70, 85, 60)
+                c = sum(math.degrees(a) for a in angs[-3:]) / sum(lim)
+                curls.append(max(0.0, min(1.0, c)))
+            P.fingers(side, tuple(curls))
+        else:
+            wr, ix, px = L['wr' + side], L['in' + side], L['pi' + side]
+            direction = ((ix + px) / 2 - wr)
+            if direction.length > 1e-3:
+                across = (ix - px).normalized()
+                d = direction.normalized()
+                palm = d.cross(across) if side == 'L' else across.cross(d)
+                P.hand(side, d, palm=palm, max_bend=60)
+            P.fingers(side, (0.15, 0.15, 0.2, 0.25, 0.3))
+
+
+def locate(P, point, joint_target):
+    """Move the whole figure so that a joint (or the mean of several) lands on a world point."""
+    names = joint_target if isinstance(joint_target, (list, tuple)) else [joint_target]
+    cur = sum((P.joint(n) for n in names), V(0, 0, 0)) / len(names)
+    root = P.b('root')
+    m = root.matrix.copy()
+    m.translation = m.translation + (V(point) - cur)
+    root.matrix = m
+    upd()
+
+
 # ---------------------------------------------------------------- building a figure
 
 EXPR_DIR = None

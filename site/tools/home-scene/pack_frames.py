@@ -22,12 +22,14 @@ import sys
 from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-FRAMES = 240
+FRAMES = 240  # replaced by the frame count in the source set's track.json (479 for the smoother v2 render)
+STEP = 1
 SETS = {
     'lo': {'w': 480, 'h': 270, 'cols': 4, 'rows': 4, 'q': 72},
     # 'hi' takes the source frames' own size (960×540 draft, 1920×1080 from a GPU render)
     'hi': {'w': None, 'h': None, 'cols': 2, 'rows': 2, 'q': 80},
 }
+# story frames; output frame = story frame x STEP
 STILLS = {'intro': 0, 'alaro': 43, 'living': 78, 'dining': 106, 'kitchen': 131, 'catbed': 154, 'book': 182, 'night': 239}
 
 
@@ -38,6 +40,12 @@ def arg(name, default):
 def main():
     src = arg('--src', os.path.join(HERE, 'frames', 'hi'))
     dst = arg('--dst', os.path.normpath(os.path.join(HERE, '..', '..', 'public', 'media', 'home')))
+    global FRAMES, STEP
+    tj = os.path.join(src, 'track.json')
+    if os.path.exists(tj):
+        with open(tj) as fh:
+            head = json.load(fh)
+        FRAMES, STEP = head['frames'], head.get('step', 1)
     def path_of(f):
         for ext in ('webp', 'png'):
             p = os.path.join(src, f'f{f:03d}.{ext}')
@@ -46,7 +54,7 @@ def main():
         return None
 
     have = [path_of(f) is not None for f in range(FRAMES)]
-    manifest = {'frames': FRAMES, 'have': [i for i, h in enumerate(have) if h], 'sets': {}}
+    manifest = {'frames': FRAMES, 'step': STEP, 'have': [i for i, h in enumerate(have) if h], 'sets': {}}
     cache = {}
 
     def frame(f):
@@ -72,7 +80,7 @@ def main():
                     if im.size != (s['w'], s['h']):
                         im = im.resize((s['w'], s['h']), Image.LANCZOS)
                     sheet.paste(im, ((k % s['cols']) * s['w'], (k // s['cols']) * s['h']))
-            fn = f'a{a:02d}.webp'
+            fn = f'a{a:03d}.webp' if FRAMES // per >= 100 else f'a{a:02d}.webp'
             sheet.save(os.path.join(out, fn), 'WEBP', quality=s['q'], method=6)
             atlases.append(fn)
         manifest['sets'][name] = {'w': s['w'], 'h': s['h'], 'cols': s['cols'], 'rows': s['rows'], 'atlases': atlases}
@@ -84,10 +92,12 @@ def main():
         avail = [i for i, h in enumerate(have) if h]
         if not avail:
             break
-        g = min(avail, key=lambda i: abs(i - f))
+        g = min(avail, key=lambda i: abs(i - f * STEP))
         frame(g).save(os.path.join(dst, 'stills', f'{key}.jpg'), 'JPEG', quality=82, optimize=True, progressive=True)
 
-    track_src = os.path.join(os.path.dirname(src), 'track.json')
+    track_src = os.path.join(src, 'track.json')
+    if not os.path.exists(track_src):
+        track_src = os.path.join(os.path.dirname(src), 'track.json')
     if os.path.exists(track_src):
         shutil.copy(track_src, os.path.join(dst, 'track.json'))
     with open(os.path.join(dst, 'manifest.json'), 'w') as fh:
