@@ -437,7 +437,7 @@ def plane(name, w, h, loc, mat, rot=(0, 0, 0), collection='Home'):
 
 
 LAMP_2700K = '#ffad5e'  # warm practical bulbs
-BOOK_PAGE_ANGLE = 100.0  # degrees the turning page is lifted from the right-hand page
+BOOK_PAGE_ANGLE = 62.0  # degrees the turning page is lifted from the right-hand page
 
 
 def point_light(name, loc, energy, color='#ffcf8f', radius=0.05, collection='Lights'):
