@@ -5,7 +5,7 @@ rem WebP frames + track.json + render-info.txt into alaro-frames-4k.zip.
 rem Double-click to run. Running it again later resumes where it stopped.
 rem Extra options are passed through, e.g.:
 rem   render_gpu.bat --w 2560              (cheaper: 2560x1440, about 2.2x faster)
-rem   render_gpu.bat --start 0 --end 119   (half the frames, for splitting across two computers)
+rem   render_gpu.bat --start 0 --end 239   (half the frames, for splitting across two computers)
 
 cd /d "%~dp0"
 
@@ -24,7 +24,7 @@ if not defined BLENDER (
 )
 
 echo Using Blender: "%BLENDER%"
-echo Rendering 240 frames at 3840x2160 (512 samples). This window shows progress and a time estimate;
+echo Rendering 479 frames at 3840x2160 (512 samples). This window shows progress and a time estimate;
 echo leave it open. Stopping is safe: run this again to continue.
 echo.
 "%BLENDER%" -b -P "%~dp0build_home.py" -- --render --final --gpu --w 3840 --samples 512 --set 4k --zip %*

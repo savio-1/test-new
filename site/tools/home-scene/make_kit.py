@@ -11,7 +11,7 @@ import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, '..', '..', '..'))
-SKIP_DIRS = {'frames', '__pycache__'}
+SKIP_DIRS = {'frames', '__pycache__', 'scans', 'mediapipe'}  # raw scan downloads and pose models: build-time only
 SKIP_EXT = {'.zip', '.blend1', '.part', '.pyc'}
 
 README = """Alaro home v2 - 4K render kit

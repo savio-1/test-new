@@ -1,26 +1,26 @@
 # Alaro home v2: what changed
 
-v2 of the 3D home behind the scroll hero: the six moments now have clay-statue people, the home is dressed as a lived-in family home, and the render kit makes the final frames at 4K on a GPU. The camera path, timing, frame count (240, `f000`–`f239`, 16:9) and the `track.json` format are unchanged, so the website needs no code changes.
+v2 of the 3D home behind the scroll hero: the six moments now have clay-statue people, the home is restyled after the client's reference images and dressed as a lived-in family home, and the render kit makes the final frames at 4K on a GPU. The camera path, timing, 16:9 framing and the `track.json` format are unchanged. There are now **479 frames** (`f000`–`f478`, two per story beat) instead of 240 for a smoother scroll; `homeStory.ts` has `STEP = 2` for this (set it back to 1 and render with `--step 1` for the old 240).
 
 ## The statue family
 
-- **Built with MPFB 2** (MakeHuman for Blender) in `site/tools/home-scene/make_people.py`. One base model per person (Dad, Mum, Grandpa, Arlo, Zoe, Leo, Mira), posed per moment with a small IK/aiming rig in the script, so faces and builds stay the same across moments.
-- **Clothes and hair** are fitted MakeHuman garments: knit sweaters, a cardigan over a dress, a Norwegian cardigan for Grandpa, cargo trousers, a long-sleeved button top and soft trousers as pyjamas for Mira. Folds are sculpted from the pose (rings crowding at bent elbows and knees, bunching at cuffs, drape at hems). Hair is sculpted volume (clumped curls for Zoe, combed strands for Mum).
-- **Expressions** use MakeHuman's face units: Arlo concentrating, Zoe laughing with her hand over her mouth, Grandpa with pursed lips and puffed cheeks, Mum mid-clap and smiling.
-- **Milo** is a sculpted clay cat (metaball form) mid-stretch, half in his bed.
-- **One material, `Statue Clay`** (`statue.py`): warm off-white `#e7e4de`, roughness 0.76–0.9 with large low-contrast variation, 4 mm subsurface, a micro bump, and a cavity term (AO + pointiness). A per-vertex `clay_fabric` attribute lets the same material carve a knit, a twill, combed hair strands or fur, with no colour. `STATUE_MATERIAL` (or `ALARO_STATUE=<preset>`) switches between `clay_white` (default), `plaster`, `sandstone`, `terracotta`, `bronze` and `marble`.
-- **Saved** per moment as `assets/people/<moment>.blend` and appended by `build_home.py`. The phone Dad films with is carved in the same clay. Real props stay real: the block tower, cake and lit candles, paper plane, cat bed and the colour picture book.
+- **The adults are real 3D scans of people.** Dad, Mum and Grandpa are photogrammetry scans from Sketchfab (CC BY 4.0, credited in `assets/LICENSES.md`). `scans.py` turns each into one closed clay surface (voxel remesh, no photo colour), fits a 19-bone skeleton from body landmarks found on front and side renders, and skins it. `scan_pose.py` poses them: pelvis, spine and head aiming, and two-bone IK for arms and legs to points on the furniture and props.
+- **The children are MakeHuman figures** (MPFB 2, `make_people.py`): Arlo, Zoe, Leo and Mira from the approved round-2 statues, with fitted garments, sculpted folds and face-unit expressions. Zoe wears the fitted cargo trousers when kneeling on the chair, because her loose ones balloon at the folded knee.
+- **Milo** is a scan of a real stretching cat, standing on the rug just out of his bed.
+- **`family.py`** builds every moment from the scans and the children and writes `assets/people/<moment>.blend` and `anchors.json` (where the plane, the picture book and Zoe's cushion go).
+- **One material, `Statue Clay`** (`statue.py`): warm off-white `#e7e4de`, roughness 0.76–0.9 with large low-contrast variation, 4 mm subsurface, a micro bump, and a cavity term (AO + pointiness). A per-vertex `clay_fabric` attribute lets the same material carve a knit, a twill, combed hair strands or fur, with no colour. A `scan_tone` attribute keeps a faint, low-contrast trace of the scanned faces' shading so features read in the clay. `STATUE_MATERIAL` (or `ALARO_STATUE=<preset>`) switches between `clay_white` (default), `plaster`, `sandstone`, `terracotta`, `bronze` and `marble`.
+- Dad's phone is carved in the same clay. Real props stay real: the block tower, cake and lit candles, paper plane, cat bed and the colour picture book.
 
 ## Moments: who and where
 
 | Track key | Statues | Frozen pose |
 |---|---|---|
-| `tower` | Dad, Arlo | Dad kneels between the sofa and the coffee table, hands up around the tower. Arlo kneels at the table's end, pulling a block that sits half out of the tower. |
+| `tower` | Dad, Arlo | Dad kneels at the coffee table's edge on the sofa side, leaning in, both hands up either side of the tower, ready to catch it. Arlo kneels at the table's end, pulling a block that sits half out of the tower. |
 | `sofa` | Zoe | Curled up on the sofa's west seat, knees up, laughing, one hand over her mouth, hugging a cushion. |
-| `cake` | Grandpa, Mum, Zoe, Dad | Grandpa leans over the cake blowing the candles; Mum claps at the end of the table; Zoe kneels on a chair to see; Dad films with his phone. |
-| `plane` | Leo, Mum | Leo on tiptoe on a stool, throwing arm fully out, the plane just leaving his fingers; Mum beside him, hand on the stool, looking up at the plane. |
-| `catbed` | Milo | Stretching out of his bed toward the room, in the last low sunbeam. |
-| `book` | Mum, Mira | Mum in the armchair with Mira in pyjamas on her lap, both looking at the picture book; Mum's hand turns a page. |
+| `cake` | Grandpa, Mum, Zoe, Dad | Grandpa sits leaning over the cake to blow the candles, hands on the table; Mum claps at the window end; Zoe kneels up on a chair to see; Dad films with his phone held up in both hands. |
+| `plane` | Leo, Mum | Leo on tiptoe on a stool, throwing arm fully out after the plane; Mum close behind, one hand at the small of his back and the other by his legs, looking up at the plane. |
+| `catbed` | Milo | Stretching on the rug just out of his bed, three-quarter on to Alaro, in the last low sunbeam. |
+| `book` | Mum, Mira | Mum sits back in the armchair with Mira in pyjamas on her lap, her arms round her to hold the picture book; Mum turns a page, both look at it. |
 
 All statue groups stay in the home for the whole sequence (they are the kept moments). Each moment's box in `track.json` now covers the statue group plus its prop.
 
@@ -72,7 +72,10 @@ Some furniture moved so the groups are visible from Alaro and do not hide one an
 | `site/tools/home-scene/build_home.py` | scene, story, render paths (updated) |
 | `site/tools/home-scene/dressing.py` | the lived-in layer (new) |
 | `site/tools/home-scene/statue.py` | `Statue Clay` material and presets, figure linking (new) |
-| `site/tools/home-scene/make_people.py` | builds and poses the statue family with MPFB (new; only needed to change the figures) |
+| `site/tools/home-scene/family.py` | poses everyone for the six moments, writes `assets/people/` (new; only needed to change the figures) |
+| `site/tools/home-scene/scans.py` / `scan_pose.py` | download, clay-convert, rig and pose the scanned adults and cat (new) |
+| `site/tools/home-scene/make_people.py` | builds and poses the MakeHuman children (new) |
+| `site/tools/home-scene/furniture.py` | the round-3 soft furniture after the reference images (new) |
 | `site/tools/home-scene/make_art.py` | the home's artwork (new) |
 | `site/tools/home-scene/fetch_assets.py` | downloads the Poly Haven assets (new) |
 | `site/tools/home-scene/assets/` | people, Poly Haven assets, artwork, `LICENSES.md` |
