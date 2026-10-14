@@ -1,20 +1,26 @@
 """
-Alaro immersive hero: the 3D home, rendered as a scroll image sequence.
+Alaro immersive hero: the 3D home, rendered as a scroll image sequence (v2: clay-statue family, lived-in home).
 
 Builds an open-plan home in Blender around the Alaro camera model
 (../../../alaro-camera/build_alaro_camera.py), animates one afternoon-to-night
 (camera path, Alaro pan/tilt, sun, lamps, candles) and renders it with Cycles.
-For every frame it also writes where the tracked props land on screen, so the
+For every frame it also writes where the tracked moments land on screen, so the
 website's HUD can stick to them. See docs/STORYBOARD.md for the story.
 
-    pip install bpy
-    python3 build_home.py --test 0,43,70,100,128,150,178,228   # quick low-res keyframes
-    python3 build_home.py --render [--start 0 --end 239]      # full sequence
-    python3 build_home.py --blend                              # save home.blend (keyframed)
+v2 adds the clay-statue family (assets/people/*.blend, built by make_people.py), the lived-in
+dressing and photographic materials (dressing.py, Poly Haven CC0 assets fetched by fetch_assets.py,
+artwork from make_art.py) and a lens finish in post (lens_post). The camera path, timing, frame count
+and track.json format are unchanged.
+
+    pip install bpy pillow
+    python3 build_home.py --test 0,25,52,72,84,104,130,154,182,232 --w 960 --h 540 --samples 24   # -> frames/test/
+    python3 build_home.py --render [--start 0 --end 239]      # draft: 960x540 PNG -> frames/hi/ + track.json
+    python3 build_home.py --blend                              # home.blend: keyed, packed, set to 4K final
     python3 build_home.py --blend --glb                        # also alaro-home.glb (flat materials + camera animation)
 
 Final quality on a GPU machine (see RENDER_ON_GPU.md):
-    blender -b -P build_home.py -- --render --final --gpu      # 1920×1080 WebP frames into frames/hd
+    blender -b -P build_home.py -- --render --final --gpu --w 3840 --samples 512 --set 4k --zip
+        # 3840x2160: frames/4k/fNNN.png (master) + fNNN.webp (q95) + track.json, then alaro-frames-4k.zip
 
 Units are metres; Z is up. The room spans x -4.5..4.5, y -3.5..3.5.
 """
@@ -35,6 +41,7 @@ sys.path.insert(0, os.path.normpath(os.path.join(HERE, '..', '..', '..', 'alaro-
 import build_alaro_camera as alaro  # noqa: E402
 sys.path.insert(0, HERE)
 import statue  # noqa: E402
+import dressing  # noqa: E402
 
 PEOPLE_DIR = os.path.join(HERE, 'assets', 'people')
 
@@ -46,22 +53,24 @@ RNG = random.Random(7)
 # so a figure's hands land on the prop it touches.
 LAYOUT = {
     'coffee': (-1.2, -1.22),            # coffee table centre (v1: -1.2, -1.32), moved 10 cm so Dad can kneel
-    'tower': (-0.9, -1.22),              # block tower base on the coffee table
+    'tower': (-0.85, -1.22),              # block tower base on the coffee table
     'tower_top': 0.405,                 # table top height
     'pulled_layer': 8,                  # Arlo's block: middle block of this layer, half pulled toward +X
     'sofa': (-1.25, -2.62),
     'dining': (1.45, 1.15),
     'dining_top': 0.7725,
     'island': (-1.45, 2.05),
-    'leo_stool': (-1.45, 1.3),
+    'leo_stool': (-1.9, 1.38),          # Leo and Mum stay left of the birthday shot in Alaro's view
     'plane': (-2.02, 0.98, 1.66),       # paper plane just leaving Leo's fingers
     'catbed': (3.55, -0.35),            # v1: (3.45, 1.05), hidden behind the dining table from Alaro
-    'armchair': (3.25, -2.55, 215.0),   # x, y, rotation (deg; v1 145): turned to face the room
+    'armchair': (3.45, -1.95, 225.0),   # x, y, rotation (deg); v1 (3.25, -2.55, 145): out of the corner, facing Alaro
+    'nook_table': (3.0, -2.4),
+    'floor_lamp': (3.92, -2.42),
     # dining chairs (x, y, side, turn): Grandpa's chair pulled out on the north side, Zoe kneels on the
     # south-east one, the south-west one is turned away from the table
     'dining_chairs': [(1.45, 1.86, 1, 0.0), (0.95, 0.47, -1, -18.0), (1.95, 0.5, -1, 4.0)],
     'cake': (1.45, 1.24),
-    'stools': [(-2.2, 1.32), (-1.45, 1.3), (-0.55, 1.62)],
+    'stools': [(-1.15, 1.36), (-1.9, 1.38), (-0.5, 1.42)],
     'plane_rot': (math.radians(8), math.radians(-12), math.radians(-146)),  # nose toward the room / Alaro
 }
 
@@ -427,6 +436,9 @@ def plane(name, w, h, loc, mat, rot=(0, 0, 0), collection='Home'):
     return o
 
 
+LAMP_2700K = '#ffad5e'  # warm practical bulbs
+
+
 def point_light(name, loc, energy, color='#ffcf8f', radius=0.05, collection='Lights'):
     L = bpy.data.lights.new(name, 'POINT')
     L.energy = energy
@@ -566,7 +578,10 @@ def sideboard_and_alaro(M):
     lathe_obj('Lamp_Base', [(0.0, 0.0), (0.07, 0.0), (0.09, 0.08), (0.08, 0.2), (0.03, 0.3), (0.0, 0.3)], (x - 0.04, LY, top), M['ceramic'])
     cyl('Lamp_Shade', 0.17, 0.2, (x - 0.04, LY, top + 0.4), M['shade'], r2=0.13, caps=False)
     sphere('Lamp_Bulb', 0.035, (x - 0.04, LY, top + 0.37), M['bulb'])
-    point_light('Light_TableLamp', (x - 0.04, LY, top + 0.37), 0.0, radius=0.06)
+    point_light('Light_TableLamp', (x - 0.04, LY, top + 0.37), 0.0, color=LAMP_2700K, radius=0.06)
+    # the shade throws a pool of light down onto the sideboard and up onto the wall
+    pool = spot_light('Light_TableLamp_Pool', (x - 0.04, LY, top + 0.33), 0.0, angle=95, color=LAMP_2700K, radius=0.05)
+    pool.rotation_euler = (math.pi, 0, 0)
     # books + bowl styling
     for i, (hh, col) in enumerate(((0.03, '#d7cdbb'), (0.025, '#3b4a52'), (0.035, '#b77b5a'))):
         box(f'SB_Book_{i}', (0.2, 0.28, hh), (x - 0.02, -0.72, top + 0.012 + sum([0.03, 0.025, 0.035][:i]) + hh / 2),
@@ -896,17 +911,20 @@ def reading_nook(M):
     th = box('Nook_Throw', (0.16, 0.6, 0.36), (0.36, 0.0, 0.48), M['throw'], bevel=0.05, soft=True)
     th.parent = pivot
     # floor lamp behind the chair
-    lx, ly = 3.95, -3.1
+    lx, ly = LAYOUT['floor_lamp']
     cyl('Floor_Lamp_Base', 0.16, 0.025, (lx, ly, 0.0125), M['black_metal'])
     cyl('Floor_Lamp_Pole', 0.012, 1.45, (lx, ly, 0.75), M['black_metal'], segs=12)
     cyl('Floor_Lamp_Shade', 0.22, 0.28, (lx, ly, 1.55), M['shade'], r2=0.17, caps=False)
     sphere('Floor_Lamp_Bulb', 0.04, (lx, ly, 1.5), M['bulb'])
-    point_light('Light_FloorLamp', (lx, ly, 1.5), 0.0, radius=0.08)
+    point_light('Light_FloorLamp', (lx, ly, 1.5), 0.0, color=LAMP_2700K, radius=0.08)
+    pool = spot_light('Light_FloorLamp_Pool', (lx, ly, 1.46), 0.0, angle=100, color=LAMP_2700K, radius=0.06)
+    pool.rotation_euler = (math.pi, 0, 0)
     # side table + mug
-    cyl('Nook_Table_Top', 0.22, 0.03, (2.55, -3.12, 0.52), M['walnut'])
-    cyl('Nook_Table_Stem', 0.025, 0.5, (2.55, -3.12, 0.26), M['black_metal'], segs=12)
-    cyl('Nook_Table_Foot', 0.14, 0.02, (2.55, -3.12, 0.01), M['black_metal'])
-    cyl('Nook_Mug', 0.04, 0.09, (2.6, -3.08, 0.58), M['mug'])
+    tx_, ty_ = LAYOUT['nook_table']
+    cyl('Nook_Table_Top', 0.22, 0.03, (tx_, ty_, 0.52), M['walnut'])
+    cyl('Nook_Table_Stem', 0.025, 0.5, (tx_, ty_, 0.26), M['black_metal'], segs=12)
+    cyl('Nook_Table_Foot', 0.14, 0.02, (tx_, ty_, 0.01), M['black_metal'])
+    cyl('Nook_Mug', 0.04, 0.09, (tx_ + 0.05, ty_ + 0.04, 0.58), M['mug'])
     plant('Plant_Nook', (2.25, -3.25, 0.0), 1.1, 18, M, pot_r=0.16, leaf_size=0.17, spread=0.35)
 
 
@@ -993,10 +1011,10 @@ def catmull(points, t):
 # Story beats (see docs/STORYBOARD.md). Frames are 0..239.
 ZONES = {
     'living': Vector((-1.15, -1.75, 0.45)),
-    'dining': Vector((1.45, 1.15, 0.92)),
-    'kitchen': Vector((-1.25, 1.75, 1.2)),
+    'dining': Vector((1.6, 0.95, 0.95)),    # v1 (1.45, 1.15, 0.92): centred on the birthday group
+    'kitchen': Vector((-1.8, 1.3, 1.3)),    # v1 (-1.25, 1.75, 1.2): centred on Leo and Mum
     'catbed': Vector((3.5, -0.35, 0.16)),  # v1 (3.45, 1.0, 0.1): the bed moved into Alaro's line of sight
-    'book': Vector((3.15, -2.45, 0.5)),
+    'book': Vector((3.35, -1.85, 0.85)),    # v1 (3.15, -2.45, 0.5): the armchair moved out of the corner
     'room': Vector((1.2, -0.2, 0.9)),
 }
 # Alaro aim per frame: (frame, zone) holds; transitions ease between them.
@@ -1039,9 +1057,13 @@ def build_rig(alaro_root):
     R.bulb = bpy.data.materials['Warm Bulb']
     R.flame = bpy.data.materials['Candle Flame']
     R.flames = [o for o in bpy.data.objects if o.name.startswith('Flame_')]
-    R.lamps = {n: bpy.data.objects[n] for n in ('Light_TableLamp', 'Light_FloorLamp', 'Light_Dining', 'Light_Island_0', 'Light_Island_1')}
+    R.lamps = {n: bpy.data.objects[n] for n in ('Light_TableLamp', 'Light_FloorLamp', 'Light_Dining', 'Light_Island_0', 'Light_Island_1',
+                                                 'Light_TableLamp_Pool', 'Light_FloorLamp_Pool')}
+    for L in R.lamps.values():
+        L.data.color = srgb(LAMP_2700K)[:3]
     R.candles = bpy.data.objects['Light_Candles']
-    R.garden = bpy.data.materials['Garden Backdrop'].node_tree.nodes['Emission']
+    gb = bpy.data.materials.get('Garden Backdrop')
+    R.garden = gb.node_tree.nodes['Emission'] if gb and gb.users else None
     return R
 
 
@@ -1119,9 +1141,14 @@ def set_camera(R, f):
         front, fwd, up = lens_frame(R)
         pos = front + fwd * 0.03
         look = pos + fwd
-        cam.data.dof.use_dof = False
-        zl = {'living': 30, 'dining': 52, 'kitchen': 42, 'catbed': 44, 'book': 46}.get(pov_zone(f), 17)
+        zone = pov_zone(f)
+        zl = {'living': 30, 'dining': 52, 'kitchen': 42, 'catbed': 44, 'book': 46}.get(zone, 17)
         cam.data.lens = 17 + (zl - 17) * pov_zoom(f)
+        # shallow focus on the holds: focus on the moment, the room behind softens a little
+        cam.data.dof.use_dof = zone in ZONES and pov_zoom(f) > 0.05
+        if cam.data.dof.use_dof:
+            cam.data.dof.focus_distance = (ZONES[zone] - pos).length
+            cam.data.dof.aperture_fstop = 4.0 + 8.0 * (1 - pov_zoom(f))
         cam.location = pos
         cam.rotation_euler = (look - pos).to_track_quat('-Z', 'Y').to_euler()
         return
@@ -1172,21 +1199,31 @@ def set_lighting(R, f):
     R.sun.rotation_euler = d.to_track_quat('-Z', 'Y').to_euler()
     warm = smooth((h - 16.3) / 2.5)
     R.sun.data.color = (1.0, 0.93 - 0.35 * warm, 0.84 - 0.6 * warm)
-    R.sun.data.energy = max(0.0, 5.0 * (1 - smooth((h - 18.6) / 0.7)))
+    # the sky follows the real sun, but the light lingers as a low golden beam until ~19:45 so Milo
+    # stretches in the last of the sun (the sun lamp never drops below 5 degrees)
+    R.sun.data.energy = max(0.0, 5.0 * (1 - smooth((h - 18.95) / 0.8)))
     R.sky.sun_elevation = max(el, math.radians(-2))
+    el_light = max(el, math.radians(5))
+    d = Vector((-math.cos(el_light) * math.cos(az), -math.cos(el_light) * math.sin(az), -math.sin(el_light)))
+    R.sun.rotation_euler = d.to_track_quat('-Z', 'Y').to_euler()
     R.bg_day.inputs['Strength'].default_value = 1.1 * day + 0.02
     R.wmix.inputs['Fac'].default_value = smooth((h - 19.0) / 1.0)
-    R.garden.inputs['Strength'].default_value = 2.0 * day * (1 - 0.45 * warm) + 0.01
+    if R.garden is not None:
+        R.garden.inputs['Strength'].default_value = 2.0 * day * (1 - 0.45 * warm) + 0.01
+    if getattr(R, 'neighbour', None) is not None:
+        R.neighbour.node_tree.nodes['Emission'].inputs['Strength'].default_value = 1.2 * smooth((h - 18.9) / 0.8)
     R.bg_night.inputs['Strength'].default_value = 0.25
     # lamps fade on from 18:50; candles burn while the birthday plays
     lamps = smooth((h - 18.75) / 0.9)
-    R.lamps['Light_TableLamp'].data.energy = 9 * lamps
-    R.lamps['Light_FloorLamp'].data.energy = 22 * lamps
+    R.lamps['Light_TableLamp'].data.energy = 7 * lamps
+    R.lamps['Light_FloorLamp'].data.energy = 14 * lamps
+    R.lamps['Light_TableLamp_Pool'].data.energy = 14 * lamps
+    R.lamps['Light_FloorLamp_Pool'].data.energy = 30 * lamps
     R.lamps['Light_Dining'].data.energy = 40 * lamps
     R.lamps['Light_Island_0'].data.energy = 9 * lamps
     R.lamps['Light_Island_1'].data.energy = 9 * lamps
     R.bulb.node_tree.nodes['Emission'].inputs['Strength'].default_value = 25 * lamps
-    R.fill.data.energy = 26 * lamps
+    R.fill.data.energy = 9 * lamps  # just enough that night corners are not pitch black
     candle = 1.0 if 84 <= f <= 112 else 0.0
     flicker = 0.85 + 0.15 * math.sin(f * 2.3) * math.sin(f * 0.9 + 1)
     R.candles.data.energy = 1.6 * candle * flicker
@@ -1267,7 +1304,8 @@ def place_props(anchors):
         bk.rotation_euler = anchors['book_rot']
     if 'zoe_cushion' in anchors and 'Pillow_0' in ob:
         ob['Pillow_0'].location = anchors['zoe_cushion']
-        ob['Pillow_0'].rotation_euler = (math.radians(-70), math.radians(10), math.radians(15))
+        ob['Pillow_0'].rotation_euler = anchors.get('zoe_cushion_rot', (0, 0, 0))
+        ob['Pillow_0'].scale = (0.72, 0.9, 0.72)
     bpy.context.view_layer.update()
 
 
@@ -1286,6 +1324,8 @@ def build_scene(people=True):
     scn = bpy.context.scene
     scn.unit_settings.length_unit = 'METERS'
     M = make_materials()
+    me = sys.modules[__name__]
+    dressing.upgrade_materials(me, M)
     build_room(M)
     root = sideboard_and_alaro(M)
     living(M)
@@ -1293,16 +1333,18 @@ def build_scene(people=True):
     dining(M)
     kitchen(M)
     reading_nook(M)
+    neighbour = dressing.dress(me, M)
     place_props(load_anchors())
     if people:
         add_people()
     R = build_rig(root)
+    R.neighbour = neighbour
     scn.frame_start, scn.frame_end = 0, FRAMES - 1
     return R
 
 
 def enable_gpu():
-    """Switch Cycles to the first GPU backend that has a device. Returns a description, or None for CPU."""
+    """Switch Cycles to the first GPU backend that has a device. Returns (backend, description), or None for CPU."""
     prefs = bpy.context.preferences.addons['cycles'].preferences
     for kind in ('OPTIX', 'CUDA', 'HIP', 'METAL', 'ONEAPI'):
         try:
@@ -1318,11 +1360,15 @@ def enable_gpu():
             for d in prefs.devices:
                 d.use = d.type == kind
             bpy.context.scene.cycles.device = 'GPU'
-            return f"{kind}: {', '.join(d.name for d in gpus)}"
+            return kind, f"{kind}: {', '.join(d.name for d in gpus)}"
     return None
 
 
+DEVICE = 'CPU'
+
+
 def setup_cycles(res_x, res_y, samples, gpu=False, final=False):
+    global DEVICE
     scn = bpy.context.scene
     try:
         bpy.ops.preferences.addon_enable(module='cycles')
@@ -1331,21 +1377,39 @@ def setup_cycles(res_x, res_y, samples, gpu=False, final=False):
     scn.render.engine = 'CYCLES'
     c = scn.cycles
     c.device = 'CPU'
+    DEVICE = f'CPU ({os.cpu_count()} threads)'
+    backend = None
     if gpu:
         found = enable_gpu()
-        print(f'GPU rendering on {found}' if found else 'No supported GPU found: rendering on the CPU', flush=True)
+        if found:
+            backend, DEVICE = found
+            print(f'GPU rendering on {DEVICE}', flush=True)
+        else:
+            print('*' * 72 + '\nWARNING: no supported GPU found (OptiX / CUDA / HIP / Metal / oneAPI).\n'
+                  'Rendering on the CPU instead: this works but is many times slower.\n' + '*' * 72, flush=True)
     c.samples = samples
     c.use_adaptive_sampling = True
-    c.adaptive_threshold = 0.012 if final else 0.05
+    c.adaptive_threshold = 0.005 if final else 0.05
+    c.adaptive_min_samples = 32 if final else 4
+    # denoise with albedo + normal guides so knit, book spines and fine edges survive
     c.use_denoising = True
-    # final: the full light paths (the draft trims bounces to fit a CPU budget)
-    c.max_bounces = 10 if final else 5
-    c.diffuse_bounces = 4 if final else 2
-    c.glossy_bounces = 4 if final else 2
-    c.transmission_bounces = 8 if final else 4
-    c.transparent_max_bounces = 10 if final else 6
-    c.adaptive_min_samples = 16 if final else 4
-    c.blur_glossy = 1.0
+    c.denoiser = 'OPTIX' if backend == 'OPTIX' else 'OPENIMAGEDENOISE'
+    c.denoising_input_passes = 'RGB_ALBEDO_NORMAL'
+    try:
+        c.denoising_prefilter = 'ACCURATE'
+        c.denoising_quality = 'HIGH'
+    except (AttributeError, TypeError):
+        pass
+    if hasattr(c, 'use_light_tree'):
+        c.use_light_tree = True
+    # final: the full light paths; the draft trims bounces to fit a CPU budget
+    c.max_bounces = 12 if final else 5
+    c.diffuse_bounces = 6 if final else 2
+    c.glossy_bounces = 6 if final else 2
+    c.transmission_bounces = 12 if final else 4
+    c.volume_bounces = 2 if final else 0
+    c.transparent_max_bounces = 16 if final else 8
+    c.blur_glossy = 0.5 if final else 1.0
     if os.environ.get('ALARO_FASTGI', '0') == '1':
         # one real diffuse bounce, then an AO-style approximation: ~2x faster on this interior
         c.use_fast_gi = True
@@ -1354,8 +1418,13 @@ def setup_cycles(res_x, res_y, samples, gpu=False, final=False):
         bpy.context.scene.world.light_settings.distance = 3.0
     c.caustics_reflective = False
     c.caustics_refractive = False
-    c.sample_clamp_indirect = 6.0
+    c.sample_clamp_indirect = 10.0 if final else 6.0
     c.light_sampling_threshold = 0.01
+    if hasattr(c, 'use_auto_tile'):
+        c.use_auto_tile = True  # tile size: auto
+    c.pixel_filter_type = 'BLACKMAN_HARRIS'
+    c.filter_width = 1.5
+    scn.render.use_motion_blur = False  # frames are scrubbed by scroll: no blur
     scn.render.use_persistent_data = True
     scn.render.resolution_x, scn.render.resolution_y = res_x, res_y
     scn.render.resolution_percentage = 100
@@ -1366,6 +1435,64 @@ def setup_cycles(res_x, res_y, samples, gpu=False, final=False):
     except TypeError:
         pass
     scn.render.image_settings.file_format = 'PNG'
+    scn.render.image_settings.color_mode = 'RGB'
+    scn.render.image_settings.color_depth = '8'
+
+
+# ---------------------------------------------------------------- the camera's lens, in post
+# A real lens and sensor, applied to the 8-bit frame with numpy (bundled with Blender), so it behaves the
+# same in every Blender version: slight vignetting, a hint of lateral chromatic aberration toward the
+# corners, and fine luminance grain (about 1.5 %), seeded per frame so re-renders match. No blur.
+
+LENS = {'vignette': 0.17, 'ca': 0.00035, 'grain': 0.015, 'warm': (1.03, 1.0, 0.95)}
+
+
+def lens_post(path, f, outputs):
+    """Load a rendered PNG, apply the lens look, write it to each (path, format, quality) in outputs."""
+    import numpy as np
+    im = bpy.data.images.load(path, check_existing=False)
+    w, h = im.size
+    px = np.empty(w * h * 4, dtype=np.float32)
+    im.pixels.foreach_get(px)
+    px = px.reshape(h, w, 4)
+    rgb = px[:, :, :3]
+    ys, xs = np.mgrid[0:h, 0:w].astype(np.float32)
+    cx, cy = (w - 1) / 2, (h - 1) / 2
+    nx, ny = (xs - cx) / cx, (ys - cy) / cx
+    r2 = nx * nx + ny * ny
+
+    def sample(chan, scale):
+        # resample one channel scaled about the centre (bilinear); tiny scales -> sub-pixel shifts only at the edges
+        sx = cx + (xs - cx) / scale
+        sy = cy + (ys - cy) / scale
+        x0 = np.clip(np.floor(sx).astype(np.int32), 0, w - 2)
+        y0 = np.clip(np.floor(sy).astype(np.int32), 0, h - 2)
+        fx = np.clip(sx - x0, 0, 1)
+        fy = np.clip(sy - y0, 0, 1)
+        c = chan
+        return (c[y0, x0] * (1 - fx) * (1 - fy) + c[y0, x0 + 1] * fx * (1 - fy) + c[y0 + 1, x0] * (1 - fx) * fy + c[y0 + 1, x0 + 1] * fx * fy)
+    ca = LENS['ca']
+    if ca:
+        rgb[:, :, 0] = sample(rgb[:, :, 0].copy(), 1 + ca)
+        rgb[:, :, 2] = sample(rgb[:, :, 2].copy(), 1 - ca)
+    lin = np.power(np.clip(rgb, 0, 1), 2.2) * np.array(LENS['warm'], dtype=np.float32)
+    lin *= (1 - LENS['vignette'] * np.power(np.clip(r2 / (1 + (h / w) ** 2), 0, 1), 1.25))[:, :, None]
+    rgb = np.power(lin, 1 / 2.2)
+    rng = np.random.default_rng(1000 + f)
+    luma = rgb.mean(axis=2, keepdims=True)
+    amp = LENS['grain'] * (0.35 + 1.3 * np.sqrt(np.clip(luma * (1 - luma), 0, 0.25)))
+    rgb = np.clip(rgb + rng.standard_normal((h, w, 1)).astype(np.float32) * amp, 0, 1)
+    px[:, :, :3] = rgb
+    px[:, :, 3] = 1.0
+    im.pixels.foreach_set(px.ravel())
+    for out_path, fmt, quality in outputs:
+        im.file_format = fmt
+        im.filepath_raw = out_path
+        try:
+            im.save(filepath=out_path, quality=quality)
+        except TypeError:
+            im.save()
+    bpy.data.images.remove(im)
 
 
 def bake_keyframes(R):
@@ -1386,7 +1513,10 @@ def bake_keyframes(R):
         R.bg_day.inputs['Strength'].keyframe_insert('default_value', frame=f)
         for m in (R.status, R.bulb, R.flame):
             m.node_tree.nodes['Emission'].inputs['Strength'].keyframe_insert('default_value', frame=f)
-        R.garden.inputs['Strength'].keyframe_insert('default_value', frame=f)
+        if R.garden is not None:
+            R.garden.inputs['Strength'].keyframe_insert('default_value', frame=f)
+        if getattr(R, 'neighbour', None) is not None:
+            R.neighbour.node_tree.nodes['Emission'].inputs['Strength'].keyframe_insert('default_value', frame=f)
         bpy.context.scene.view_settings.keyframe_insert('exposure', frame=f)
         for fl in R.flames:
             fl.keyframe_insert('hide_render', frame=f)
@@ -1435,74 +1565,154 @@ def export_home_glb(path):
                               export_animations=True, export_extras=True)
 
 
+def frame_order(start, end):
+    """Coarse to fine: every 16th frame, then every 8th, ... so a partial set is usable at any time."""
+    order, seen = [], set()
+    for st in (16, 8, 4, 2, 1):
+        for f in range(start, end + 1, st):
+            if f not in seen:
+                seen.add(f)
+                order.append(f)
+    return order
+
+
+def write_track(R, paths):
+    data = []
+    for f in range(FRAMES):
+        apply_frame(R, f)
+        data.append(frame_data(R, f))
+    for path in paths:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'w') as fh:
+            json.dump({'frames': FRAMES, 'data': data}, fh, separators=(',', ':'))
+    print('wrote track.json', flush=True)
+
+
+def write_render_info(path, w, h, samples, final, frames_done, seconds):
+    import datetime
+    c = bpy.context.scene.cycles
+    lines = [
+        'Alaro home story v2 (clay statues)',
+        f'resolution: {w} x {h}',
+        f'frames: {frames_done} / {FRAMES}',
+        f'quality: {"final" if final else "draft"}; samples {samples}, adaptive threshold {c.adaptive_threshold}, denoiser {c.denoiser}',
+        f'bounces: max {c.max_bounces}, diffuse {c.diffuse_bounces}, glossy {c.glossy_bounces}, transmission {c.transmission_bounces}, volume {c.volume_bounces}',
+        f'statue finish: {statue.STATUE_MATERIAL}',
+        f'device: {DEVICE}',
+        f'blender: {bpy.app.version_string}',
+        f'date: {datetime.datetime.now().isoformat(timespec="seconds")}',
+        f'render time this run: {seconds / 3600:.2f} h',
+        'outputs: fNNN.png (8-bit sRGB master), fNNN.webp (quality 95), track.json',
+    ]
+    with open(path, 'w') as fh:
+        fh.write('\n'.join(lines) + '\n')
+
+
+def zip_set(set_dir, zip_path):
+    """The file to bring back: WebP frames + track.json + render-info.txt (no PNGs: those are the local master)."""
+    import zipfile
+    names = sorted(n for n in os.listdir(set_dir) if n.endswith('.webp')) + ['track.json', 'render-info.txt']
+    with zipfile.ZipFile(zip_path + '.part', 'w', compression=zipfile.ZIP_STORED) as z:
+        for n in names:
+            p = os.path.join(set_dir, n)
+            if os.path.exists(p):
+                z.write(p, n)
+    os.replace(zip_path + '.part', zip_path)
+    print(f'zipped {len(names) - 2} frames into {zip_path} ({os.path.getsize(zip_path) / 1e6:.0f} MB)', flush=True)
+
+
 def main(argv):
+    import time
     if '--' in argv:  # blender -b -P build_home.py -- --render ...
         argv = argv[argv.index('--') + 1:]
 
     def arg(name, default=None):
-        return argv[argv.index(name) + 1] if name in argv else default
+        # the last occurrence wins, so launcher defaults can be overridden (render_gpu.command --w 2560)
+        if name not in argv:
+            return default
+        return argv[len(argv) - 1 - argv[::-1].index(name) + 1]
 
     out = arg('--out', os.path.join(HERE, 'frames'))
     os.makedirs(out, exist_ok=True)
-    R = build_scene()
+    R = build_scene(people='--no-people' not in argv)
 
     if '--blend' in argv or '--glb' in argv:
-        # the saved file opens ready to render the final frames (Cycles, 1920×1080, AgX, keyed exposure)
-        setup_cycles(1920, 1080, 160, final=True)
-        bpy.context.scene.render.image_settings.file_format = 'PNG'
+        # the saved file opens ready to render the final frames (Cycles, 3840x2160, 512 spp, AgX, keyed exposure)
+        setup_cycles(3840, 2160, 512, final=True)
         bake_keyframes(R)
         bpy.context.scene.frame_set(0)
         if '--blend' in argv:
+            try:
+                bpy.ops.file.pack_all()  # textures, art and statue figures travel inside the file
+            except RuntimeError as e:
+                print('pack_all:', e, flush=True)
             bpy.ops.wm.save_as_mainfile(filepath=os.path.join(HERE, 'home.blend'), compress=True)
+            print('saved home.blend', flush=True)
         if '--glb' in argv:
             export_home_glb(os.path.join(HERE, 'alaro-home.glb'))
         return
 
     if '--test' in argv:
         frames = [int(x) for x in arg('--test').split(',')]
-        setup_cycles(int(arg('--w', 640)), int(arg('--h', 360)), int(arg('--samples', 24)), gpu='--gpu' in argv)
+        setup_cycles(int(arg('--w', 640)), int(arg('--h', 360)), int(arg('--samples', 24)), gpu='--gpu' in argv,
+                     final='--final' in argv)
+        tdir = os.path.join(out, arg('--set', 'test'))
+        os.makedirs(tdir, exist_ok=True)
         for f in frames:
             apply_frame(R, f)
-            bpy.context.scene.render.filepath = os.path.join(out, 'test', f'f{f:03d}.png')
+            raw = os.path.join(tdir, f'.raw_f{f:03d}.png')
+            bpy.context.scene.render.filepath = raw
             bpy.ops.render.render(write_still=True)
+            lens_post(raw, f, [(os.path.join(tdir, f'f{f:03d}.png'), 'PNG', 0)])
+            os.remove(raw)
             print('test frame', f, json.dumps(frame_data(R, f)), flush=True)
         return
 
+    final = '--final' in argv
+    set_name = arg('--set', '4k' if final else 'hi')
+    set_dir = os.path.join(out, set_name)
     if '--data' in argv or '--render' in argv:
-        data = []
-        for f in range(FRAMES):
-            apply_frame(R, f)
-            data.append(frame_data(R, f))
-        with open(os.path.join(out, 'track.json'), 'w') as fh:
-            json.dump({'frames': FRAMES, 'data': data}, fh, separators=(',', ':'))
-        print('wrote track.json', flush=True)
+        write_track(R, [os.path.join(out, 'track.json'), os.path.join(set_dir, 'track.json')])
 
     if '--render' in argv:
-        final = '--final' in argv
-        w = int(arg('--w', 1920 if final else 960))
+        w = int(arg('--w', 3840 if final else 960))
         h = int(arg('--h', w * 9 // 16))
-        setup_cycles(w, h, int(arg('--samples', 160 if final else 12)), gpu='--gpu' in argv, final=final)
-        fmt = arg('--format', 'webp' if final else 'png').lower()
-        ims = bpy.context.scene.render.image_settings
-        if fmt == 'webp':
-            ims.file_format = 'WEBP'
-            ims.quality = 92
-        ext = 'webp' if fmt == 'webp' else 'png'
+        samples = int(arg('--samples', 512 if final else 12))
+        setup_cycles(w, h, samples, gpu='--gpu' in argv, final=final)
         start, end = int(arg('--start', 0)), int(arg('--end', FRAMES - 1))
-        order, seen = [], set()
-        for st in (16, 8, 4, 2, 1):
-            for f in range(start, end + 1, st):
-                if f not in seen:
-                    seen.add(f)
-                    order.append(f)
-        for f in order:
-            path = os.path.join(out, arg('--set', 'hd' if final else 'hi'), f'f{f:03d}.{ext}')
-            if os.path.exists(path) and '--force' not in argv:
+        webp = final or '--webp' in argv
+        todo = []
+        for f in frame_order(start, end):
+            png = os.path.join(set_dir, f'f{f:03d}.png')
+            done = os.path.exists(png) and (not webp or os.path.exists(png[:-4] + '.webp'))
+            if done and '--force' not in argv:
                 continue
+            todo.append(f)
+        print(f'{len(todo)} frames to render at {w}x{h}, {samples} samples on {DEVICE} '
+              f'({end - start + 1 - len(todo)} already done)', flush=True)
+        t_start = time.time()
+        times = []
+        for i, f in enumerate(todo):
+            t0 = time.time()
             apply_frame(R, f)
-            bpy.context.scene.render.filepath = path
+            raw = os.path.join(set_dir, f'.raw_f{f:03d}.png')
+            bpy.context.scene.render.filepath = raw
             bpy.ops.render.render(write_still=True)
-            print('rendered', f, flush=True)
+            png = os.path.join(set_dir, f'f{f:03d}.png')
+            outs = [(png, 'PNG', 0)] + ([(png[:-4] + '.webp', 'WEBP', 95)] if webp else [])
+            lens_post(raw, f, outs)
+            os.remove(raw)
+            times.append(time.time() - t0)
+            avg = sum(times[-12:]) / len(times[-12:])
+            left = len(todo) - i - 1
+            print(f'rendered {f} ({i + 1}/{len(todo)}) in {times[-1]:.0f} s; about {left * avg / 3600:.1f} h left', flush=True)
+            if i + 1 == 3 or (i + 1 == len(todo) and len(todo) < 3):
+                print(f'ESTIMATE: ~{avg:.0f} s per frame -> all {len(todo)} frames in about {len(todo) * avg / 3600:.1f} h '
+                      f'(--w 2560 is about 2.2x faster)', flush=True)
+        n_done = sum(1 for f in range(FRAMES) if os.path.exists(os.path.join(set_dir, f'f{f:03d}.png')))
+        write_render_info(os.path.join(set_dir, 'render-info.txt'), w, h, samples, final, n_done, time.time() - t_start)
+        if '--zip' in argv:
+            zip_set(set_dir, os.path.join(HERE, arg('--zip-name', f'alaro-frames-{set_name}.zip')))
 
 
 if __name__ == '__main__':

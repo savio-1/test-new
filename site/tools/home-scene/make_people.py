@@ -87,7 +87,7 @@ PEOPLE = {
     'zoe': dict(macro=dict(gender=0.0, age=mh_age(6), muscle=0.5, weight=0.5, height=0.5, proportions=0.5),
                 race=dict(caucasian=0.4, african=0.4, asian=0.2),
                 wear=[('mindfront_knitted_sweater_01', KNIT), ('toigo_harem_pants', COTTON)],
-                hair='o4saken_curly01'),
+                hair='cortu_strawberry_cloud_hair'),
     'leo': dict(macro=dict(gender=1.0, age=mh_age(5), muscle=0.5, weight=0.5, height=0.5, proportions=0.5),
                 race=dict(caucasian=0.6, african=0.2, asian=0.2),
                 wear=[('joepal_crude_t-shirt_female', COTTON), ('cortu_cargo_pants', WEAVE)],
@@ -488,15 +488,31 @@ def bake(name, rig, parts, height=1.75):
 
 
 def cleanup_sources(body, rig, parts):
+    """Remove the MakeHuman source objects and only the data they brought (never the scene's own)."""
+    meshes, mats, imgs = set(), set(), set()
     for o, _ in parts:
-        if o.name in bpy.data.objects:
-            bpy.data.objects.remove(o, do_unlink=True)
-    if rig.name in bpy.data.objects:
+        if o.name not in bpy.data.objects:
+            continue
+        if o.type == 'MESH':
+            meshes.add(o.data)
+            for m in o.data.materials:
+                if m is not None:
+                    mats.add(m)
+                    if m.node_tree:
+                        imgs.update(n.image for n in m.node_tree.nodes if n.type == 'TEX_IMAGE' and n.image)
+        bpy.data.objects.remove(o, do_unlink=True)
+    arm = rig.data if rig.name in bpy.data.objects else None
+    if arm is not None:
         bpy.data.objects.remove(rig, do_unlink=True)
-    for blk in (bpy.data.meshes, bpy.data.armatures, bpy.data.materials, bpy.data.images):
-        for d in list(blk):
-            if d.users == 0:
-                blk.remove(d)
+        if arm.users == 0:
+            bpy.data.armatures.remove(arm)
+    for blk, items in ((bpy.data.meshes, meshes), (bpy.data.materials, mats), (bpy.data.images, imgs)):
+        for d in items:
+            try:
+                if d.users == 0:
+                    blk.remove(d)
+            except ReferenceError:
+                pass
 
 
 # ---------------------------------------------------------------- the six moments
@@ -560,14 +576,14 @@ def moment_tower(F):
     P.expr = {'eyebrows-left-up': 0.7, 'eyebrows-right-up': 0.7, 'mouth-open': 0.25, 'eye-left-opened-up': 0.4, 'eye-right-opened-up': 0.4}
     # Arlo kneels at the east end, pulling the block between finger and thumb, tongue out
     P = F['arlo']
-    kneel(P, (tx + 0.62, ty + 0.05), (-1, 0), lean=12, spread=0.1)
-    P.spine(bend=30, side=-4, twist=-8)
+    kneel(P, (tx + 0.47, ty - 0.17), (-0.94, 0.34), lean=14, spread=0.1)
+    P.spine(bend=24, side=-3, twist=-6)
     pinch = V(tx + 0.036 + 0.0375 + 0.006, ty, blk_z)
     P.look(pinch + V(-0.02, 0, -0.01))
     P.arm('R', pinch + V(0.12, -0.03, 0.03), pole=V(0.3, -1, -0.6))
     P.hand('R', V(-1, 0.1, -0.25), palm=V(0, 1, 0))
     P.fingers('R', (0.35, 0.3, 0.75, 0.85, 0.9), thumb_in=10)
-    P.arm('L', V(tx + 0.36, ty + 0.25, tz + 0.06), pole=V(0.2, 1, -0.5))
+    P.arm('L', V(tx + 0.3, ty + 0.0, tz + 0.05), pole=V(0.2, 1, -0.5))
     P.hand('L', V(-1, 0.2, -0.3), palm=V(0, 0, -1))
     P.fingers('L', (0.2, 0.25, 0.3, 0.35, 0.4))
     P.expr = {'mouth-open': 0.35, 'eye-left-slit': 0.35, 'eye-right-slit': 0.35, 'eyebrows-left-down': 0.4, 'eyebrows-right-down': 0.4}
@@ -586,10 +602,10 @@ def moment_sofa(F):
     P.place(hips, f, pitch=-26)
     l = V(-f.y, f.x, 0)
     for s, sxn in (('L', 1), ('R', -1)):
-        knee = hips + f * thigh * 0.62 + V(0, 0, thigh * 0.78) + l * sxn * 0.07
-        ankle = V(x, sy, 0) + f * 0.26 + l * sxn * 0.06 + V(0, 0, 0.52)
+        knee = hips + f * thigh * 0.5 + V(0, 0, thigh * 0.86) + l * sxn * 0.075
+        ankle = hips + f * 0.2 + l * sxn * 0.07 + V(0, 0, -0.03)
         P.limb('leg', s, knee, ankle)
-        P.foot(s, f + V(0, 0, -0.5))
+        P.foot(s, f + V(0, 0, -0.25))
     P.spine(bend=-8, side=3, twist=10)
     head = P.joint('head')
     P.look(head + V(0, 0, 0.4) + f * 0.25 + l * 0.2)
@@ -604,7 +620,11 @@ def moment_sofa(F):
     P.hand('L', -l + f * 0.4, palm=-l)
     P.fingers('L', (0.4, 0.55, 0.6, 0.65, 0.7))
     P.expr = {'mouth-open': 0.75, 'mouth-corner-puller': 0.9, 'eye-left-slit': 0.8, 'eye-right-slit': 0.8, 'eyebrows-left-up': 0.3, 'eyebrows-right-up': 0.3}
-    return {'zoe_cushion': list(hips + f * 0.22 + l * 0.2 + V(0, 0, 0.15))}
+    # the cushion she hugs, held against her shins and chest
+    knee = (P.joint('lowerleg01.L') + P.joint('lowerleg01.R')) / 2
+    chest = P.joint('spine03')
+    c = knee.lerp(chest, 0.45) + f * 0.1 + l * 0.04
+    return {'zoe_cushion': list(c), 'zoe_cushion_rot': [math.radians(-20), 0.0, math.atan2(f.y, f.x) - math.pi / 2]}
 
 
 def moment_cake(F):
@@ -688,7 +708,8 @@ def moment_plane(F):
     seat = 0.68
     # Leo on tiptoe on the stool, throwing arm fully extended, the plane just leaving his fingers
     P = F['leo']
-    f = unit(-0.86, -0.5)
+    # he throws across Alaro's view, toward the living room, so the plane reads side-on
+    f = unit(0.3, -1)
     l = V(-f.y, f.x, 0)
     thigh, shin = P.lengths('leg', 'L')
     hips = V(sx, sy, seat + 0.06 + (thigh + shin) * 0.97) + f * 0.03
@@ -715,15 +736,15 @@ def moment_plane(F):
     P.expr = {'mouth-open': 0.5, 'mouth-corner-puller': 0.5, 'eye-left-opened-up': 0.5, 'eye-right-opened-up': 0.5}
     # Mum behind him, one hand on the stool, the other at his back, looking up at the plane
     P = F['mum']
-    f2, l2 = stand(P, (sx + 0.52, sy - 0.28), (-0.92, 0.38))
-    P.spine(bend=20, twist=12, side=-4)
+    f2, l2 = stand(P, (sx - 0.55, sy + 0.0), (0.85, -0.53))
+    P.spine(bend=18, twist=8, side=-3)
     P.look(plane + V(0, 0, 0.1))
-    P.arm('R', V(sx + 0.12, sy - 0.16, seat + 0.0), pole=V(0.4, -1, 0.1))
-    P.hand('R', V(-0.6, 0.3, -1), palm=V(-1, 0.2, 0))
+    P.arm('R', V(sx - 0.17, sy - 0.04, seat + 0.0), pole=V(-0.3, -0.8, 0.2))
+    P.hand('R', V(0.5, 0.1, -1), palm=V(1, 0.1, 0.2))
     P.fingers('R', (0.4, 0.5, 0.55, 0.6, 0.65))
-    back = F['leo'].joint('spine03') - f * 0.09
-    P.arm('L', back + V(0.04, 0.02, 0), pole=V(0.4, 0.6, -1))
-    P.hand('L', V(-0.4, 0.4, 0.6), palm=-f)
+    side_l = F['leo'].joint('spine04') - l * 0.1 - f * 0.03
+    P.arm('L', side_l, pole=V(-0.2, 0.9, -1))
+    P.hand('L', V(0.6, 0.3, 0.5), palm=l)
     P.fingers('L', (0.15, 0.2, 0.25, 0.3, 0.3))
     P.expr = {'mouth-corner-puller': 0.55, 'mouth-open': 0.3, 'eyebrows-left-up': 0.5, 'eyebrows-right-up': 0.5}
     nose_dir = throw

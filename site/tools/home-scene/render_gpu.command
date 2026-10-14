@@ -1,7 +1,10 @@
 #!/bin/bash
-# Renders the Alaro home sequence at 1920x1080 on this computer's GPU, then zips the frames.
+# Renders the Alaro home sequence (v2, clay statues) at 3840x2160 on this computer's GPU, then zips the
+# WebP frames + track.json + render-info.txt into alaro-frames-4k.zip.
 # macOS: double-click (or run `bash render_gpu.command` in Terminal). Linux: `bash render_gpu.command`.
-# Rendering again later resumes where it stopped. Extra options pass through, e.g. --start 0 --end 119
+# Running it again later resumes where it stopped. Extra options pass through, for example:
+#   bash render_gpu.command --w 2560            (cheaper: 2560x1440, about 2.2x faster)
+#   bash render_gpu.command --start 0 --end 119 (half the frames, for splitting across two computers)
 set -e
 cd "$(dirname "$0")"
 
@@ -19,10 +22,10 @@ if [ -z "$BLENDER" ]; then
 fi
 
 echo "Using Blender: $BLENDER"
-echo "Rendering 240 frames at 1920x1080. Leave this window open."
-"$BLENDER" -b -P "$(pwd)/build_home.py" -- --render --final --gpu "$@"
+echo "Rendering 240 frames at 3840x2160 (512 samples). Leave this window open; it prints a time estimate"
+echo "after the first frames. Stopping is safe: run this again to continue."
+"$BLENDER" -b -P "$(pwd)/build_home.py" -- --render --final --gpu --w 3840 --samples 512 --set 4k --zip "$@"
 
-echo "Zipping the frames..."
-rm -f alaro-frames-hd.zip
-(cd frames/hd && zip -q -r ../../alaro-frames-hd.zip .)
-echo "Done. Send this file back: $(pwd)/alaro-frames-hd.zip"
+echo
+echo "Done. Send this file back: $(pwd)/alaro-frames-4k.zip"
+echo "(The full-quality PNG masters stay in $(pwd)/frames/4k/.)"

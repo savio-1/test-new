@@ -23,9 +23,9 @@ MODELS = {
     'food_apple_01': '1k', 'bananas': '1k', 'lemon': '1k', 'food_pears_asian_01': '1k',
     'wooden_cutting_board': '1k', 'jug_01': '1k', 'vintage_electric_kettle': '1k', 'tea_set_01': '1k',
     'round_spectacles': '1k', 'standing_picture_frame_01': '1k', 'standing_picture_frame_02': '1k',
-    'hanging_picture_frame_02': '1k', 'wicker_basket_01': '1k', 'wicker_basket_02': '1k',
+    'wicker_basket_01': '1k', 'wicker_basket_02': '1k',
     'wooden_bowl_01': '1k', 'ceramic_vase_01': '1k', 'ceramic_vase_02': '1k', 'ceramic_vase_03': '1k',
-    'carved_wooden_elephant': '1k', 'rubber_duck_toy': '1k', 'decorative_book_set_01': '1k',
+    'carved_wooden_elephant': '1k', 'rubber_duck_toy': '1k',
     'watering_can_metal_01': '1k', 'croissant': '1k', 'throw_pillows_01': '1k',
     'shrub_01': '1k', 'shrub_02': '1k', 'shrub_04': '1k', 'tree_small_02': '1k',
 }

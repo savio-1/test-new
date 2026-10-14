@@ -50,6 +50,7 @@ APEX = FRONT_Z + 0.36
 LENS_Y = 0.12
 
 LOGO_FONT_CANDIDATES = [
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fonts', 'Inter-Bold.otf'),  # shipped with the kit
     '/usr/share/fonts/opentype/inter/InterDisplay-Bold.otf',
     '/usr/share/fonts/opentype/inter/Inter-Bold.otf',
     '/Library/Fonts/Arial Bold.ttf',

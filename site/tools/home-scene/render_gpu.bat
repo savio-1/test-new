@@ -1,8 +1,11 @@
 @echo off
 setlocal enabledelayedexpansion
-rem Renders the Alaro home sequence at 1920x1080 on this computer's GPU, then zips the frames.
-rem Double-click to run. Rendering again later resumes where it stopped.
-rem Extra options are passed through, e.g.:  render_gpu.bat --start 0 --end 119
+rem Renders the Alaro home sequence (v2, clay statues) at 3840x2160 on this computer's GPU, then zips the
+rem WebP frames + track.json + render-info.txt into alaro-frames-4k.zip.
+rem Double-click to run. Running it again later resumes where it stopped.
+rem Extra options are passed through, e.g.:
+rem   render_gpu.bat --w 2560              (cheaper: 2560x1440, about 2.2x faster)
+rem   render_gpu.bat --start 0 --end 119   (half the frames, for splitting across two computers)
 
 cd /d "%~dp0"
 
@@ -21,9 +24,10 @@ if not defined BLENDER (
 )
 
 echo Using Blender: "%BLENDER%"
-echo Rendering 240 frames at 1920x1080. This window shows progress; leave it open.
+echo Rendering 240 frames at 3840x2160 (512 samples). This window shows progress and a time estimate;
+echo leave it open. Stopping is safe: run this again to continue.
 echo.
-"%BLENDER%" -b -P "%~dp0build_home.py" -- --render --final --gpu %*
+"%BLENDER%" -b -P "%~dp0build_home.py" -- --render --final --gpu --w 3840 --samples 512 --set 4k --zip %*
 if errorlevel 1 (
   echo.
   echo Blender stopped with an error. Scroll up for the message, or send it to Claude.
@@ -32,8 +36,6 @@ if errorlevel 1 (
 )
 
 echo.
-echo Zipping the frames...
-powershell -NoProfile -Command "Compress-Archive -Path 'frames\hd\*' -DestinationPath 'alaro-frames-hd.zip' -Force"
-echo.
-echo Done. Send this file back:  %~dp0alaro-frames-hd.zip
+echo Done. Send this file back:  %~dp0alaro-frames-4k.zip
+echo (The full-quality PNG masters stay in %~dp0frames\4k\.)
 pause

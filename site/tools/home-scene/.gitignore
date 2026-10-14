@@ -1,0 +1,10 @@
+# Large binaries live in the render kit zip, not in git:
+#   assets/polyhaven/  re-download with fetch_assets.py
+#   assets/people/     rebuild with make_people.py (needs MPFB + the MakeHuman packs)
+#   home.blend         rebuild with build_home.py --blend (packed, several hundred MB)
+assets/polyhaven/
+assets/people/*.blend
+home.blend
+alaro-home.glb
+frames/
+*.zip
