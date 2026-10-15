@@ -42,11 +42,11 @@ STONE = 0.40          # princess girdle edge length
 CROWN = 0.045         # crown height
 PAVILION = 0.27       # pavilion depth
 R_GIRDLE = 1.32       # radius of girdle plane
-BAR_T = 0.062         # bar thickness (tangential)
+BAR_T = 0.075         # bar thickness (tangential)
 BAR_OVER = 0.022      # bar overhang past band edge (axial)
-BAR_TOP = 0.035       # bar height above table
+BAR_TOP = 0.05        # bar height above table
 BAND_W = STONE + 0.02 # axial width of band / rails
-RAIL_W = 0.085        # axial width of each rail
+RAIL_W = 0.125        # axial width of each rail
 RAIL_T = 0.115        # radial thickness of rails
 N_STONES = 10
 PITCH = (STONE + BAR_T + 0.012) / R_GIRDLE   # radians between stones
@@ -135,8 +135,8 @@ def mat_char(name, ember=0.0, wood_mix=0.0, block_tint=(0.016, 0.014, 0.013)):
         wave.inputs["Detail Scale"].default_value = 1.5
         L.new(tc.outputs["Object"], wave.inputs["Vector"])
         wr = N.new("ShaderNodeValToRGB")
-        wr.color_ramp.elements[0].color = (0.06, 0.028, 0.012, 1)
-        wr.color_ramp.elements[1].color = (0.20, 0.10, 0.05, 1)
+        wr.color_ramp.elements[0].color = (0.09, 0.042, 0.018, 1)
+        wr.color_ramp.elements[1].color = (0.30, 0.16, 0.08, 1)
         L.new(wave.outputs["Fac"], wr.inputs["Fac"])
         wm = N.new("ShaderNodeAttribute"); wm.attribute_name = "woodmask"
         mixw = N.new("ShaderNodeMix"); mixw.data_type = "RGBA"
@@ -149,7 +149,7 @@ def mat_char(name, ember=0.0, wood_mix=0.0, block_tint=(0.016, 0.014, 0.013)):
     L.new(base, p.inputs["Base Color"])
     rough = N.new("ShaderNodeMapRange")
     rough.inputs["To Min"].default_value = 0.95
-    rough.inputs["To Max"].default_value = 0.42
+    rough.inputs["To Max"].default_value = 0.38
     L.new(crack.outputs["Fac"], rough.inputs["Value"])
     L.new(rough.outputs["Result"], p.inputs["Roughness"])
     p.inputs["Specular IOR Level"].default_value = 0.35
@@ -187,7 +187,7 @@ def mat_char(name, ember=0.0, wood_mix=0.0, block_tint=(0.016, 0.014, 0.013)):
         st.inputs[1].default_value = ember
         L.new(g3.outputs[0], st.inputs[0])
         bb = N.new("ShaderNodeBlackbody")
-        bb.inputs["Temperature"].default_value = 1350
+        bb.inputs["Temperature"].default_value = arg("--embertemp", 1500, float)
         L.new(bb.outputs["Color"], p.inputs["Emission Color"])
         L.new(st.outputs[0], p.inputs["Emission Strength"])
 
@@ -331,7 +331,7 @@ sh0 = bar_thetas[-1]
 sh1 = bar_thetas[0] + 2 * math.pi
 for k in range(1, N_SHANK_BARS + 1):
     th = sh0 + (sh1 - sh0) * k / (N_SHANK_BARS + 1)
-    add_box(bm, frame_at(th, 0.0), -half_w + 0.01, half_w - 0.01, -0.03, 0.03,
+    add_box(bm, frame_at(th, 0.0), -half_w + 0.01, half_w - 0.01, -0.045, 0.045,
             R_IN, R_IN + RAIL_T)
 metal_me = bpy.data.meshes.new("Metal")
 bm.to_mesh(metal_me)
@@ -350,8 +350,8 @@ bev.angle_limit = math.radians(40)
 bev.harden_normals = True
 
 # Ring orientation in the world (camera looks along +Y, image up = +Z)
-MAJ = math.radians(arg("--major", 50.0, float))    # ellipse major-axis angle in image
-TILT = math.radians(arg("--tilt", 18.0, float))    # ring axis tilt toward camera
+MAJ = math.radians(arg("--major", 56.0, float))    # ellipse major-axis angle in image
+TILT = math.radians(arg("--tilt", 20.0, float))    # ring axis tilt toward camera
 SHIFT = math.radians(arg("--shift", 15.0, float))  # stone arc shift toward top-right
 u = Vector((math.cos(MAJ), 0, math.sin(MAJ)))
 m_img = Vector((math.sin(MAJ), 0, -math.cos(MAJ)))
@@ -367,7 +367,7 @@ rot = Matrix((
     (x_ax.y, n.y, c.y),
     (x_ax.z, n.z, c.z),
 )).to_4x4()
-ring_root.matrix_world = Matrix.Translation(Vector((arg("--rx", 0.0, float), 0, arg("--rz", 0.0, float)))) @ rot
+ring_root.matrix_world = Matrix.Translation(Vector((arg("--rx", 0.12, float), 0, arg("--rz", 0.0, float)))) @ rot
 
 # --------------------------------------------------------------------------
 # Charred logs (numpy-generated geometry with Voronoi alligator cracks)
@@ -405,6 +405,41 @@ def voronoi(U, V, period_v, seed):
     return F1, F2, ID
 
 
+def char_blocks(U, V, cells_v, seed):
+    """Alligator-char pattern: irregular rows along the log, each split into blocks."""
+    rng = np.random.default_rng(seed)
+    # warp coordinates for organic, non-grid cracks (periodic in V)
+    ph = rng.uniform(0, 2 * np.pi, 6)
+    tv = V / cells_v * 2 * np.pi
+    Uw = U + 0.30 * np.sin(tv * 3 + ph[0] + U * 0.7) + 0.18 * np.sin(tv * 7 + ph[1] + U * 1.9) + 0.08 * np.sin(tv * 17 + ph[4] + U * 4.3)
+    Vw = V + 0.40 * np.sin(U * 1.3 + ph[2]) + 0.22 * np.sin(U * 3.1 + tv * 2 + ph[3]) + 0.10 * np.sin(U * 7.7 + tv * 5 + ph[5])
+    row = np.floor(Uw).astype(np.int64)
+    fu = Uw - row
+    hr = _hash2(row + 5000, np.zeros_like(row) + 77, seed)
+    n_r = 0.55 + 0.9 * ((hr & np.uint32(1023)).astype(np.float64) / 1023.0)
+    nblk = np.maximum(3, np.round(cells_v * n_r)).astype(np.float64)
+    off = ((hr >> np.uint32(10)) & np.uint32(1023)).astype(np.float64) / 1023.0
+    vb = (Vw / cells_v) * nblk + off
+    blk = np.floor(vb)
+    fv = vb - blk
+    blk_id = np.mod(blk, nblk).astype(np.int64)
+    # in-row cross-crack spacing in U units = cells_v / nblk
+    du = np.minimum(fu, 1 - fu)
+    dv = np.minimum(fv, 1 - fv) * (cells_v / nblk)
+    # some row boundaries are only partially cracked
+    hb = _hash2(row + 9000, blk_id + 300, seed)
+    weak = ((hb & np.uint32(255)).astype(np.float64) / 255.0) < 0.18
+    du = np.where(weak & (fu > 0.5), du + 0.25, du)
+    dist = np.minimum(du, dv)
+    width = 0.07 + 0.10 * (((hb >> np.uint32(8)) & np.uint32(255)).astype(np.float64) / 255.0)
+    crack = np.clip(dist / width, 0, 1)
+    # random per-block tilt so neighbouring blocks catch the light differently
+    ta = (((hb >> np.uint32(16)) & np.uint32(255)).astype(np.float64) / 255.0 - 0.5)
+    tb = (((hb >> np.uint32(24)) & np.uint32(255)).astype(np.float64) / 255.0 - 0.5)
+    tilt = ta * (fu - 0.5) + tb * (fv - 0.5)
+    return crack, hb, tilt
+
+
 def smooth_noise(P, seed, freqs=((0.6, 1.0), (1.3, 0.45), (2.9, 0.2))):
     rng = np.random.default_rng(seed)
     out = np.zeros(P.shape[0])
@@ -416,7 +451,7 @@ def smooth_noise(P, seed, freqs=((0.6, 1.0), (1.3, 0.45), (2.9, 0.2))):
     return out
 
 
-def make_log(name, center, axis, radius, length, cell=0.16, nu=None, nv=None,
+def make_log(name, center, axis, radius, length, cell=0.26, nu=None, nv=None,
              seed=1, crack_depth=0.06, mat=None, glow_fn=None, wood_fn=None, bulge=0.10):
     axis = Vector(axis).normalized()
     ref = Vector((0, 0, 1)) if abs(axis.z) < 0.9 else Vector((1, 0, 0))
@@ -432,17 +467,14 @@ def make_log(name, center, axis, radius, length, cell=0.16, nu=None, nv=None,
     S, T = np.meshgrid(s, t, indexing="ij")
     U = (S / length + 0.5) * cells_u
     V = T / (2 * math.pi) * cells_v
-    F1, F2, ID = voronoi(U, V, cells_v, seed)
-    edge = F2 - F1
-    width = 0.10 + 0.12 * (((ID >> np.uint32(17)) & np.uint32(255)).astype(np.float64) / 255.0)
-    crack = np.clip(edge / width, 0, 1)
-    crack_profile = crack ** 0.55
+    crack, ID, tilt = char_blocks(U, V, cells_v, seed)
+    crack_profile = 1.0 - (1.0 - crack) ** 3
     cellrand = ((ID >> np.uint32(5)) & np.uint32(1023)).astype(np.float64) / 1023.0
     ax = np.array(axis); a1 = np.array(e1); a2 = np.array(e2)
     base_pts = (S[..., None] * ax + np.cos(T)[..., None] * a1 * radius + np.sin(T)[..., None] * a2 * radius)
     flat = base_pts.reshape(-1, 3)
     low = smooth_noise(flat / radius, seed).reshape(S.shape)
-    rr = radius * (1 + bulge * low) + crack_depth * (crack_profile - 1.0) + crack_depth * 0.35 * (cellrand - 0.5)
+    rr = radius * (1 + bulge * low) + crack_depth * (crack_profile - 1.0) + crack_depth * 0.35 * (cellrand - 0.5) + crack_depth * 0.9 * tilt * crack
     # taper ends slightly
     pts = (S[..., None] * ax + (np.cos(T) * rr)[..., None] * a1 + (np.sin(T) * rr)[..., None] * a2)
     pts = pts + np.array(center)
@@ -499,37 +531,40 @@ M_CHAR = mat_char("Charcoal", ember=0.0)
 M_CHAR_EMBER = mat_char("CharcoalEmber", ember=arg("--ember", 4.0, float))
 M_CHAR_BROWN = mat_char("CharcoalSplit", ember=0.0, wood_mix=1.0, block_tint=(0.020, 0.016, 0.014))
 
-FIRE = Vector((0.25, 2.2, -1.6))   # heart of the ember bed, behind/below the ring
+FIRE = Vector((0.1, 2.6, -1.4))   # heart of the ember bed, behind/below the ring
 
 # Right log the ring leans on (in focus near the ring)
-make_log("LogRight", center=(3.0, 1.5, 0.3), axis=(0.30, 0.25, 1.0), radius=1.75, length=9,
-         cell=0.17, seed=3, crack_depth=0.07, mat=M_CHAR_BROWN,
-         glow_fn=None,
-         wood_fn=lambda v, cr, S, T: np.clip((-(v[:, 2]) - 0.15) * 1.2, 0, 1) * np.clip((v[:, 0] - 0.4) * 2, 0, 1) * (0.55 + 0.45 * cr))
+make_log("LogRight", center=(2.05, 1.1, 0.0), axis=(0.25, 0.5, 1.0), radius=1.2, length=8,
+         cell=0.22, seed=3, crack_depth=0.07, mat=M_CHAR_BROWN,
+         wood_fn=lambda v, cr, S, T: np.clip((-(v[:, 2]) - 0.4) * 1.5, 0, 1) * (0.5 + 0.5 * cr))
 # Lower right split chunk (lighter fibrous wood)
-make_log("LogRightLow", center=(2.1, -0.4, -2.4), axis=(1.0, 0.7, -0.15), radius=1.15, length=7,
-         cell=0.15, seed=5, crack_depth=0.06, mat=M_CHAR_BROWN,
-         wood_fn=lambda v, cr, S, T: np.clip(0.35 + 0.65 * cr, 0, 1) * np.clip(v[:, 0] - 0.2, 0, 1))
+make_log("LogRightLow", center=(1.65, -0.25, -1.65), axis=(1.0, 0.55, 0.15), radius=1.1, length=6,
+         cell=0.22, seed=5, crack_depth=0.06, mat=M_CHAR_BROWN,
+         wood_fn=lambda v, cr, S, T: np.clip(0.25 + 0.75 * cr, 0, 1) * np.clip((v[:, 0] - 0.5) * 1.5, 0, 1))
 # Log under the ring
-make_log("LogBottom", center=(0.4, 0.7, -2.25), axis=(1.0, -0.35, 0.12), radius=0.95, length=7,
-         cell=0.15, seed=7, crack_depth=0.06, mat=M_CHAR_EMBER,
-         glow_fn=glow_near(FIRE + Vector((-0.3, -1.2, 0.2)), 1.5, gain=1.2, cut=0.15))
+make_log("LogBottom", center=(0.25, 0.3, -1.85), axis=(1.0, -0.3, 0.1), radius=0.9, length=6,
+         cell=0.20, seed=7, crack_depth=0.06, mat=M_CHAR_EMBER,
+         glow_fn=glow_near(Vector((-0.4, -0.3, -1.6)), 0.6, gain=1.0, cut=0.15))
 # Big left log
-make_log("LogLeft", center=(-2.6, 0.6, -1.25), axis=(0.55, 0.9, 0.42), radius=1.45, length=9,
-         cell=0.17, seed=11, crack_depth=0.07, mat=M_CHAR_EMBER,
-         glow_fn=glow_near(Vector((-0.5, 0.2, -1.8)), 1.1, gain=1.4, cut=0.2))
+make_log("LogLeft", center=(-2.1, 0.5, -1.0), axis=(0.5, 1.0, 0.25), radius=1.25, length=8,
+         cell=0.22, seed=11, crack_depth=0.07, mat=M_CHAR_EMBER,
+         glow_fn=glow_near(Vector((-0.45, -0.2, -1.65)), 0.6, gain=1.6, cut=0.2))
 # Background log across the top (out of focus)
-make_log("LogBack", center=(-0.6, 5.5, 2.4), axis=(1.0, 0.25, -0.30), radius=2.0, length=14,
-         cell=0.26, seed=13, crack_depth=0.08, mat=M_CHAR_EMBER,
-         glow_fn=glow_near(Vector((0.8, 4.5, 0.5)), 1.6, gain=0.9, cut=0.1))
+make_log("LogBack", center=(-0.3, 6.0, 1.9), axis=(1.0, 0.2, -0.35), radius=2.2, length=14,
+         cell=0.28, seed=13, crack_depth=0.08, mat=M_CHAR_BROWN,
+         wood_fn=lambda v, cr, S, T: np.clip((v[:, 2] - 0.5) * 0.25, 0, 0.35) * cr)
 # Background log on the left behind
-make_log("LogBackLeft", center=(-3.2, 4.0, 0.0), axis=(0.8, 0.6, 0.25), radius=1.5, length=10,
-         cell=0.24, seed=17, crack_depth=0.07, mat=M_CHAR_EMBER,
-         glow_fn=glow_near(Vector((-0.8, 3.5, -1.0)), 1.6, gain=1.0, cut=0.1))
+make_log("LogBackLeft", center=(-3.4, 4.5, -0.2), axis=(0.8, 0.6, 0.25), radius=1.5, length=10,
+         cell=0.26, seed=17, crack_depth=0.07, mat=M_CHAR_EMBER,
+         glow_fn=glow_near(Vector((-1.2, 3.8, -1.0)), 1.0, gain=0.4, cut=0.1))
+# Dark log standing between ring and fire (shadowed shape in the ring hole)
+make_log("LogMid", center=(-0.7, 2.2, -1.3), axis=(0.3, 0.2, 1.0), radius=0.6, length=2.2,
+         cell=0.20, seed=23, crack_depth=0.06, mat=M_CHAR_EMBER,
+         glow_fn=glow_near(Vector((-0.2, 2.6, -1.4)), 0.7, gain=0.8, cut=0.1))
 # Ember bed behind the ring (bright, will be heavily defocused)
-make_log("EmberBed", center=(0.6, 3.6, -2.3), axis=(1.0, 0.15, 0.0), radius=1.0, length=6,
+make_log("EmberBed", center=(0.2, 3.2, -2.4), axis=(1.0, 0.15, 0.0), radius=1.0, length=6,
          cell=0.20, seed=19, crack_depth=0.08, mat=M_CHAR_EMBER,
-         glow_fn=glow_near(Vector((0.4, 3.0, -1.4)), 1.8, gain=2.5, cut=0.0))
+         glow_fn=glow_near(Vector((0.1, 2.6, -1.6)), 1.3, gain=2.0, cut=0.0))
 
 # Soft glowing core behind the ring hole (hidden from direct reflections cost)
 glow_core = bpy.data.meshes.new("GlowCore")
@@ -537,9 +572,9 @@ bmg = bmesh.new()
 bmesh.ops.create_uvsphere(bmg, u_segments=24, v_segments=12, radius=1.0)
 bmg.to_mesh(glow_core); bmg.free()
 gc = link(bpy.data.objects.new("GlowCore", glow_core))
-gc.location = (0.55, 3.4, -0.9)
-gc.scale = (1.0, 0.4, 1.4)
-glow_core.materials.append(mat_emit("GlowCoreMat", arg("--core", 1.2, float), 1250))
+gc.location = (0.6, 3.5, -0.3)
+gc.scale = (0.9, 0.4, 1.3)
+glow_core.materials.append(mat_emit("GlowCoreMat", arg("--core", 0.8, float), arg("--coretemp", 1450, float)))
 gc.visible_shadow = False
 
 # --------------------------------------------------------------------------
@@ -573,27 +608,32 @@ def point(name, loc, power, color, radius=0.3):
     return ob
 
 
-WARM = (1.0, 0.42, 0.10)
+WARM = (1.0, 0.48, 0.13)
 # Ring-only studio lights (light-linked so the charcoal stays dark)
 area("Key", (-4.5, -6.0, 6.0), (0, 0, 0.2), 2.5, arg("--key", 1400, float), (1.0, 0.97, 0.93), size_y=1.2, only=RING_COLL)
 area("TopStrip", (0.5, -2.5, 6.5), (0, 0, 0), 5.0, 500, (1.0, 0.98, 0.95), size_y=0.35, only=RING_COLL)
 area("FillCard", (4.0, -6.5, 1.0), (0, 0, 0), 1.5, 120, (0.95, 0.97, 1.0), only=RING_COLL)
 # Diamond scintillation cards: many small strips around the camera hemisphere
 rng_c = np.random.default_rng(42)
-for i in range(14):
-    az = rng_c.uniform(-2.4, 2.4)
-    el = rng_c.uniform(0.15, 1.3)
+for i in range(40):
+    az = rng_c.uniform(-2.6, 2.6)
+    el = rng_c.uniform(-0.2, 1.4)
     rad = 7.0
     loc = (rad * math.sin(az) * math.cos(el), -rad * math.cos(az) * math.cos(el), rad * math.sin(el))
-    area(f"Spark.{i:02d}", loc, (0, 0, 0), rng_c.uniform(0.15, 0.5), rng_c.uniform(60, 220),
-         (1.0, 0.98, 0.95), size_y=rng_c.uniform(0.6, 1.8), only=STONE_COLL)
+    area(f"Spark.{i:02d}", loc, (0, 0, 0), rng_c.uniform(0.15, 0.6), rng_c.uniform(120, 420) * arg("--spark", 1.0, float),
+         (1.0, 0.98, 0.95), size_y=rng_c.uniform(1.0, 3.0), only=STONE_COLL)
+area("StoneSoftbox", (-1.5, -7.5, 3.5), (0, 0, 0), 1.2, 250, (1.0, 0.98, 0.95), size_y=2.0, only=STONE_COLL)
 # Weak warm-white grazing light for the charcoal texture
-area("LogKey", (-6.0, -3.0, 6.5), (0, 1.5, -0.5), 3.0, arg("--logkey", 220, float), (1.0, 0.85, 0.70))
+area("LogKey", (-6.0, -3.0, 6.5), (0, 1.5, -0.5), 3.0, arg("--logkey", 500, float), (1.0, 0.85, 0.70))
+LOG_LEFT_COLL = bpy.data.collections.new("LeftLog")
+LOG_LEFT_COLL.objects.link(bpy.data.objects["LogLeft"])
+area("LogLeftKey", (-5.5, -5.0, 3.5), (-1.6, 0.0, -0.6), 2.5, arg("--leftkey", 450, float), (1.0, 0.86, 0.72), only=LOG_LEFT_COLL)
+area("LogRim", (5.0, -4.0, 2.5), (1.5, 0.5, 0.0), 2.0, arg("--logrim", 350, float), (1.0, 0.70, 0.45))
 # Fire glow from below/behind the ring
 point("FireCore", tuple(FIRE), arg("--fire", 260, float), WARM, 0.8)
-point("FireLow", (0.0, 0.6, -1.9), 40, WARM, 0.5)
-point("FireRight", (1.1, 1.6, 0.4), 30, (1.0, 0.45, 0.12), 0.4)
-point("FireBack", (0.8, 4.0, 0.6), 120, (1.0, 0.38, 0.08), 1.0)
+point("FireLow", (-0.4, -0.1, -1.3), 40, WARM, 0.5)
+point("FireRight", (0.75, 0.9, -0.3), 30, (1.0, 0.45, 0.12), 0.4)
+point("FireBack", (0.3, 4.0, -0.8), 50, (1.0, 0.38, 0.08), 1.0)
 
 # World: near-black warm
 world = bpy.data.worlds.new("World") if not scene.world else scene.world
@@ -610,14 +650,14 @@ cam_d = bpy.data.cameras.new("Camera")
 cam_d.lens = 100
 cam_d.sensor_width = 36
 cam = link(bpy.data.objects.new("Camera", cam_d))
-cam.location = (arg("--cx", 0.05, float), -arg("--dist", 9.8, float), arg("--cz", 0.15, float))
+cam.location = (arg("--cx", 0.05, float), -arg("--dist", 8.6, float), arg("--cz", 0.15, float))
 cam.rotation_euler = (math.radians(90 + arg("--pitch", 0.0, float)), 0, 0)
 scene.camera = cam
 focus = link(bpy.data.objects.new("Focus", None))
 focus.location = (-0.15, -0.35, 0.2)
 cam_d.dof.use_dof = True
 cam_d.dof.focus_object = focus
-cam_d.dof.aperture_fstop = arg("--fstop", 0.6, float)
+cam_d.dof.aperture_fstop = arg("--fstop", 0.45, float)
 cam_d.dof.aperture_blades = 7
 
 # --------------------------------------------------------------------------
@@ -650,8 +690,8 @@ scene.render.film_transparent = False
 scene.render.image_settings.file_format = "PNG"
 scene.render.image_settings.color_depth = "8"
 try:
-    scene.view_settings.view_transform = "AgX"
-    scene.view_settings.look = arg("--look", "AgX - Medium High Contrast")
+    scene.view_settings.view_transform = arg("--view", "Filmic")
+    scene.view_settings.look = arg("--look", "High Contrast")
 except Exception as e:
     print("colour management:", e)
 scene.view_settings.exposure = arg("--exposure", 0.0, float)
@@ -660,6 +700,7 @@ scene.render.filepath = OUT
 if BLEND:
     bpy.context.preferences.filepaths.use_file_compression = True
     bpy.ops.wm.save_as_mainfile(filepath=BLEND, compress=True)
-if not arg("--no-render", False):
+# Inside the Blender UI just build the scene; press F12 to render.
+if bpy.app.background and not arg("--no-render", False):
     bpy.ops.render.render(write_still=True)
     print("RENDERED", bpy.path.abspath(OUT))
