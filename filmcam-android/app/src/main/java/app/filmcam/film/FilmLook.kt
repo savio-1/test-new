@@ -1,29 +1,59 @@
 package app.filmcam.film
 
-/** What surrounds the picture: none, a projector gate, an instant print, a negative strip... */
+/** What surrounds the picture. The same borders apply to photos and to video. */
 enum class FrameStyle(val label: String, val shaderId: Int) {
     NONE("None", 0),
-    GATE("Gate", 1),
+    GATE("Projector gate", 1),
     INSTANT("Instant", 2),
     FILMSTRIP("35mm strip", 3),
-    FILED("Filed print", 4),
+    FILED("Filed carrier", 4),
+    INSTANT_SQUARE("Instant square", 5),
+    INSTANT_MINI("Instant mini", 6),
+    WHITE("White print", 7),
+    MAT("Gallery mat", 8),
+    BLACK("Black border", 9),
+    STRIP_120("120 film", 10),
+    SUPER8_STRIP("Super 8 strip", 11),
+    SLIDE_MOUNT("Slide mount", 12),
+    LETTERBOX("Scope 2.39", 13),
+    ACADEMY("Academy 4:3", 14),
+    DECKLE("Deckled print", 15),
+    ROUNDED("Rounded print", 16),
+}
+
+/** Text burnt into the frame. */
+enum class StampStyle(val label: String, val shaderId: Int) {
+    NONE("Off", 0),
+    DATE("Date", 1),
+    DATE_98("Date '98", 2),
+    CAMCORDER("Camcorder", 3),
+}
+
+/** Photo formats that put more than one exposure on a frame. */
+enum class MultiShot(val label: String, val shots: Int) {
+    SINGLE("Single", 1),
+    HALF_FRAME("Half frame", 2),
+    SAMPLER("4-lens sampler", 4),
 }
 
 /** Cadence the picture changes at. Frames are held, like a camera cranked slower. */
 enum class FilmFrameRate(val label: String, val fps: Int) {
-    NATIVE("30", 0),
+    NATIVE("Native", 0),
     FPS_24("24", 24),
     FPS_18("18", 18),
+    FPS_16("16", 16),
     FPS_12("12", 12),
 }
 
-/** Simulated shutter speeds. Slower ones leave motion trails, like a long exposure. */
+/** Shutter speeds. Simulated as motion trails, or set on the sensor with "real shutter". */
 enum class ShutterSpeed(val label: String, val seconds: Float) {
+    S4000("1/4000", 1f / 4000f),
     S1000("1/1000", 1f / 1000f),
     S500("1/500", 1f / 500f),
     S250("1/250", 1f / 250f),
     S125("1/125", 1f / 125f),
     S60("1/60", 1f / 60f),
+    S48("1/48", 1f / 48f),
     S30("1/30", 1f / 30f),
     S15("1/15", 1f / 15f),
     S8("1/8", 1f / 8f),
@@ -47,107 +77,240 @@ enum class ShutterSpeed(val label: String, val seconds: Float) {
  */
 data class FilmLook(
     val stock: FilmStock = FilmStocks.GOLD_200,
+    // light
     val halation: Float = 0.35f,
+    val halationSize: Float = 0.4f,
     val bloom: Float = 0.2f,
+    /** Horizontal anamorphic streaks from bright lights. */
+    val streak: Float = 0f,
+    // emulsion
     val grain: Float = 0.35f,
     /** Grain cell size in pixels of a 1080-line frame (0.6..3). */
     val grainSize: Float = 1.3f,
-    val lightLeak: Float = 0f,
-    val vignette: Float = 0.3f,
-    val gateWeave: Float = 0f,
-    val flicker: Float = 0f,
-    val dust: Float = 0f,
-    val aberration: Float = 0.1f,
-    /** -1 sharp .. +1 soft. */
-    val softness: Float = 0f,
-    /** Extra fade on top of the stock's own. */
     val fade: Float = 0f,
     /** Extra warmth on top of the stock's own, -1..1. */
     val warmth: Float = 0f,
+    // light leaks
+    val lightLeak: Float = 0f,
+    /** Rainbow prism flare plus a ghost image. */
+    val prism: Float = 0f,
+    // lens
+    val vignette: Float = 0.3f,
+    val aberration: Float = 0.1f,
+    /** -1 sharp .. +1 soft. */
+    val softness: Float = 0f,
+    /** Toy-lens blur that grows toward the corners. */
+    val cornerBlur: Float = 0f,
+    /** Barrel distortion; 1 is a full fisheye. */
+    val distortion: Float = 0f,
+    /** Black circle around the picture, for fisheye. */
+    val circleMask: Boolean = false,
+    /** Red/cyan stereo split. */
+    val anaglyph: Float = 0f,
+    /** Direct on-camera flash: hot centre, fast fall-off. */
+    val flash: Float = 0f,
+    // projection
+    val gateWeave: Float = 0f,
+    /** Occasional vertical slip showing the frame line. */
+    val frameSlip: Float = 0f,
+    val flicker: Float = 0f,
+    /** Per-channel density pumping from frame to frame. */
+    val colorFlicker: Float = 0f,
+    val dust: Float = 0f,
+    // video
+    /** Tape look: line jitter, chroma bleed, scanlines, tracking noise. */
+    val vhs: Float = 0f,
+    /** Combing on motion, like an interlaced camcorder. */
+    val interlace: Float = 0f,
+    /** Lower resolution: 0 = full, 1 = ~240 lines. */
+    val lowRes: Float = 0f,
+    /** Burnt-in leader when a recording starts and stops. */
+    val rollBurn: Boolean = false,
+    // timing and capture
     val shutter: ShutterSpeed = ShutterSpeed.S125,
     val frameRate: FilmFrameRate = FilmFrameRate.NATIVE,
+    // decoration
     val frame: FrameStyle = FrameStyle.NONE,
-    val dateStamp: Boolean = false,
+    val stamp: StampStyle = StampStyle.NONE,
+    val multiShot: MultiShot = MultiShot.SINGLE,
     /** Real exposure compensation sent to the camera, in EV. */
     val exposureEv: Float = 0f,
 )
+
+enum class CameraCategory(val label: String) {
+    FILM("35mm"),
+    CINE("Cine"),
+    INSTANT("Instant"),
+    MONO("B&W"),
+    TOY("Toy & Fun"),
+    VIDEO("Retro video"),
+}
 
 /** A "camera": a stock plus a format and a set of effects that belong together. */
 data class FilmCamera(
     val id: String,
     val name: String,
     val subtitle: String,
+    val category: CameraCategory,
     val look: FilmLook,
 )
 
 object FilmCameras {
+    private fun cam(id: String, name: String, sub: String, cat: CameraCategory, look: FilmLook) =
+        FilmCamera(id, name, sub, cat, look)
+
     val ALL: List<FilmCamera> = listOf(
-        FilmCamera(
-            "classic35", "Classic 35", "Gold 200 · point & shoot",
+        // ------------------------------------------------------------ 35mm stills
+        cam("classic35", "Classic 35", "Gold 200 · point & shoot", CameraCategory.FILM,
             FilmLook(stock = FilmStocks.GOLD_200, halation = 0.35f, bloom = 0.2f, grain = 0.38f, grainSize = 1.3f,
-                vignette = 0.3f, aberration = 0.15f, lightLeak = 0.12f),
-        ),
-        FilmCamera(
-            "portrait", "Portrait", "Portrait 400 · soft skin",
+                vignette = 0.3f, aberration = 0.15f, lightLeak = 0.12f)),
+        cam("portrait", "Portrait", "Portrait 400 · soft skin", CameraCategory.FILM,
             FilmLook(stock = FilmStocks.PORTRAIT_400, halation = 0.3f, bloom = 0.25f, grain = 0.3f, grainSize = 1.2f,
-                vignette = 0.22f, softness = 0.1f, aberration = 0.08f),
-        ),
-        FilmCamera(
-            "cine800t", "Cine 800T", "Tungsten cinema · red halation",
-            FilmLook(stock = FilmStocks.CINE_800T, halation = 0.85f, bloom = 0.4f, grain = 0.42f, grainSize = 1.5f,
-                vignette = 0.35f, gateWeave = 0.12f, aberration = 0.12f, frameRate = FilmFrameRate.FPS_24,
-                shutter = ShutterSpeed.S60),
-        ),
-        FilmCamera(
-            "super8", "Super 8", "Home movie · 18 fps",
+                vignette = 0.22f, softness = 0.1f, aberration = 0.08f)),
+        cam("verde", "Verde", "Verde 400 · cool greens", CameraCategory.FILM,
+            FilmLook(stock = FilmStocks.VERDE_400, halation = 0.3f, bloom = 0.2f, grain = 0.42f, grainSize = 1.4f,
+                vignette = 0.3f, aberration = 0.12f)),
+        cam("vivid", "Vivid SLR", "Vivid 100 · punchy, fine grain", CameraCategory.FILM,
+            FilmLook(stock = FilmStocks.VIVID_100, halation = 0.2f, bloom = 0.12f, grain = 0.18f, grainSize = 1.0f,
+                vignette = 0.2f, aberration = 0.05f, softness = -0.15f)),
+        cam("disposable", "Disposable '98", "Verde 400 · flash & date", CameraCategory.FILM,
+            FilmLook(stock = FilmStocks.VERDE_400, halation = 0.4f, bloom = 0.3f, grain = 0.5f, grainSize = 1.6f,
+                lightLeak = 0.3f, vignette = 0.55f, aberration = 0.5f, softness = 0.3f, flash = 0.35f,
+                stamp = StampStyle.DATE_98)),
+        cam("halfframe", "Half Frame", "Two shots per frame", CameraCategory.FILM,
+            FilmLook(stock = FilmStocks.GOLD_200, halation = 0.35f, bloom = 0.2f, grain = 0.5f, grainSize = 1.7f,
+                vignette = 0.35f, aberration = 0.15f, lightLeak = 0.15f, multiShot = MultiShot.HALF_FRAME)),
+        cam("slide", "Slide", "Chrome 100 · on the lightbox", CameraCategory.FILM,
+            FilmLook(stock = FilmStocks.CHROME_100, halation = 0.2f, bloom = 0.15f, grain = 0.16f, grainSize = 1.0f,
+                vignette = 0.25f, aberration = 0.05f, softness = -0.2f, frame = FrameStyle.SLIDE_MOUNT)),
+        cam("strip", "Contact Strip", "Gold 200 · negative scan", CameraCategory.FILM,
+            FilmLook(stock = FilmStocks.GOLD_200, halation = 0.3f, bloom = 0.15f, grain = 0.35f, grainSize = 1.3f,
+                vignette = 0.2f, aberration = 0.08f, frame = FrameStyle.FILMSTRIP)),
+        cam("crosspro", "Cross-Pro", "Slide film in negative chemistry", CameraCategory.FILM,
+            FilmLook(stock = FilmStocks.CROSS_PRO, halation = 0.3f, bloom = 0.25f, grain = 0.45f, grainSize = 1.5f,
+                vignette = 0.45f, aberration = 0.2f, lightLeak = 0.15f)),
+        cam("redscale", "Redscale", "Film loaded backwards", CameraCategory.FILM,
+            FilmLook(stock = FilmStocks.REDSCALE, halation = 0.45f, bloom = 0.3f, grain = 0.55f, grainSize = 1.7f,
+                vignette = 0.45f, aberration = 0.15f)),
+        cam("expired", "Expired", "Found in a drawer", CameraCategory.FILM,
+            FilmLook(stock = FilmStocks.EXPIRED, halation = 0.45f, bloom = 0.35f, grain = 0.68f, grainSize = 1.9f,
+                lightLeak = 0.7f, vignette = 0.5f, dust = 0.4f, flicker = 0.15f, colorFlicker = 0.3f,
+                aberration = 0.3f, softness = 0.25f)),
+
+        // ------------------------------------------------------------ cinema
+        cam("cine800t", "Cine 800T", "Tungsten night · red halation", CameraCategory.CINE,
+            FilmLook(stock = FilmStocks.CINE_800T, halation = 0.85f, halationSize = 0.55f, bloom = 0.4f, grain = 0.42f,
+                grainSize = 1.5f, vignette = 0.35f, gateWeave = 0.12f, aberration = 0.12f,
+                frameRate = FilmFrameRate.FPS_24, shutter = ShutterSpeed.S48)),
+        cam("cine250d", "Cine 250D", "Daylight negative · wide latitude", CameraCategory.CINE,
+            FilmLook(stock = FilmStocks.CINE_250D, halation = 0.4f, bloom = 0.25f, grain = 0.3f, grainSize = 1.3f,
+                vignette = 0.3f, gateWeave = 0.1f, aberration = 0.08f, frameRate = FilmFrameRate.FPS_24,
+                shutter = ShutterSpeed.S48)),
+        cam("scope", "Scope", "Anamorphic 2.39 · streaks", CameraCategory.CINE,
+            FilmLook(stock = FilmStocks.CINE_250D, halation = 0.45f, bloom = 0.2f, streak = 0.7f, grain = 0.32f,
+                grainSize = 1.3f, vignette = 0.4f, distortion = 0.12f, gateWeave = 0.08f, aberration = 0.2f,
+                frameRate = FilmFrameRate.FPS_24, shutter = ShutterSpeed.S48, frame = FrameStyle.LETTERBOX)),
+        cam("bleach", "Bleach Bypass", "Silver retained · gritty", CameraCategory.CINE,
+            FilmLook(stock = FilmStocks.BLEACH, halation = 0.3f, bloom = 0.15f, grain = 0.5f, grainSize = 1.4f,
+                vignette = 0.4f, gateWeave = 0.1f, softness = -0.2f, frameRate = FilmFrameRate.FPS_24,
+                shutter = ShutterSpeed.S48)),
+        cam("super8", "Super 8", "Home movie · 18 fps", CameraCategory.CINE,
             FilmLook(stock = FilmStocks.SUPER8_REVERSAL, halation = 0.5f, bloom = 0.35f, grain = 0.75f, grainSize = 2.4f,
-                lightLeak = 0.35f, vignette = 0.6f, gateWeave = 0.8f, flicker = 0.5f, dust = 0.55f,
-                aberration = 0.35f, softness = 0.45f, shutter = ShutterSpeed.S30,
-                frameRate = FilmFrameRate.FPS_18, frame = FrameStyle.GATE),
-        ),
-        FilmCamera(
-            "bolex16", "16mm", "Documentary · 24 fps",
+                lightLeak = 0.35f, vignette = 0.6f, gateWeave = 0.8f, frameSlip = 0.2f, flicker = 0.5f, colorFlicker = 0.3f,
+                dust = 0.55f, aberration = 0.35f, softness = 0.45f, shutter = ShutterSpeed.S30, rollBurn = true,
+                frameRate = FilmFrameRate.FPS_18, frame = FrameStyle.GATE)),
+        cam("super8strip", "Super 8 Reel", "Projected strip with perfs", CameraCategory.CINE,
+            FilmLook(stock = FilmStocks.SUPER8_REVERSAL, halation = 0.45f, bloom = 0.3f, grain = 0.7f, grainSize = 2.2f,
+                lightLeak = 0.25f, vignette = 0.5f, gateWeave = 0.7f, flicker = 0.4f, dust = 0.5f, aberration = 0.3f,
+                softness = 0.4f, shutter = ShutterSpeed.S30, rollBurn = true, frameRate = FilmFrameRate.FPS_18,
+                frame = FrameStyle.SUPER8_STRIP)),
+        cam("bolex16", "16mm", "Documentary · 24 fps", CameraCategory.CINE,
             FilmLook(stock = FilmStocks.PORTRAIT_400, halation = 0.45f, bloom = 0.25f, grain = 0.58f, grainSize = 1.8f,
                 vignette = 0.45f, gateWeave = 0.4f, flicker = 0.25f, dust = 0.3f, aberration = 0.2f,
-                softness = 0.2f, shutter = ShutterSpeed.S60, frameRate = FilmFrameRate.FPS_24, frame = FrameStyle.GATE),
-        ),
-        FilmCamera(
-            "disposable", "Disposable", "Superior 400 · flash & date",
-            FilmLook(stock = FilmStocks.GREEN_400, halation = 0.4f, bloom = 0.3f, grain = 0.5f, grainSize = 1.6f,
-                lightLeak = 0.3f, vignette = 0.55f, aberration = 0.5f, softness = 0.3f, dateStamp = true),
-        ),
-        FilmCamera(
-            "instant", "Instant", "Square-ish print · creamy",
-            FilmLook(stock = FilmStocks.INSTANT, halation = 0.25f, bloom = 0.35f, grain = 0.18f, grainSize = 1.1f,
-                vignette = 0.4f, softness = 0.3f, aberration = 0.1f, frame = FrameStyle.INSTANT),
-        ),
-        FilmCamera(
-            "slide", "Slide", "Chrome 100 · on the lightbox",
-            FilmLook(stock = FilmStocks.CHROME_100, halation = 0.2f, bloom = 0.15f, grain = 0.16f, grainSize = 1.0f,
-                vignette = 0.25f, aberration = 0.05f, softness = -0.2f, frame = FrameStyle.FILMSTRIP),
-        ),
-        FilmCamera(
-            "homemovie", "K-64 Reel", "Rich reds · 1960s reel",
+                softness = 0.2f, shutter = ShutterSpeed.S48, frameRate = FilmFrameRate.FPS_24, frame = FrameStyle.GATE)),
+        cam("homemovie", "K-64 Reel", "Rich reds · 1960s reel", CameraCategory.CINE,
             FilmLook(stock = FilmStocks.K64, halation = 0.35f, bloom = 0.25f, grain = 0.45f, grainSize = 1.9f,
-                lightLeak = 0.2f, vignette = 0.55f, gateWeave = 0.6f, flicker = 0.4f, dust = 0.45f,
-                aberration = 0.25f, softness = 0.3f, shutter = ShutterSpeed.S30,
-                frameRate = FilmFrameRate.FPS_18, frame = FrameStyle.GATE),
-        ),
-        FilmCamera(
-            "noir", "Noir", "Mono 400 · pushed",
+                lightLeak = 0.2f, vignette = 0.55f, gateWeave = 0.6f, frameSlip = 0.1f, flicker = 0.4f, dust = 0.45f,
+                aberration = 0.25f, softness = 0.3f, shutter = ShutterSpeed.S30, rollBurn = true,
+                frameRate = FilmFrameRate.FPS_18, frame = FrameStyle.GATE)),
+        cam("twostrip", "1929 Color", "Two-strip · red and teal", CameraCategory.CINE,
+            FilmLook(stock = FilmStocks.TWO_STRIP, halation = 0.4f, bloom = 0.3f, grain = 0.55f, grainSize = 1.9f,
+                vignette = 0.6f, gateWeave = 0.5f, flicker = 0.45f, colorFlicker = 0.4f, dust = 0.5f, softness = 0.35f,
+                frameRate = FilmFrameRate.FPS_18, frame = FrameStyle.ACADEMY)),
+        cam("threestrip", "Technicolour", "Three-strip · 1950s saturation", CameraCategory.CINE,
+            FilmLook(stock = FilmStocks.THREE_STRIP, halation = 0.35f, bloom = 0.3f, grain = 0.3f, grainSize = 1.5f,
+                vignette = 0.4f, gateWeave = 0.25f, flicker = 0.15f, dust = 0.2f, softness = 0.15f,
+                frameRate = FilmFrameRate.FPS_24, frame = FrameStyle.ACADEMY)),
+
+        // ------------------------------------------------------------ instant
+        cam("instant", "Instant", "Classic print · creamy", CameraCategory.INSTANT,
+            FilmLook(stock = FilmStocks.INSTANT, halation = 0.25f, bloom = 0.35f, grain = 0.18f, grainSize = 1.1f,
+                vignette = 0.4f, softness = 0.3f, aberration = 0.1f, frame = FrameStyle.INSTANT)),
+        cam("instantsq", "Instant SQ", "Square print", CameraCategory.INSTANT,
+            FilmLook(stock = FilmStocks.INSTANT, halation = 0.25f, bloom = 0.3f, grain = 0.18f, grainSize = 1.1f,
+                vignette = 0.35f, softness = 0.25f, aberration = 0.1f, frame = FrameStyle.INSTANT_SQUARE)),
+        cam("instantmini", "Instant Mini", "Credit-card print · flash", CameraCategory.INSTANT,
+            FilmLook(stock = FilmStocks.INSTANT, halation = 0.3f, bloom = 0.35f, grain = 0.2f, grainSize = 1.1f,
+                vignette = 0.45f, softness = 0.2f, flash = 0.3f, frame = FrameStyle.INSTANT_MINI)),
+        cam("peel", "Peel-Apart", "Cool pack film · rough edge", CameraCategory.INSTANT,
+            FilmLook(stock = FilmStocks.PEEL_APART, halation = 0.25f, bloom = 0.25f, grain = 0.25f, grainSize = 1.2f,
+                vignette = 0.35f, softness = 0.15f, frame = FrameStyle.DECKLE)),
+
+        // ------------------------------------------------------------ black and white
+        cam("noir", "Noir", "Mono 400 · pushed", CameraCategory.MONO,
             FilmLook(stock = FilmStocks.MONO_400, halation = 0.2f, bloom = 0.15f, grain = 0.62f, grainSize = 1.6f,
-                vignette = 0.45f, aberration = 0f, softness = -0.1f, frame = FrameStyle.FILED),
-        ),
-        FilmCamera(
-            "silver", "Silver", "Mono 100 · fine grain",
+                vignette = 0.45f, aberration = 0f, softness = -0.1f, frame = FrameStyle.FILED)),
+        cam("silver", "Silver", "Mono 100 · fine grain", CameraCategory.MONO,
             FilmLook(stock = FilmStocks.SILVER_100, halation = 0.15f, bloom = 0.2f, grain = 0.22f, grainSize = 1.0f,
-                vignette = 0.25f, aberration = 0f),
-        ),
-        FilmCamera(
-            "expired", "Expired", "Found in a drawer",
-            FilmLook(stock = FilmStocks.EXPIRED, halation = 0.45f, bloom = 0.35f, grain = 0.68f, grainSize = 1.9f,
-                lightLeak = 0.7f, vignette = 0.5f, dust = 0.4f, flicker = 0.15f, aberration = 0.3f, softness = 0.25f),
-        ),
+                vignette = 0.25f, aberration = 0f)),
+        cam("medium", "Medium Format", "Silver 100 on 120 roll film", CameraCategory.MONO,
+            FilmLook(stock = FilmStocks.SILVER_100, halation = 0.15f, bloom = 0.15f, grain = 0.15f, grainSize = 0.9f,
+                vignette = 0.3f, aberration = 0f, softness = -0.1f, frame = FrameStyle.STRIP_120)),
+        cam("sepia", "Sepia", "Toned print · 1940s", CameraCategory.MONO,
+            FilmLook(stock = FilmStocks.SEPIA, halation = 0.2f, bloom = 0.25f, grain = 0.45f, grainSize = 1.5f,
+                vignette = 0.55f, dust = 0.35f, softness = 0.2f, frame = FrameStyle.DECKLE)),
+        cam("silent", "Silent Film", "Ortho · 16 fps · 1920s", CameraCategory.MONO,
+            FilmLook(stock = FilmStocks.ORTHO, halation = 0.3f, bloom = 0.35f, grain = 0.6f, grainSize = 2.0f,
+                vignette = 0.75f, gateWeave = 0.9f, frameSlip = 0.3f, flicker = 0.85f, dust = 0.8f, softness = 0.4f,
+                shutter = ShutterSpeed.S30, frameRate = FilmFrameRate.FPS_16, rollBurn = true, frame = FrameStyle.ACADEMY)),
+
+        // ------------------------------------------------------------ toy and fun
+        cam("toy", "Toy Lens", "Plastic 120 · soft corners", CameraCategory.TOY,
+            FilmLook(stock = FilmStocks.CROSS_PRO, halation = 0.4f, bloom = 0.35f, grain = 0.5f, grainSize = 1.7f,
+                lightLeak = 0.45f, vignette = 0.85f, cornerBlur = 0.75f, distortion = 0.08f, aberration = 0.35f,
+                softness = 0.25f, frame = FrameStyle.STRIP_120)),
+        cam("pinhole", "Pinhole", "No lens · long exposure", CameraCategory.TOY,
+            FilmLook(stock = FilmStocks.PORTRAIT_400, halation = 0.3f, bloom = 0.4f, grain = 0.5f, grainSize = 1.6f,
+                vignette = 0.95f, cornerBlur = 0.4f, softness = 0.85f, shutter = ShutterSpeed.S4)),
+        cam("sampler", "4-Lens Sampler", "Four shots, one frame", CameraCategory.TOY,
+            FilmLook(stock = FilmStocks.VIVID_100, halation = 0.3f, bloom = 0.2f, grain = 0.4f, grainSize = 1.5f,
+                vignette = 0.5f, aberration = 0.2f, softness = 0.15f, multiShot = MultiShot.SAMPLER)),
+        cam("fisheye", "Fisheye", "Circular 180°", CameraCategory.TOY,
+            FilmLook(stock = FilmStocks.GOLD_200, halation = 0.35f, bloom = 0.25f, grain = 0.4f, grainSize = 1.5f,
+                vignette = 0.3f, distortion = 1f, circleMask = true, aberration = 0.4f)),
+        cam("stereo", "Stereo 3D", "Red/cyan anaglyph", CameraCategory.TOY,
+            FilmLook(stock = FilmStocks.PORTRAIT_400, halation = 0.25f, bloom = 0.2f, grain = 0.35f, grainSize = 1.4f,
+                vignette = 0.3f, anaglyph = 0.6f)),
+        cam("prism", "Prism", "Rainbow flare & ghost", CameraCategory.TOY,
+            FilmLook(stock = FilmStocks.PORTRAIT_400, halation = 0.35f, bloom = 0.35f, grain = 0.3f, grainSize = 1.3f,
+                prism = 0.7f, vignette = 0.3f, aberration = 0.25f)),
+        cam("party", "Flash Party", "Direct flash · night out", CameraCategory.TOY,
+            FilmLook(stock = FilmStocks.VIVID_100, halation = 0.3f, bloom = 0.25f, grain = 0.45f, grainSize = 1.5f,
+                vignette = 0.6f, flash = 0.75f, aberration = 0.2f, stamp = StampStyle.DATE)),
+
+        // ------------------------------------------------------------ retro video
+        cam("vhs", "Camcorder '98", "VHS tape · REC overlay", CameraCategory.VIDEO,
+            FilmLook(stock = FilmStocks.VHS_TAPE, halation = 0.25f, bloom = 0.4f, grain = 0.25f, grainSize = 1.2f,
+                vignette = 0.2f, aberration = 0.25f, softness = 0.2f, vhs = 0.75f, lowRes = 0.55f, interlace = 0.3f,
+                shutter = ShutterSpeed.S60, stamp = StampStyle.CAMCORDER, frame = FrameStyle.ACADEMY)),
+        cam("minidv", "Mini DV", "2003 digital tape", CameraCategory.VIDEO,
+            FilmLook(stock = FilmStocks.MINI_DV, halation = 0.1f, bloom = 0.2f, grain = 0.2f, grainSize = 0.8f,
+                vignette = 0.15f, aberration = 0.1f, softness = -0.5f, vhs = 0.15f, lowRes = 0.35f, interlace = 0.8f,
+                stamp = StampStyle.CAMCORDER, frame = FrameStyle.ACADEMY)),
+        cam("ccd", "CCD 2005", "Early digicam · date", CameraCategory.VIDEO,
+            FilmLook(stock = FilmStocks.DIGICAM, halation = 0.15f, bloom = 0.35f, grain = 0.28f, grainSize = 0.8f,
+                vignette = 0.25f, aberration = 0.35f, softness = -0.55f, lowRes = 0.25f, flash = 0.2f,
+                stamp = StampStyle.DATE)),
     )
 
     fun byId(id: String?): FilmCamera = ALL.firstOrNull { it.id == id } ?: ALL.first()

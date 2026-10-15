@@ -97,3 +97,13 @@ fun DateIcon(on: Boolean, tint: Color, modifier: Modifier = Modifier, size: Dp =
         drawLine(inner, Offset(w * 0.28f, w * 0.68f), Offset(w * 0.56f, w * 0.68f), strokeWidth = sw, cap = StrokeCap.Round)
     }
 }
+
+@Composable
+fun FrameIcon(tint: Color, modifier: Modifier = Modifier, size: Dp = 22.dp) {
+    Canvas(modifier.size(size)) {
+        val w = this.size.width
+        val sw = w * 0.08f
+        drawRoundRect(tint, Offset(w * 0.1f, w * 0.14f), Size(w * 0.8f, w * 0.72f), CornerRadius(w * 0.06f), style = Stroke(sw))
+        drawRoundRect(tint, Offset(w * 0.28f, w * 0.3f), Size(w * 0.44f, w * 0.4f), CornerRadius(w * 0.04f))
+    }
+}

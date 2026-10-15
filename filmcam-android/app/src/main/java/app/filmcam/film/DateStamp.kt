@@ -20,6 +20,10 @@ object DateStamp {
     fun text(date: LocalDate = LocalDate.now()): String =
         "'%02d %2d %2d".format(date.year % 100, date.monthValue, date.dayOfMonth)
 
+    /** Today's month and day, but in 1998, like a camera whose clock was never set. */
+    fun text98(date: LocalDate = LocalDate.now()): String =
+        "'98 %2d %2d".format(date.monthValue, date.dayOfMonth)
+
     fun render(text: String = text()): Bitmap {
         val bmp = createBitmap(WIDTH, HEIGHT)
         val canvas = Canvas(bmp)

@@ -4,51 +4,80 @@ import android.graphics.Bitmap
 import android.opengl.GLES11Ext
 import android.opengl.GLES30
 import android.opengl.GLUtils
+import app.filmcam.film.CamcorderOsd
 import app.filmcam.film.DateStamp
+import app.filmcam.film.EdgePrint
 import app.filmcam.film.FilmLook
 import app.filmcam.film.FrameFx
+import app.filmcam.film.StampStyle
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.log2
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.roundToInt
 
-/**
- * The textures one size of output needs: the developed frame (twice, so slow shutters can
- * blend with the previous one), the raw camera frame, and the small glow buffers.
- */
-class Pipeline(val width: Int, val height: Int, private val forCamera: Boolean, glowFormat: Int) {
-    private val accum = IntArray(if (forCamera) 2 else 1) { GlUtil.createTexture(width, height, GLES30.GL_RGBA8, mipmapped = true) }
-    val raw = if (forCamera) GlUtil.createTexture(width, height, GLES30.GL_RGBA8) else 0
-    private val fbo = IntArray(accum.size) { i ->
-        if (forCamera) GlUtil.createFramebuffer(accum[i], raw) else GlUtil.createFramebuffer(accum[i])
-    }
-    private var cur = 0
-
-    val smallW: Int
-    val smallH: Int
+/** The small buffers of highlights: tight glow (halation), wide glow (bloom) and streaks. */
+class Glow(imageW: Int, imageH: Int, format: Int) {
+    val w: Int
+    val h: Int
     init {
-        val scale = minOf(480f / max(width, height), 0.5f)
-        smallW = max(8, (width * scale).roundToInt())
-        smallH = max(8, (height * scale).roundToInt())
+        val scale = minOf(480f / max(imageW, imageH), 0.5f)
+        w = max(8, (imageW * scale).roundToInt())
+        h = max(8, (imageH * scale).roundToInt())
     }
-    val glowTight = GlUtil.createTexture(smallW, smallH, glowFormat)
-    val glowWide = GlUtil.createTexture(smallW, smallH, glowFormat)
-    val glowTmp = GlUtil.createTexture(smallW, smallH, glowFormat)
-    val glowTightFbo = GlUtil.createFramebuffer(glowTight)
-    val glowWideFbo = GlUtil.createFramebuffer(glowWide)
-    val glowTmpFbo = GlUtil.createFramebuffer(glowTmp)
+    val tight = GlUtil.createTexture(w, h, format)
+    val wide = GlUtil.createTexture(w, h, format)
+    val tmp = GlUtil.createTexture(w, h, format)
+    val streak = GlUtil.createTexture(w, h, format)
+    val tightFbo = GlUtil.createFramebuffer(tight)
+    val wideFbo = GlUtil.createFramebuffer(wide)
+    val tmpFbo = GlUtil.createFramebuffer(tmp)
+    val streakFbo = GlUtil.createFramebuffer(streak)
 
-    /** Motion trail snapshot taken when the shutter is pressed (camera pipelines only). */
+    fun release() {
+        GlUtil.deleteFramebuffers(tightFbo, wideFbo, tmpFbo, streakFbo)
+        GlUtil.deleteTextures(tight, wide, tmp, streak)
+    }
+}
+
+/**
+ * The working frame for live video: the developed image, a second one only when something
+ * needs the previous frame (slow shutter, interlace), the raw camera frame only in photo mode
+ * (for the motion trail of stills), and the glow buffers. At 8K every full-size texture is
+ * ~130 MB, so nothing is allocated until it is needed.
+ */
+class Pipeline(val width: Int, val height: Int, private val withRaw: Boolean, glowFormat: Int) {
+    private val accum = intArrayOf(GlUtil.createTexture(width, height, GLES30.GL_RGBA8, mipmapped = true), 0)
+    val raw = if (withRaw) GlUtil.createTexture(width, height, GLES30.GL_RGBA8) else 0
+    private val fbo = intArrayOf(fboFor(accum[0]), 0)
+    private var count = 1
+    private var cur = 0
+    val glow = Glow(width, height, glowFormat)
+
+    /** Motion trail snapshot taken when the shutter is pressed. */
     var trailTex = 0
         private set
     private var trailFbo = 0
 
+    private fun fboFor(tex: Int) = if (withRaw) GlUtil.createFramebuffer(tex, raw) else GlUtil.createFramebuffer(tex)
+
     val current get() = accum[cur]
-    val previous get() = accum[(cur + accum.size - 1) % accum.size]
+    val previous get() = accum[(cur + count - 1) % count]
     val currentFbo get() = fbo[cur]
 
-    fun advance() { cur = (cur + 1) % accum.size }
+    /** Makes sure a previous frame is kept from now on. */
+    fun keepPrevious() {
+        if (count == 2) return
+        accum[1] = GlUtil.createTexture(width, height, GLES30.GL_RGBA8, mipmapped = true)
+        fbo[1] = fboFor(accum[1])
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, fbo[1])
+        GLES30.glClearColor(0f, 0f, 0f, 1f)
+        GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT)
+        count = 2
+    }
+
+    fun advance() { cur = (cur + 1) % count }
 
     fun trailFramebuffer(): Int {
         if (trailFbo == 0) {
@@ -59,8 +88,8 @@ class Pipeline(val width: Int, val height: Int, private val forCamera: Boolean, 
     }
 
     fun clear() {
-        for (f in fbo) {
-            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, f)
+        for (i in 0 until count) {
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, fbo[i])
             GLES30.glClearColor(0f, 0f, 0f, 1f)
             GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT)
         }
@@ -68,12 +97,24 @@ class Pipeline(val width: Int, val height: Int, private val forCamera: Boolean, 
     }
 
     fun release() {
-        GlUtil.deleteFramebuffers(*fbo, glowTightFbo, glowWideFbo, glowTmpFbo)
-        GlUtil.deleteTextures(*accum, glowTight, glowWide, glowTmp)
+        for (i in 0 until count) { GlUtil.deleteFramebuffers(fbo[i]); GlUtil.deleteTextures(accum[i]) }
         if (raw != 0) GlUtil.deleteTextures(raw)
         if (trailFbo != 0) { GlUtil.deleteFramebuffers(trailFbo); GlUtil.deleteTextures(trailTex) }
+        glow.release()
     }
 }
+
+/** What the final pass reads: an image (with its mip chain), the frame before it, and glows. */
+class FinalSource(
+    val image: Int,
+    val previous: Int,
+    /** Size of the image as it appears in screen space (after [imageMatrix]). */
+    val width: Int,
+    val height: Int,
+    /** Screen uv -> image texture uv. Identity for the live frame. */
+    val imageMatrix: FloatArray,
+    val glow: Glow,
+)
 
 /** Owns the shader programs and draws the passes. GL thread only. */
 class FilmRenderer {
@@ -92,7 +133,10 @@ class FilmRenderer {
     private val vbo: Int
     private var stampTex = 0
     private var stampText = ""
-    private val identity = FloatArray(16).also { android.opengl.Matrix.setIdentityM(it, 0) }
+    private var osdTex = 0
+    private var osdKey = ""
+    private val edgeTex: Int
+    val identity = FloatArray(16).also { android.opengl.Matrix.setIdentityM(it, 0) }
 
     init {
         val quad = floatArrayOf(
@@ -116,7 +160,8 @@ class FilmRenderer {
         GLES30.glBindVertexArray(0)
         GLES30.glDisable(GLES30.GL_DEPTH_TEST)
         GLES30.glDisable(GLES30.GL_BLEND)
-        refreshStamp()
+        edgeTex = textureFrom(EdgePrint.render(), repeat = true)
+        updateOverlays(StampStyle.DATE, recording = false)
     }
 
     private fun draw() {
@@ -130,23 +175,39 @@ class FilmRenderer {
         GLES30.glBindTexture(target, tex)
     }
 
-    /** Re-renders the date stamp when the day changes. */
-    fun refreshStamp() {
-        val text = DateStamp.text()
-        if (text == stampText && stampTex != 0) return
-        stampText = text
-        if (stampTex != 0) GlUtil.deleteTextures(stampTex)
-        val bmp = DateStamp.render(text)
-        val t = IntArray(1)
-        GLES30.glGenTextures(1, t, 0)
-        stampTex = t[0]
-        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, stampTex)
+    private fun textureFrom(bmp: Bitmap, repeat: Boolean = false, into: Int = 0): Int {
+        val tex = if (into != 0) into else IntArray(1).also { GLES30.glGenTextures(1, it, 0) }[0]
+        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, tex)
         GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MIN_FILTER, GLES30.GL_LINEAR)
         GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MAG_FILTER, GLES30.GL_LINEAR)
-        GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_S, GLES30.GL_CLAMP_TO_EDGE)
+        val wrap = if (repeat) GLES30.GL_REPEAT else GLES30.GL_CLAMP_TO_EDGE
+        GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_S, wrap)
         GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_T, GLES30.GL_CLAMP_TO_EDGE)
         GLUtils.texImage2D(GLES30.GL_TEXTURE_2D, 0, bmp, 0)
         bmp.recycle()
+        return tex
+    }
+
+    /** Keeps the date stamp and the camcorder display current (date, clock, REC light). */
+    fun updateOverlays(style: StampStyle, recording: Boolean) {
+        when (style) {
+            StampStyle.DATE, StampStyle.DATE_98 -> {
+                val text = if (style == StampStyle.DATE) DateStamp.text() else DateStamp.text98()
+                if (text != stampText || stampTex == 0) {
+                    stampText = text
+                    stampTex = textureFrom(DateStamp.render(text), into = stampTex)
+                }
+            }
+            StampStyle.CAMCORDER -> {
+                val time = CamcorderOsd.timeText()
+                val key = "$recording $time"
+                if (key != osdKey || osdTex == 0) {
+                    osdKey = key
+                    osdTex = textureFrom(CamcorderOsd.render(recording, time), into = osdTex)
+                }
+            }
+            StampStyle.NONE -> Unit
+        }
     }
 
     /** Pass 1 for live frames. [texMatrix] maps output uv to camera texture coordinates. */
@@ -163,7 +224,8 @@ class FilmRenderer {
         developOes.set1i("uTrail", 2)
         developOes.setMat4("uTexMatrix", texMatrix)
         developOes.setMat4("uTrailMatrix", identity)
-        developOes.set1f("uPersistence", persistence)
+        // With a single buffer "previous" is the frame being written; never read it.
+        developOes.set1f("uPersistence", if (p.previous != p.current) persistence else 0f)
         developOes.set1f("uTrailAmount", 0f)
         draw()
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
@@ -171,25 +233,26 @@ class FilmRenderer {
         GLES30.glGenerateMipmap(GLES30.GL_TEXTURE_2D)
     }
 
-    /** Pass 1 for a still photo held in a 2D texture. */
-    fun developStill(p: Pipeline, tex: Int, texMatrix: FloatArray, trailTex: Int, trailMatrix: FloatArray, trailAmount: Float) {
-        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, p.currentFbo)
-        GLES30.glViewport(0, 0, p.width, p.height)
+    /** Pass 1 for a still that needs the live motion trail added (slow shutters only). */
+    fun developStillWithTrail(
+        targetFbo: Int, w: Int, h: Int, tex: Int, texMatrix: FloatArray,
+        trailTex: Int, trailMatrix: FloatArray,
+    ) {
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, targetFbo)
+        GLES30.glViewport(0, 0, w, h)
         develop2d.use()
         bindTex(0, tex)
         bindTex(1, tex)
-        bindTex(2, if (trailTex != 0 && trailAmount > 0f) trailTex else tex)
+        bindTex(2, trailTex)
         develop2d.set1i("uSource", 0)
         develop2d.set1i("uPrev", 1)
         develop2d.set1i("uTrail", 2)
         develop2d.setMat4("uTexMatrix", texMatrix)
         develop2d.setMat4("uTrailMatrix", trailMatrix)
         develop2d.set1f("uPersistence", 0f)
-        develop2d.set1f("uTrailAmount", if (trailTex != 0) trailAmount else 0f)
+        develop2d.set1f("uTrailAmount", 1f)
         draw()
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
-        bindTex(0, p.current)
-        GLES30.glGenerateMipmap(GLES30.GL_TEXTURE_2D)
     }
 
     /** Stores (accumulated - raw) so a still can carry the live motion trail. */
@@ -206,69 +269,106 @@ class FilmRenderer {
         draw()
     }
 
-    /** Passes 2 and 3: highlights, then a tight and a wide blur of them. */
-    fun glow(p: Pipeline, look: FilmLook) {
-        val threshold = halationThreshold(look)
-        GLES30.glViewport(0, 0, p.smallW, p.smallH)
-        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, p.glowTightFbo)
+    /**
+     * Passes 2 and 3: highlights, then a tight and a wide blur of them, and streaks that run
+     * horizontally in the upright frame ([frameTurns] says which way that is on screen).
+     */
+    fun glow(src: FinalSource, look: FilmLook, frameTurns: Int) {
+        val g = src.glow
+        GLES30.glViewport(0, 0, g.w, g.h)
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, g.tightFbo)
         bright.use()
-        bindTex(0, p.current)
+        bindTex(0, src.image)
         bright.set1i("uSrc", 0)
-        bright.setMat4("uTexMatrix", identity)
-        bright.set1f("uLod", max(0f, log2(p.height.toFloat() / p.smallH)))
-        bright.set1f("uThreshold", threshold)
+        bright.setMat4("uTexMatrix", src.imageMatrix)
+        bright.set1f("uLod", max(0f, log2(max(src.width, src.height).toFloat() / max(g.w, g.h))))
+        bright.set1f("uThreshold", halationThreshold(look))
         draw()
 
         blur.use()
         blur.set1i("uSrc", 0)
         blur.setMat4("uTexMatrix", identity)
-        val sx = 1f / p.smallW
-        val sy = 1f / p.smallH
-        fun pass(src: Int, dstFbo: Int, stepX: Float, stepY: Float) {
-            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, dstFbo)
-            bindTex(0, src)
+        val sx = 1f / g.w
+        val sy = 1f / g.h
+        fun pass(from: Int, toFbo: Int, stepX: Float, stepY: Float) {
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, toFbo)
+            bindTex(0, from)
             blur.set2f("uStep", stepX, stepY)
             draw()
         }
+        val size = 0.6f + look.halationSize * 1.6f
         // Tight: halation hugs the highlight.
-        pass(p.glowTight, p.glowTmpFbo, sx * 1.6f, 0f)
-        pass(p.glowTmp, p.glowTightFbo, 0f, sy * 1.6f)
+        pass(g.tight, g.tmpFbo, sx * 1.6f * size, 0f)
+        pass(g.tmp, g.tightFbo, 0f, sy * 1.6f * size)
         // Wide: bloom spreads further.
-        pass(p.glowTight, p.glowTmpFbo, sx * 2.4f, 0f)
-        pass(p.glowTmp, p.glowWideFbo, 0f, sy * 2.4f)
-        pass(p.glowWide, p.glowTmpFbo, sx * 4.5f, 0f)
-        pass(p.glowTmp, p.glowWideFbo, 0f, sy * 4.5f)
+        pass(g.tight, g.tmpFbo, sx * 2.4f, 0f)
+        pass(g.tmp, g.wideFbo, 0f, sy * 2.4f)
+        pass(g.wide, g.tmpFbo, sx * 4.5f, 0f)
+        pass(g.tmp, g.wideFbo, 0f, sy * 4.5f)
+        if (look.streak > 0f) {
+            // Anamorphic streak: only the hottest points, smeared one way in ever longer steps.
+            bright.use()
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, g.streakFbo)
+            bindTex(0, src.image)
+            bright.set1f("uThreshold", STREAK_THRESHOLD)
+            draw()
+            blur.use()
+            val horizontal = frameTurns % 2 == 0
+            var from = g.streak
+            for ((i, step) in floatArrayOf(2f, 6f, 16f, 40f).withIndex()) {
+                val to = if (i % 2 == 0) g.tmpFbo else g.streakFbo
+                pass(from, to, if (horizontal) sx * step else 0f, if (horizontal) 0f else sy * step)
+                from = if (i % 2 == 0) g.tmp else g.streak
+            }
+        }
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
     }
 
     /**
      * Pass 4 into whatever framebuffer is bound. [targetRot] turns the target into screen
      * space (1 for the landscape encoder buffer), [frameRot] turns screen space upright.
+     * For tiles, [fullW]x[fullH] is the whole output and ([tileX], [tileY]) where this tile
+     * (the bound framebuffer, [targetW]x[targetH]) sits in it, from the bottom left.
      */
     fun drawFinal(
-        p: Pipeline, look: FilmLook, fx: FrameFx,
+        src: FinalSource, look: FilmLook, fx: FrameFx,
         targetW: Int, targetH: Int, targetRot: Int, frameRot: Int,
+        fullW: Int = targetW, fullH: Int = targetH, tileX: Int = 0, tileY: Int = 0,
     ) {
         GLES30.glViewport(0, 0, targetW, targetH)
         val s = look.stock
         with(final) {
             use()
-            bindTex(0, p.current); set1i("uImage", 0)
-            bindTex(1, p.glowTight); set1i("uGlowTight", 1)
-            bindTex(2, p.glowWide); set1i("uGlowWide", 2)
-            bindTex(3, stampTex); set1i("uStamp", 3)
+            bindTex(0, src.image); set1i("uImage", 0)
+            bindTex(1, src.previous); set1i("uPrevImage", 1)
+            bindTex(2, src.glow.tight); set1i("uGlowTight", 2)
+            bindTex(3, src.glow.wide); set1i("uGlowWide", 3)
+            bindTex(4, src.glow.streak); set1i("uStreakTex", 4)
+            bindTex(5, stampTex); set1i("uStamp", 5)
+            bindTex(6, if (osdTex != 0) osdTex else stampTex); set1i("uOsd", 6)
+            bindTex(7, edgeTex); set1i("uEdge", 7)
             setMat4("uTexMatrix", identity)
+            setMat4("uImageMatrix", src.imageMatrix)
 
-            set2f("uTargetSize", targetW.toFloat(), targetH.toFloat())
+            set2f("uTargetSize", fullW.toFloat(), fullH.toFloat())
+            set2f("uTileOffset", tileX.toFloat(), tileY.toFloat())
             set1i("uTargetRot", targetRot)
             set1i("uFrameRot", frameRot)
-            set2f("uImageTexel", 1f / p.width, 1f / p.height)
+            val (iw, ih) = if (targetRot % 2 == 0) fullW to fullH else fullH to fullW
+            set2f("uImageTexel", 1f / src.width, 1f / src.height)
+            set1f("uBaseLod", max(0f, log2(min(src.width, src.height).toFloat() / min(iw, ih))))
 
             set1f("uTemp", s.temperature + look.warmth * 0.6f)
             set1f("uTint", s.tint)
             set1f("uSat", s.saturation)
+            set1f("uSatShadow", s.satShadows)
+            set1f("uSatHigh", s.satHighlights)
             set1f("uContrast", s.contrast)
             set1f("uFade", (s.fade + look.fade * 0.18f).coerceAtMost(0.35f))
             set1f("uRolloff", s.highlightRolloff)
+            set1f("uBleach", s.bleach)
+            set3f("uGamma", s.gamma.r, s.gamma.g, s.gamma.b)
+            set3f("uHueShift", s.hueShift.r, s.hueShift.g, s.hueShift.b)
             set3f("uShadowTint", s.shadowTint.r, s.shadowTint.g, s.shadowTint.b)
             set3f("uHighTint", s.highlightTint.r, s.highlightTint.g, s.highlightTint.b)
             setMat3RowMajor("uMixer", s.mixer)
@@ -279,20 +379,31 @@ class FilmRenderer {
             set1f("uHalation", look.halation)
             set1f("uHalThreshold", halationThreshold(look))
             set1f("uBloom", look.bloom)
+            set1f("uStreak", look.streak)
             set1f("uGrain", look.grain)
             set1f("uGrainSize", look.grainSize.coerceIn(0.5f, 4f))
             set1f("uLeak", look.lightLeak)
+            set1f("uPrism", look.prism)
             set1f("uVignette", look.vignette)
             set1f("uDust", look.dust)
             set1f("uAberration", look.aberration)
             set1f("uSoftness", look.softness)
-            set1f("uGain", fx.gain)
+            set1f("uCornerBlur", look.cornerBlur)
+            set1f("uDistortion", look.distortion)
+            set1f("uCircle", if (look.circleMask) 1f else 0f)
+            set1f("uAnaglyph", look.anaglyph)
+            set1f("uFlash", look.flash)
+            set1f("uVhs", look.vhs)
+            set1f("uInterlace", if (src.previous != src.image) look.interlace else 0f)
+            set1f("uLowRes", look.lowRes)
+            set3f("uGain", fx.gain[0], fx.gain[1], fx.gain[2])
             set1i("uBorder", look.frame.shaderId)
-            set1f("uStampOn", if (look.dateStamp) 1f else 0f)
+            set1i("uStampStyle", look.stamp.shaderId)
             set1f("uStampAspect", DateStamp.WIDTH.toFloat() / DateStamp.HEIGHT)
 
             set1ui("uSeed", fx.seed)
             set1f("uTime", fx.time)
+            set1f("uSlip", fx.slip)
             set2fv("uLeakPos", fx.leakPos)
             set1fv("uLeakRadius", fx.leakRadius)
             set3fv("uLeakColor", fx.leakColor)
@@ -301,21 +412,26 @@ class FilmRenderer {
             set1f("uBurnPhase", fx.burnPhase)
             set2f("uScratchX", fx.scratchX[0], fx.scratchX[1])
             set1f("uScratchAlpha", fx.scratchAlpha)
+            GLES30.glUniform4f(loc("uPrismBand"), fx.prismBand[0], fx.prismBand[1], fx.prismBand[2], fx.prismBand[3])
+            set2f("uPrismGhost", fx.prismGhost[0], fx.prismGhost[1])
+            set1f("uTracking", fx.tracking)
+            set1f("uRollBurn", fx.rollBurn)
         }
         draw()
     }
 
-    /** Uploads a bitmap as a 2D texture. */
-    fun uploadBitmap(bitmap: Bitmap): Int {
-        val t = IntArray(1)
-        GLES30.glGenTextures(1, t, 0)
-        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, t[0])
-        GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MIN_FILTER, GLES30.GL_LINEAR)
-        GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MAG_FILTER, GLES30.GL_LINEAR)
-        GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_S, GLES30.GL_CLAMP_TO_EDGE)
-        GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_T, GLES30.GL_CLAMP_TO_EDGE)
-        GLUtils.texImage2D(GLES30.GL_TEXTURE_2D, 0, bitmap, 0)
-        return t[0]
+    /** Uploads a bitmap into an immutable, mip-mapped texture (the still's full image). */
+    fun uploadMipmapped(bitmap: Bitmap): Int {
+        val tex = GlUtil.createTexture(bitmap.width, bitmap.height, GLES30.GL_RGBA8, mipmapped = true)
+        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, tex)
+        GLUtils.texSubImage2D(GLES30.GL_TEXTURE_2D, 0, 0, 0, bitmap)
+        GLES30.glGenerateMipmap(GLES30.GL_TEXTURE_2D)
+        return tex
+    }
+
+    companion object {
+        /** Only near-white light makes an anamorphic streak. */
+        const val STREAK_THRESHOLD = 0.8f
     }
 
     /** Linear-light level where highlights start to glow; more halation lowers it. */
@@ -325,6 +441,6 @@ class FilmRenderer {
         listOf(developOes, develop2d, trail, bright, blur, final).forEach { it.release() }
         GLES30.glDeleteBuffers(1, intArrayOf(vbo), 0)
         GLES30.glDeleteVertexArrays(1, intArrayOf(vao), 0)
-        if (stampTex != 0) GlUtil.deleteTextures(stampTex)
+        GlUtil.deleteTextures(*listOf(stampTex, osdTex, edgeTex).filter { it != 0 }.toIntArray())
     }
 }

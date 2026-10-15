@@ -27,7 +27,6 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -35,15 +34,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -72,12 +67,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import app.filmcam.camera.CaptureMode
+import app.filmcam.film.CameraCategory
 import app.filmcam.film.FilmCamera
 import app.filmcam.film.FilmCameras
 import app.filmcam.film.FilmFrameRate
-import app.filmcam.film.FilmLook
-import app.filmcam.film.FrameStyle
-import app.filmcam.film.ShutterSpeed
+import app.filmcam.film.MultiShot
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
@@ -117,25 +111,37 @@ fun CameraScreen(ui: UiState, actions: CameraActions) {
                 .padding(top = 18.dp, bottom = 10.dp),
         ) {
             AnimatedVisibility(
-                ui.showAdjust && !ui.recording,
+                ui.sheet != Sheet.NONE && !ui.recording,
                 enter = fadeIn() + slideInVertically { it / 3 },
                 exit = fadeOut() + slideOutVertically { it / 3 },
             ) {
-                AdjustPanel(ui, actions)
+                when (ui.sheet) {
+                    Sheet.DEVELOP -> DevelopPanel(ui, actions)
+                    Sheet.BORDER -> BorderPanel(ui, actions)
+                    Sheet.CAMERA -> CameraSettingsPanel(ui, actions)
+                    Sheet.NONE -> Unit
+                }
             }
-            CameraStrip(ui, actions)
-            Spacer(Modifier.height(10.dp))
+            if (ui.sheet == Sheet.NONE || ui.sheet == Sheet.DEVELOP) {
+                CategoryTabs(ui)
+                Spacer(Modifier.height(6.dp))
+                CameraStrip(ui, actions)
+                Spacer(Modifier.height(8.dp))
+            }
+            LensRow(ui, actions, iconRotation)
+            Spacer(Modifier.height(6.dp))
             ModeSwitch(ui, actions)
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(8.dp))
             ShutterRow(ui, actions, iconRotation)
         }
 
         ui.message?.let { msg ->
-            LaunchedEffect(msg) { delay(2400); ui.message = null }
+            LaunchedEffect(msg) { delay(2600); ui.message = null }
             Text(
                 msg, color = Cream, fontSize = 13.sp,
                 modifier = Modifier
                     .align(Alignment.Center)
+                    .padding(24.dp)
                     .background(Panel, RoundedCornerShape(10.dp))
                     .padding(horizontal = 14.dp, vertical = 10.dp),
             )
@@ -174,6 +180,7 @@ private fun PermissionPrompt(ui: UiState, actions: CameraActions) {
 
 @Composable
 private fun TopBar(ui: UiState, actions: CameraActions, iconRotation: Float) {
+    fun toggle(p: Sheet) { ui.sheet = if (ui.sheet == p) Sheet.NONE else p }
     Row(
         Modifier
             .fillMaxWidth()
@@ -184,28 +191,41 @@ private fun TopBar(ui: UiState, actions: CameraActions, iconRotation: Float) {
         RoundButton(onClick = { actions.toggleFlash() }, enabled = ui.hasFlash) {
             FlashIcon(ui.flash, if (ui.flash) Amber else Cream, Modifier.rotate(iconRotation))
         }
+        Spacer(Modifier.width(8.dp))
+        // Format chip: resolution and frame rate; opens the camera settings.
+        Text(
+            if (ui.mode == CaptureMode.VIDEO) "${ui.videoRes.label} · ${ui.fps}" else
+                if (ui.photoRes.name == "MAX") "${ui.maxPhotoMp} MP" else "12 MP",
+            color = if (ui.sheet == Sheet.CAMERA) Ink else Cream,
+            fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace,
+            modifier = Modifier
+                .clip(RoundedCornerShape(14.dp))
+                .background(if (ui.sheet == Sheet.CAMERA) Amber else Color.White.copy(alpha = 0.08f))
+                .clickable(enabled = !ui.recording) { toggle(Sheet.CAMERA) }
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+        )
         Spacer(Modifier.weight(1f))
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(ui.camera.name.uppercase(), color = Cream, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+            Text(ui.camera.name.uppercase(), color = Cream, fontSize = 13.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp, maxLines = 1)
             Text(
                 "${ui.look.stock.name} · ${ui.look.shutter.label}" +
-                    if (ui.mode == CaptureMode.VIDEO && ui.look.frameRate != FilmFrameRate.NATIVE) " · ${ui.look.frameRate.label} fps" else "",
-                color = Muted, fontSize = 11.sp, fontFamily = FontFamily.Monospace,
+                    if (ui.mode == CaptureMode.VIDEO && ui.look.frameRate != FilmFrameRate.NATIVE) " · ${ui.look.frameRate.label}f" else "",
+                color = Muted, fontSize = 10.sp, fontFamily = FontFamily.Monospace, maxLines = 1,
             )
         }
         Spacer(Modifier.weight(1f))
-        RoundButton(onClick = { actions.updateLook(ui.look.copy(dateStamp = !ui.look.dateStamp)) }) {
-            DateIcon(ui.look.dateStamp, if (ui.look.dateStamp) Amber else Cream, Modifier.rotate(iconRotation))
+        RoundButton(onClick = { toggle(Sheet.BORDER) }, active = ui.sheet == Sheet.BORDER) {
+            FrameIcon(if (ui.sheet == Sheet.BORDER) Ink else Cream, Modifier.rotate(iconRotation))
         }
         Spacer(Modifier.width(8.dp))
-        RoundButton(onClick = { ui.showAdjust = !ui.showAdjust }, active = ui.showAdjust) {
-            SlidersIcon(if (ui.showAdjust) Ink else Cream, Modifier.rotate(iconRotation))
+        RoundButton(onClick = { toggle(Sheet.DEVELOP) }, active = ui.sheet == Sheet.DEVELOP) {
+            SlidersIcon(if (ui.sheet == Sheet.DEVELOP) Ink else Cream, Modifier.rotate(iconRotation))
         }
     }
 }
 
 @Composable
-private fun RoundButton(
+fun RoundButton(
     onClick: () -> Unit,
     enabled: Boolean = true,
     active: Boolean = false,
@@ -235,11 +255,7 @@ private fun Viewfinder(ui: UiState, actions: CameraActions) {
         }
     }
 
-    Box(
-        Modifier
-            .aspectRatio(aspect)
-            .clip(RoundedCornerShape(if (ui.mode == CaptureMode.PHOTO) 6.dp else 0.dp)),
-    ) {
+    Box(Modifier.aspectRatio(aspect)) {
         AndroidView(
             factory = { ctx -> SurfaceView(ctx).also { actions.bindPreview(it) } },
             modifier = Modifier.fillMaxSize(),
@@ -258,14 +274,18 @@ private fun Viewfinder(ui: UiState, actions: CameraActions) {
                     detectTransformGestures { _, _, zoom, _ -> if (zoom != 1f) actions.zoom(zoom) }
                 },
         )
-        focus?.let { pos ->
-            FocusRing(pos, focusKey) { focus = null }
-        }
+        focus?.let { pos -> FocusRing(pos, focusKey) { focus = null } }
         if (flash.value > 0f) {
             Box(Modifier.fillMaxSize().background(Color.White.copy(alpha = flash.value)))
         }
         if (ui.recording) RecordingBadge(ui, Modifier.align(Alignment.TopCenter).padding(top = 12.dp))
-        if (ui.developing > 0 || ui.savingVideo) {
+        val status = when {
+            ui.sampling -> "Sampling 4 frames"
+            ui.savingVideo -> "Saving"
+            ui.developing > 0 -> "Developing"
+            else -> null
+        }
+        if (status != null) {
             Row(
                 Modifier
                     .align(Alignment.TopEnd)
@@ -276,8 +296,19 @@ private fun Viewfinder(ui: UiState, actions: CameraActions) {
             ) {
                 CircularProgressIndicator(Modifier.size(12.dp), color = Amber, strokeWidth = 2.dp)
                 Spacer(Modifier.width(6.dp))
-                Text(if (ui.savingVideo) "Saving" else "Developing", color = Cream, fontSize = 11.sp)
+                Text(status, color = Cream, fontSize = 11.sp)
             }
+        }
+        if (ui.halfFramePending) {
+            Text(
+                "½  First half taken. Shoot the second.",
+                color = Ink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 12.dp)
+                    .background(Amber, RoundedCornerShape(14.dp))
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            )
         }
     }
 }
@@ -316,20 +347,46 @@ private fun RecordingBadge(ui: UiState, modifier: Modifier) {
     ) {
         Box(Modifier.size(8.dp).clip(CircleShape).background(if (blink) RecRed else RecRed.copy(alpha = 0.3f)))
         Spacer(Modifier.width(8.dp))
-        Text("%02d:%02d".format(secs / 60, secs % 60), color = Cream, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+        Text(
+            "%02d:%02d  %s".format(secs / 60, secs % 60, ui.encoderInfo),
+            color = Cream, fontSize = 12.sp, fontFamily = FontFamily.Monospace,
+        )
+    }
+}
+
+@Composable
+private fun CategoryTabs(ui: UiState) {
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier.alpha(if (ui.recording) 0.4f else 1f),
+    ) {
+        items(CameraCategory.entries) { cat ->
+            val sel = ui.category == cat
+            Text(
+                cat.label.uppercase(),
+                color = if (sel) Amber else Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable(enabled = !ui.recording) { ui.category = cat }
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+            )
+        }
     }
 }
 
 @Composable
 private fun CameraStrip(ui: UiState, actions: CameraActions) {
-    val state = rememberLazyListState(FilmCameras.ALL.indexOf(ui.camera).coerceAtLeast(0))
+    val cams = FilmCameras.ALL.filter { it.category == ui.category }
+    val state = rememberLazyListState(cams.indexOf(ui.camera).coerceAtLeast(0))
+    LaunchedEffect(ui.category) { state.scrollToItem(cams.indexOf(ui.camera).coerceAtLeast(0)) }
     LazyRow(
         state = state,
         contentPadding = PaddingValues(horizontal = 14.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.alpha(if (ui.recording) 0.4f else 1f),
     ) {
-        itemsIndexed(FilmCameras.ALL, key = { _, c -> c.id }) { _, cam ->
+        items(cams, key = { it.id }) { cam ->
             CameraChip(cam, cam.id == ui.camera.id, enabled = !ui.recording) { actions.selectCamera(cam) }
         }
     }
@@ -339,7 +396,7 @@ private fun CameraStrip(ui: UiState, actions: CameraActions) {
 private fun CameraChip(cam: FilmCamera, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
     Column(
         Modifier
-            .width(92.dp)
+            .width(100.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(if (selected) Cream else Color.White.copy(alpha = 0.06f))
             .border(BorderStroke(1.dp, if (selected) Cream else Color.White.copy(alpha = 0.08f)), RoundedCornerShape(12.dp))
@@ -351,10 +408,47 @@ private fun CameraChip(cam: FilmCamera, selected: Boolean, enabled: Boolean, onC
             Box(Modifier.size(width = 4.dp, height = 14.dp).background(Color(0xFF2B2522), RoundedCornerShape(1.dp)))
             Box(Modifier.size(width = 18.dp, height = 12.dp).background(Color(cam.look.stock.swatch), RoundedCornerShape(2.dp)))
             Box(Modifier.size(width = 4.dp, height = 14.dp).background(Color(0xFF2B2522), RoundedCornerShape(1.dp)))
+            Spacer(Modifier.weight(1f))
+            if (cam.look.multiShot != MultiShot.SINGLE) {
+                Text(if (cam.look.multiShot == MultiShot.HALF_FRAME) "×2" else "×4", color = if (selected) Ink else Amber, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            }
         }
         Spacer(Modifier.height(6.dp))
         Text(cam.name, color = if (selected) Ink else Cream, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-        Text(cam.look.stock.name, color = if (selected) Ink.copy(alpha = 0.6f) else Muted, fontSize = 10.sp, maxLines = 1)
+        Text(cam.subtitle, color = if (selected) Ink.copy(alpha = 0.6f) else Muted, fontSize = 9.sp, maxLines = 1)
+    }
+}
+
+@Composable
+private fun LensRow(ui: UiState, actions: CameraActions, iconRotation: Float) {
+    val front = ui.lens?.front == true
+    val lenses = ui.lenses.filter { it.front == front }
+    if (lenses.size < 2) return
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+        Row(
+            Modifier
+                .clip(RoundedCornerShape(22.dp))
+                .background(Color.White.copy(alpha = 0.07f))
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            for (l in lenses) {
+                val sel = l.key == ui.lens?.key
+                Column(
+                    Modifier
+                        .size(42.dp)
+                        .clip(CircleShape)
+                        .background(if (sel) Cream else Color.Transparent)
+                        .clickable(enabled = !ui.recording || l.cameraId == ui.lens?.cameraId) { actions.selectLens(l) }
+                        .rotate(iconRotation),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Text(l.label, color = if (sel) Ink else Cream, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text("${l.eqMm}mm", color = if (sel) Ink.copy(alpha = 0.6f) else Muted, fontSize = 8.sp)
+                }
+            }
+        }
     }
 }
 
@@ -412,7 +506,7 @@ private fun ShutterRow(ui: UiState, actions: CameraActions, iconRotation: Float)
                 .size(50.dp)
                 .clip(CircleShape)
                 .background(Color.White.copy(alpha = 0.08f))
-                .clickable(enabled = !ui.recording) { actions.switchLens() },
+                .clickable(enabled = !ui.recording) { actions.switchFacing() },
             contentAlignment = Alignment.Center,
         ) { FlipIcon(Cream, Modifier.rotate(iconRotation)) }
     }
@@ -427,122 +521,18 @@ private fun ShutterButton(ui: UiState, onClick: () -> Unit) {
         Modifier
             .size(78.dp)
             .clip(CircleShape)
-            .clickable(enabled = !ui.savingVideo, onClick = onClick),
+            .clickable(enabled = !ui.savingVideo && !ui.sampling, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Canvas(Modifier.fillMaxSize()) {
             drawCircle(Cream, radius = size.minDimension / 2 - 2.dp.toPx(), style = Stroke(4.dp.toPx()))
             val s = size.minDimension * inner * 0.86f
             drawRoundRect(
-                color = if (video) RecRed else Cream,
+                color = if (video) RecRed else if (ui.halfFramePending) Amber else Cream,
                 topLeft = Offset((size.width - s) / 2, (size.height - s) / 2),
                 size = androidx.compose.ui.geometry.Size(s, s),
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(s * corner),
             )
-        }
-    }
-}
-
-// ------------------------------------------------------------------ adjustments
-
-@Composable
-private fun AdjustPanel(ui: UiState, actions: CameraActions) {
-    val look = ui.look
-    fun set(l: FilmLook) = actions.updateLook(l)
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp)
-            .padding(bottom = 12.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(Panel)
-            .heightIn(max = 330.dp)
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("DEVELOP", color = Amber, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-            Spacer(Modifier.weight(1f))
-            Text(
-                "Reset", color = Cream, fontSize = 12.sp,
-                modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { actions.resetLook() }.padding(6.dp),
-            )
-        }
-
-        ChoiceRow("Shutter", ShutterSpeed.entries, look.shutter, { it.label }) { set(look.copy(shutter = it)) }
-        ValueSlider("Exposure", look.exposureEv, ui.evMin, ui.evMax, "%+.1f EV") { set(look.copy(exposureEv = it)) }
-        ValueSlider("Halation", look.halation) { set(look.copy(halation = it)) }
-        ValueSlider("Bloom", look.bloom) { set(look.copy(bloom = it)) }
-        ValueSlider("Grain", look.grain) { set(look.copy(grain = it)) }
-        ValueSlider("Grain size", look.grainSize, 0.6f, 3f, "%.1f") { set(look.copy(grainSize = it)) }
-        ValueSlider("Light leaks", look.lightLeak) { set(look.copy(lightLeak = it)) }
-        ValueSlider("Vignette", look.vignette) { set(look.copy(vignette = it)) }
-        ValueSlider("Dust & scratches", look.dust) { set(look.copy(dust = it)) }
-        ValueSlider("Gate weave", look.gateWeave) { set(look.copy(gateWeave = it)) }
-        ValueSlider("Flicker", look.flicker) { set(look.copy(flicker = it)) }
-        ValueSlider("Chromatic aberration", look.aberration) { set(look.copy(aberration = it)) }
-        ValueSlider("Softness", look.softness, -1f, 1f, "%+.2f") { set(look.copy(softness = it)) }
-        ValueSlider("Fade", look.fade) { set(look.copy(fade = it)) }
-        ValueSlider("Warmth", look.warmth, -1f, 1f, "%+.2f") { set(look.copy(warmth = it)) }
-        ChoiceRow("Frame rate (video)", FilmFrameRate.entries, look.frameRate, { if (it == FilmFrameRate.NATIVE) "Native" else "${it.label} fps" }) {
-            set(look.copy(frameRate = it))
-        }
-        ChoiceRow("Frame", FrameStyle.entries, look.frame, { it.label }) { set(look.copy(frame = it)) }
-        ChoiceRow("Date stamp", listOf(false, true), look.dateStamp, { if (it) "On" else "Off" }) { set(look.copy(dateStamp = it)) }
-    }
-}
-
-@Composable
-private fun ValueSlider(
-    label: String,
-    value: Float,
-    min: Float = 0f,
-    max: Float = 1f,
-    format: String? = null,
-    onChange: (Float) -> Unit,
-) {
-    Column(Modifier.padding(top = 6.dp)) {
-        Row {
-            Text(label, color = Cream, fontSize = 12.sp)
-            Spacer(Modifier.weight(1f))
-            Text(
-                if (format != null) format.format(value) else "${(value * 100).roundToInt()}",
-                color = Muted, fontSize = 11.sp, fontFamily = FontFamily.Monospace,
-            )
-        }
-        Slider(
-            value = value.coerceIn(min, max),
-            onValueChange = onChange,
-            valueRange = min..max,
-            modifier = Modifier.height(28.dp),
-            colors = SliderDefaults.colors(
-                thumbColor = Cream,
-                activeTrackColor = Amber,
-                inactiveTrackColor = Color.White.copy(alpha = 0.14f),
-            ),
-        )
-    }
-}
-
-@Composable
-private fun <T> ChoiceRow(label: String, options: List<T>, selected: T, name: (T) -> String, onPick: (T) -> Unit) {
-    Column(Modifier.padding(top = 10.dp)) {
-        Text(label, color = Cream, fontSize = 12.sp)
-        Spacer(Modifier.height(6.dp))
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            itemsIndexed(options) { _, opt ->
-                val sel = opt == selected
-                Text(
-                    name(opt),
-                    color = if (sel) Ink else Cream,
-                    fontSize = 11.sp, fontFamily = FontFamily.Monospace,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (sel) Amber else Color.White.copy(alpha = 0.08f))
-                        .clickable { onPick(opt) }
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                )
-            }
         }
     }
 }

@@ -1,6 +1,9 @@
 package app.filmcam.gl
 
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Rect
 import android.graphics.SurfaceTexture
 import android.opengl.EGLSurface
 import android.opengl.GLES30
@@ -11,20 +14,20 @@ import android.util.Log
 import android.util.Size
 import android.view.Surface
 import android.view.SurfaceHolder
-import androidx.camera.core.Preview
-import androidx.camera.core.SurfaceRequest
 import androidx.core.graphics.createBitmap
 import app.filmcam.film.FilmFrameRate
 import app.filmcam.film.FilmLook
 import app.filmcam.film.FrameFx
+import app.filmcam.film.FrameStyle
 import app.filmcam.film.FxAnimator
+import app.filmcam.film.StampStyle
 import app.filmcam.record.VideoRecorder
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.CountDownLatch
-import java.util.concurrent.Executor
 import java.util.concurrent.TimeUnit
 import kotlin.math.abs
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -37,12 +40,14 @@ import kotlin.math.roundToInt
 class FilmEngine {
     private val thread = HandlerThread("FilmEngine").apply { start() }
     private val handler = Handler(thread.looper)
-    private val executor = Executor { handler.post(it) }
 
     private lateinit var egl: EglCore
     private lateinit var pbuffer: EGLSurface
     private lateinit var renderer: FilmRenderer
-    private var maxTextureSize = 4096
+
+    /** Largest texture the GPU takes; limits video resolution and still size. */
+    @Volatile var maxTextureSize = 4096
+        private set
 
     /** Latest look from the UI; read once per frame. */
     @Volatile var look = FilmLook()
@@ -54,6 +59,10 @@ class FilmEngine {
     @Volatile var displayRotationDegrees = 0
     /** Frame-rate holds (18 fps etc.) only make sense for video; photo live view stays smooth. */
     @Volatile var videoMode = false
+    /** Longest side of the working frame: the video resolution, or enough for the screen. */
+    @Volatile var maxWorkSide = 1920
+    /** Off when the sensor itself does the slow shutter (real shutter speed). */
+    @Volatile var simulateShutter = true
     /** Working-frame size once the camera is running, portrait (w, h). */
     @Volatile var outputSize: Size? = null
         private set
@@ -75,8 +84,14 @@ class FilmEngine {
     private val startNs = System.nanoTime()
     private var lastFilmFrameNs = 0L
     private var lastDevelopNs = 0L
+    private var lastOverlayNs = 0L
 
-    private class Recording(val surface: EGLSurface, val recorder: VideoRecorder, val frameTurns: Int)
+    private class Recording(
+        val surface: EGLSurface, val recorder: VideoRecorder, val frameTurns: Int, val startNs: Long, val burn: Boolean,
+    ) {
+        var stopAtNs = 0L
+        var stopRequestNs = 0L
+    }
     private var recording: Recording? = null
 
     init {
@@ -92,7 +107,6 @@ class FilmEngine {
     // ------------------------------------------------------------------ camera input
 
     private class CameraInput(val tex: Int, val st: SurfaceTexture, val surface: Surface, val bufW: Int, val bufH: Int) {
-        @Volatile var info: SurfaceRequest.TransformationInfo? = null
         var released = false
         fun release() {
             if (released) return
@@ -104,21 +118,24 @@ class FilmEngine {
         }
     }
 
-    /** Hand this to CameraX's Preview use case. */
-    val surfaceProvider = Preview.SurfaceProvider { request ->
+    /** A Surface for the camera to stream [width]x[height] frames into (sensor orientation). */
+    fun openCameraInput(width: Int, height: Int, onReady: (Surface) -> Unit) {
         handler.post {
-            val res = request.resolution
+            input?.release()
             val tex = GlUtil.createOesTexture()
-            val st = SurfaceTexture(tex).apply { setDefaultBufferSize(res.width, res.height) }
+            val st = SurfaceTexture(tex).apply { setDefaultBufferSize(width, height) }
             val surface = Surface(st)
-            val inp = CameraInput(tex, st, surface, res.width, res.height)
-            request.setTransformationInfoListener(executor) { inp.info = it }
+            val inp = CameraInput(tex, st, surface, width, height)
             st.setOnFrameAvailableListener({ onFrame(inp) }, handler)
             input = inp
-            request.provideSurface(surface, executor) {
-                inp.release()
-                if (input === inp) input = null
-            }
+            onReady(surface)
+        }
+    }
+
+    fun closeCameraInput() {
+        handler.post {
+            input?.release()
+            input = null
         }
     }
 
@@ -174,30 +191,49 @@ class FilmEngine {
         egl.makeCurrent(disp ?: pbuffer)
         val look = look
         val p = ensurePipeline(inp) ?: return
+        val turns = rec?.frameTurns ?: deviceQuarterTurns
 
         if (filmFrameDue(if (videoMode) look.frameRate else FilmFrameRate.NATIVE, now)) {
             animator.next(look, (now - startNs) / 1e9f, fx)
             val dt = if (lastDevelopNs == 0L) 1f / 30f else ((now - lastDevelopNs) / 1e9f).coerceIn(0.005f, 0.2f)
             lastDevelopNs = now
+            val persistence = if (simulateShutter) look.shutter.persistence(dt) else 0f
+            if (persistence > 0f || look.interlace > 0f) p.keepPrevious()
             buildTexMatrix(inp, look)
-            renderer.developCamera(p, inp.tex, texMatrix, look.shutter.persistence(dt))
-            renderer.glow(p, look)
+            renderer.developCamera(p, inp.tex, texMatrix, persistence)
+            renderer.glow(liveSource(p), look, turns)
+        }
+        fx.rollBurn = rollBurn(rec, now)
+        if (now - lastOverlayNs > 250_000_000L) {
+            lastOverlayNs = now
+            renderer.updateOverlays(look.stamp, rec != null)
         }
 
-        val turns = rec?.frameTurns ?: deviceQuarterTurns
+        val src = liveSource(p)
         if (disp != null && displayW > 0) {
             GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
-            renderer.drawFinal(p, look, fx, displayW, displayH, 0, turns)
+            renderer.drawFinal(src, look, fx, displayW, displayH, 0, turns)
             egl.swap(disp)
         }
         if (rec != null) {
             egl.makeCurrent(rec.surface)
             GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
-            renderer.drawFinal(p, look, fx, rec.recorder.width, rec.recorder.height, 1, turns)
+            renderer.drawFinal(src, look, fx, rec.recorder.width, rec.recorder.height, 1, turns)
             egl.setPresentationTime(rec.surface, now)
             egl.swap(rec.surface)
             egl.makeCurrent(disp ?: pbuffer)
+            if (rec.stopAtNs in 1..now) finishRecording()
         }
+    }
+
+    private fun liveSource(p: Pipeline) = FinalSource(p.current, p.previous, p.width, p.height, renderer.identity, p.glow)
+
+    /** Leader burn: flares out over the first 0.8 s of a take and back in over the last 0.7 s. */
+    private fun rollBurn(rec: Recording?, now: Long): Float {
+        if (rec == null || !rec.burn) return 0f
+        val inBurn = 1f - (now - rec.startNs) / 800_000_000f
+        val outBurn = if (rec.stopRequestNs > 0) (now - rec.stopRequestNs) / 650_000_000f else 0f
+        return max(inBurn, outBurn).coerceIn(0f, 1f)
     }
 
     private fun filmFrameDue(rate: FilmFrameRate, now: Long): Boolean {
@@ -210,47 +246,43 @@ class FilmEngine {
     }
 
     /**
-     * Extra rotation (degrees) the SurfaceTexture transform does not already apply. With a
-     * camera transform the buffer is already upright for the device's natural orientation;
-     * otherwise CameraX tells us the rotation. Either way a rotated display (a landscape-first
-     * tablet) needs undoing on top, as CameraX's own PreviewView does.
+     * Camera2 sets the SurfaceTexture transform so the buffer is upright for the device's
+     * natural orientation (and mirrored for the selfie camera). Only a rotated display (a
+     * landscape-first tablet held in portrait) needs more.
      */
-    private fun extraRotation(info: SurfaceRequest.TransformationInfo?): Int {
-        val base = if (info == null || info.hasCameraTransform()) 0 else info.rotationDegrees
-        return (base - displayRotationDegrees + 720) % 360
-    }
+    private fun extraRotation(): Int = (720 - displayRotationDegrees) % 360
 
     /** Upright (as displayed) size of the camera buffer. */
     private fun uprightSize(inp: CameraInput): Pair<Int, Int> {
         val rotatedBySt = abs(stMatrix[0]) < abs(stMatrix[4])
-        val extraOdd = (extraRotation(inp.info) / 90) % 2 == 1
+        val extraOdd = (extraRotation() / 90) % 2 == 1
         return if (rotatedBySt xor extraOdd) inp.bufH to inp.bufW else inp.bufW to inp.bufH
     }
 
     private fun ensurePipeline(inp: CameraInput): Pipeline? {
         val (uw, uh) = uprightSize(inp)
         val aspect = outputAspect
-        var cw: Float
-        var ch: Float
+        val cw: Float
+        val ch: Float
         if (uw.toFloat() / uh > aspect) { ch = uh.toFloat(); cw = ch * aspect } else { cw = uw.toFloat(); ch = cw / aspect }
-        // Keep the working frame at most 1080 wide; that is plenty for screen and 1080p video.
-        val scale = min(1f, 1080f / cw)
+        val limit = min(maxWorkSide, maxTextureSize).toFloat()
+        val scale = min(1f, limit / max(cw, ch))
         val w = ((cw * scale).roundToInt() / 2) * 2
         val h = ((ch * scale).roundToInt() / 2) * 2
         if (w < 16 || h < 16) return null
         val p = pipeline
-        if (p != null && p.width == w && p.height == h) return p
+        if (p != null && p.width == w && p.height == h && p.raw != 0 == !videoMode) return p
         p?.release()
+        pipeline = null
         return try {
-            Pipeline(w, h, forCamera = true, glowFormat = renderer.glowFormat).also {
+            Pipeline(w, h, withRaw = !videoMode, glowFormat = renderer.glowFormat).also {
                 it.clear()
                 pipeline = it
                 outputSize = Size(w, h)
                 lastDevelopNs = 0L
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e(TAG, "pipeline", e)
-            pipeline = null
             null
         }
     }
@@ -264,20 +296,18 @@ class FilmEngine {
         val sy: Float
         if (cropFracW <= 1f) { sx = cropFracW; sy = 1f } else { sx = 1f; sy = 1f / cropFracW }
         val overscan = 1f - 2.2f * FxAnimator.MAX_WEAVE * look.gateWeave
-        val info = inp.info
-        val mirror = info != null && !info.hasCameraTransform() && info.isMirroring
 
         // C = T(0.5 + weave) * S(sx, sy) * T(-0.5)
         val c = tmpA
         Matrix.setIdentityM(c, 0)
         Matrix.translateM(c, 0, 0.5f + fx.weaveX, 0.5f + fx.weaveY, 0f)
-        Matrix.scaleM(c, 0, sx * overscan * (if (mirror) -1f else 1f), sy * overscan, 1f)
+        Matrix.scaleM(c, 0, sx * overscan, sy * overscan, 1f)
         Matrix.translateM(c, 0, -0.5f, -0.5f, 0f)
 
         // R = T(0.5) * Rz(extra) * T(-0.5)
         val r = tmpB
         Matrix.setIdentityM(r, 0)
-        val extra = extraRotation(info)
+        val extra = extraRotation()
         if (extra != 0) {
             Matrix.translateM(r, 0, 0.5f, 0.5f, 0f)
             Matrix.rotateM(r, 0, extra.toFloat(), 0f, 0f, 1f)
@@ -288,6 +318,18 @@ class FilmEngine {
         Matrix.multiplyMM(texMatrix, 0, stMatrix, 0, rc, 0)
     }
 
+    /**
+     * Where a point of the preview (0..1, y down) lands in the camera buffer (0..1, y down),
+     * for tap-to-focus. Ignores borders, which only shrink the picture slightly.
+     */
+    fun previewToBuffer(x: Float, y: Float): Pair<Float, Float> {
+        val m = texMatrix.copyOf()
+        val v = floatArrayOf(x, 1f - y, 0f, 1f)
+        val out = FloatArray(4)
+        Matrix.multiplyMV(out, 0, m, 0, v, 0)
+        return out[0].coerceIn(0f, 1f) to out[1].coerceIn(0f, 1f)
+    }
+
     // ------------------------------------------------------------------ recording
 
     fun startRecording(recorder: VideoRecorder) {
@@ -295,7 +337,8 @@ class FilmEngine {
             try {
                 val surface = egl.createWindowSurface(recorder.inputSurface)
                 recorder.start()
-                recording = Recording(surface, recorder, deviceQuarterTurns)
+                recording = Recording(surface, recorder, deviceQuarterTurns, System.nanoTime(), look.rollBurn)
+                lastOverlayNs = 0L
             } catch (e: Exception) {
                 Log.e(TAG, "startRecording", e)
                 recorder.stop()
@@ -303,96 +346,199 @@ class FilmEngine {
         }
     }
 
-    fun stopRecording() {
+    /** Stops recording; with roll burn on, the take burns out for a moment first. */
+    fun stopRecording(immediately: Boolean = false) {
         handler.post {
             val rec = recording ?: return@post
-            recording = null
-            egl.makeCurrent(display ?: pbuffer)
-            egl.releaseSurface(rec.surface)
-            rec.recorder.stop()
+            if (rec.burn && !immediately && display != null) {
+                if (rec.stopRequestNs == 0L) {
+                    rec.stopRequestNs = System.nanoTime()
+                    rec.stopAtNs = rec.stopRequestNs + 700_000_000L
+                    // In case frames stop arriving, finish anyway.
+                    handler.postDelayed({ if (recording === rec) finishRecording() }, 1200)
+                }
+            } else {
+                finishRecording()
+            }
         }
+    }
+
+    private fun finishRecording() {
+        val rec = recording ?: return
+        recording = null
+        egl.makeCurrent(display ?: pbuffer)
+        egl.releaseSurface(rec.surface)
+        rec.recorder.stop()
+        lastOverlayNs = 0L
     }
 
     // ------------------------------------------------------------------ stills
 
-    /** Freezes the live motion trail at the shutter press; returns nothing, runs async. */
+    /** Freezes the live motion trail at the shutter press. */
     fun snapshotTrail() {
         handler.post {
             val p = pipeline ?: return@post
-            if (look.shutter.persistence(1f / 30f) <= 0f) return@post
+            if (!simulateShutter || look.shutter.persistence(1f / 30f) <= 0f) return@post
             renderer.snapshotTrail(p)
         }
     }
 
+    /** Longest side a still may have, limited by the GPU. */
+    fun maxStillSide(): Int = min(maxTextureSize, 8192)
+
     /**
-     * Runs an upright still through the same pipeline at full resolution.
-     * [frameTurns] is how the phone was held at capture (to line up the motion trail).
-     * The input bitmap is recycled; [done] gets the developed picture or null.
+     * Develops a still from the sensor at full resolution. [still] is in sensor orientation;
+     * it is turned [rotationCw] degrees and mirrored on the GPU, so no rotated copy is ever
+     * held in memory. The final pass runs in tiles, so a 50 MP frame needs one full-size
+     * texture, not three. [frameTurns] is how the phone was held (to line up the motion
+     * trail). The input bitmap is recycled; [done] gets the developed picture or null.
      */
-    fun developStill(still: Bitmap, look: FilmLook, frameTurns: Int, done: (Bitmap?) -> Unit) {
+    fun developStill(
+        still: Bitmap, rotationCw: Int, mirror: Boolean, look: FilmLook, frameTurns: Int,
+        done: (Bitmap?) -> Unit,
+    ) {
         handler.post {
             var result: Bitmap? = null
-            var src = 0
-            var p: Pipeline? = null
-            var outTex = 0
-            var outFbo = 0
+            val textures = ArrayList<Int>()
+            val fbos = ArrayList<Int>()
+            var glow: Glow? = null
             try {
                 egl.makeCurrent(pbuffer)
-                renderer.refreshStamp()
-                val w = still.width
-                val h = still.height
-                src = renderer.uploadBitmap(still)
+                renderer.updateOverlays(look.stamp, false)
+                val odd = (rotationCw / 90) % 2 == 1
+                val w = if (odd) still.height else still.width
+                val h = if (odd) still.width else still.height
+                val src = renderer.uploadMipmapped(still).also { textures += it }
                 still.recycle()
+                val imageMatrix = stillMatrix(rotationCw, mirror)
 
-                p = Pipeline(w, h, forCamera = false, glowFormat = renderer.glowFormat)
-                // Bitmap row 0 is the top; GL's v = 0 is the bottom.
-                val flip = FloatArray(16)
-                Matrix.setIdentityM(flip, 0)
-                Matrix.translateM(flip, 0, 0f, 1f, 0f)
-                Matrix.scaleM(flip, 0, 1f, -1f, 1f)
-
+                // Slow shutter: add the trail from the live view (needs a second full-size frame).
                 val preview = pipeline
-                val trailOn = preview != null && preview.trailTex != 0 && look.shutter.persistence(1f / 30f) > 0f
-                val trailMatrix = quarterTurnMatrix((4 - frameTurns) % 4)
-                renderer.developStill(p, src, flip, if (trailOn) preview!!.trailTex else 0, trailMatrix, if (trailOn) 1f else 0f)
-                GlUtil.deleteTextures(src); src = 0
-                renderer.glow(p, look)
-
-                val stillFx = FrameFx()
-                FxAnimator().apply {
-                    val t = (System.nanoTime() % 100_000L) / 10f
-                    repeat(24) { next(look, t, stillFx) }   // let scratches settle into a state
+                val trailOn = simulateShutter && preview != null && preview.trailTex != 0 &&
+                    look.shutter.persistence(1f / 30f) > 0f && w.toLong() * h <= 16_000_000L
+                val source = if (trailOn) {
+                    val work = GlUtil.createTexture(w, h, GLES30.GL_RGBA8, mipmapped = true).also { textures += it }
+                    val fbo = GlUtil.createFramebuffer(work).also { fbos += it }
+                    renderer.developStillWithTrail(fbo, w, h, src, imageMatrix, preview!!.trailTex, quarterTurnMatrix((4 - frameTurns) % 4))
+                    GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, work)
+                    GLES30.glGenerateMipmap(GLES30.GL_TEXTURE_2D)
+                    glow = Glow(w, h, renderer.glowFormat)
+                    FinalSource(work, work, w, h, renderer.identity, glow!!)
+                } else {
+                    glow = Glow(w, h, renderer.glowFormat)
+                    FinalSource(src, src, w, h, imageMatrix, glow!!)
                 }
-
-                outTex = GlUtil.createTexture(w, h, GLES30.GL_RGBA8)
-                outFbo = GlUtil.createFramebuffer(outTex)
-                GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, outFbo)
-                renderer.drawFinal(p, look, stillFx, w, h, 0, 0)
-
-                val buf = ByteBuffer.allocateDirect(w * h * 4).order(ByteOrder.nativeOrder())
-                GLES30.glPixelStorei(GLES30.GL_PACK_ALIGNMENT, 1)
-                GLES30.glReadPixels(0, 0, w, h, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, buf)
-                GlUtil.checkError("readPixels")
-                flipRows(buf, w * 4, h)
-                buf.rewind()
-                result = createBitmap(w, h).apply { copyPixelsFromBuffer(buf) }
+                renderer.glow(source, look, 0)
+                result = renderTiled(source, look, stillFx(look), w, h, targetRot = 0, frameRot = 0)
             } catch (e: Throwable) {
                 Log.e(TAG, "developStill", e)
                 if (!still.isRecycled) still.recycle()
             } finally {
                 GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
-                if (src != 0) GlUtil.deleteTextures(src)
-                p?.release()
-                if (outFbo != 0) GlUtil.deleteFramebuffers(outFbo)
-                if (outTex != 0) GlUtil.deleteTextures(outTex)
+                glow?.release()
+                GlUtil.deleteFramebuffers(*fbos.toIntArray())
+                GlUtil.deleteTextures(*textures.toIntArray())
                 egl.makeCurrent(display ?: pbuffer)
             }
             done(result)
         }
     }
 
-    /** Longest side a still may have, limited by the GPU. */
-    fun maxStillSide(): Int = min(maxTextureSize, 4096)
+    private fun stillFx(look: FilmLook): FrameFx {
+        val out = FrameFx()
+        FxAnimator().apply {
+            val t = (System.nanoTime() % 100_000L) / 10f
+            repeat(24) { next(look, t, out) }   // let scratches settle into a state
+        }
+        out.slip = 0f
+        return out
+    }
+
+    /**
+     * Four quick exposures from the live view, 0.25 s apart, on one frame: the four-lens
+     * sampler camera. Each quarter is turned upright for how the phone is held.
+     */
+    fun captureSampler(look: FilmLook, done: (Bitmap?) -> Unit) {
+        val turns = deviceQuarterTurns
+        val shots = ArrayList<Bitmap>()
+        val quarterLook = look.copy(frame = FrameStyle.NONE, stamp = StampStyle.NONE)
+        fun shoot(i: Int) {
+            handler.postDelayed({
+                val p = pipeline
+                if (p == null) { shots.forEach { it.recycle() }; done(null); return@postDelayed }
+                try {
+                    egl.makeCurrent(display ?: pbuffer)
+                    val odd = turns % 2 == 1
+                    val w = if (odd) p.height else p.width
+                    val h = if (odd) p.width else p.height
+                    shots += renderTiled(liveSource(p), quarterLook, fx, w, h, targetRot = (4 - turns) % 4, frameRot = turns)
+                } catch (e: Throwable) {
+                    Log.e(TAG, "sampler", e)
+                }
+                if (i < 3) shoot(i + 1) else done(composeGrid(shots, look))
+            }, if (i == 0) 0L else 250L)
+        }
+        shoot(0)
+    }
+
+    private fun composeGrid(shots: List<Bitmap>, look: FilmLook): Bitmap? {
+        if (shots.size < 4) { shots.forEach { it.recycle() }; return null }
+        val w = shots[0].width
+        val h = shots[0].height
+        val gutter = (min(w, h) * 0.03f).roundToInt()
+        val out = createBitmap(w * 2 + gutter * 3, h * 2 + gutter * 3)
+        val c = Canvas(out)
+        c.drawColor(if (look.frame == FrameStyle.WHITE || look.frame == FrameStyle.MAT) Color.rgb(245, 244, 240) else Color.rgb(8, 8, 8))
+        shots.forEachIndexed { i, b ->
+            val x = gutter + (i % 2) * (w + gutter)
+            val y = gutter + (i / 2) * (h + gutter)
+            c.drawBitmap(b, x.toFloat(), y.toFloat(), null)
+            b.recycle()
+        }
+        return out
+    }
+
+    /** Runs the final pass in tiles into a bitmap of [w]x[h] (top row first). */
+    private fun renderTiled(src: FinalSource, look: FilmLook, frameFx: FrameFx, w: Int, h: Int, targetRot: Int, frameRot: Int): Bitmap {
+        val tile = min(2048, maxTextureSize)
+        val tex = GlUtil.createTexture(tile, tile, GLES30.GL_RGBA8)
+        val fbo = GlUtil.createFramebuffer(tex)
+        val out = createBitmap(w, h)
+        val tileBmp = createBitmap(tile, tile)
+        val buf = ByteBuffer.allocateDirect(tile * tile * 4).order(ByteOrder.nativeOrder())
+        val canvas = Canvas(out)
+        try {
+            GLES30.glPixelStorei(GLES30.GL_PACK_ALIGNMENT, 1)
+            GLES30.glPixelStorei(GLES30.GL_PACK_ROW_LENGTH, tile)
+            var y0 = 0
+            while (y0 < h) {
+                val th = min(tile, h - y0)
+                var x0 = 0
+                while (x0 < w) {
+                    val tw = min(tile, w - x0)
+                    GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, fbo)
+                    renderer.drawFinal(src, look, frameFx, tw, th, targetRot, frameRot, w, h, x0, y0)
+                    buf.clear()
+                    GLES30.glReadPixels(0, 0, tw, th, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, buf)
+                    flipRows(buf, tile * 4, th)
+                    buf.rewind()
+                    tileBmp.copyPixelsFromBuffer(buf)
+                    // GL rows count up from the bottom; the bitmap's from the top.
+                    canvas.drawBitmap(tileBmp, Rect(0, 0, tw, th), Rect(x0, h - y0 - th, x0 + tw, h - y0), null)
+                    x0 += tile
+                }
+                y0 += tile
+            }
+            GlUtil.checkError("renderTiled")
+        } finally {
+            GLES30.glPixelStorei(GLES30.GL_PACK_ROW_LENGTH, 0)
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
+            GlUtil.deleteFramebuffers(fbo)
+            GlUtil.deleteTextures(tex)
+            tileBmp.recycle()
+        }
+        return out
+    }
 
     private fun flipRows(buf: ByteBuffer, stride: Int, rows: Int) {
         val a = ByteArray(stride)
@@ -405,6 +551,33 @@ class FilmEngine {
             buf.position(top); buf.put(b)
             buf.position(bottom); buf.put(a)
         }
+    }
+
+    /**
+     * Screen uv (y up, upright picture) -> texture uv of a still kept in sensor orientation
+     * (row 0 at the top), undoing the mirror and a clockwise rotation of [rotationCw].
+     */
+    private fun stillMatrix(rotationCw: Int, mirror: Boolean): FloatArray {
+        fun map(x: Float, y: Float): Pair<Float, Float> {
+            var ox = x
+            val oy = 1f - y                               // image coordinates, y down
+            if (mirror) ox = 1f - ox
+            return when ((rotationCw / 90) and 3) {
+                1 -> oy to 1f - ox
+                2 -> 1f - ox to 1f - oy
+                3 -> 1f - oy to ox
+                else -> ox to oy
+            }
+        }
+        val (tx, ty) = map(0f, 0f)
+        val (ax, ay) = map(1f, 0f)
+        val (bx, by) = map(0f, 1f)
+        val m = FloatArray(16)
+        Matrix.setIdentityM(m, 0)
+        m[0] = ax - tx; m[1] = ay - ty
+        m[4] = bx - tx; m[5] = by - ty
+        m[12] = tx; m[13] = ty
+        return m
     }
 
     /** 4x4 matrix for rot(k): turn a unit-square point k quarter turns clockwise. */

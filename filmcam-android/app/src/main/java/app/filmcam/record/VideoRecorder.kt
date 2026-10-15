@@ -17,19 +17,25 @@ import android.view.Surface
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
 
+/** The encoder choice for one recording. */
+data class EncoderChoice(val mime: String, val width: Int, val height: Int, val fps: Int, val bitrate: Int) {
+    val codecName get() = if (mime == MediaFormat.MIMETYPE_VIDEO_HEVC) "HEVC" else "H.264"
+}
+
 /**
- * H.264 + AAC into an MP4. Video frames arrive through [inputSurface], drawn by the film
+ * H.264 or HEVC + AAC into an MP4. Video frames arrive through [inputSurface], drawn by the film
  * renderer; audio is pulled from the microphone on its own thread. Timestamps on both
  * tracks come from System.nanoTime so they line up.
  */
 class VideoRecorder(
-    val width: Int,
-    val height: Int,
+    private val choice: EncoderChoice,
     orientationHint: Int,
     private val output: ParcelFileDescriptor,
     withAudio: Boolean,
     private val onFinished: (success: Boolean) -> Unit,
 ) {
+    val width = choice.width
+    val height = choice.height
     private val videoThread = HandlerThread("VideoEncoder").apply { start() }
     private val videoCodec: MediaCodec
     val inputSurface: Surface
@@ -44,14 +50,14 @@ class VideoRecorder(
 
     init {
         muxer.setOrientationHint(orientationHint)
-        val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height).apply {
+        val format = MediaFormat.createVideoFormat(choice.mime, width, height).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
             // Grain is pure entropy; give it bits or it turns to mush.
-            setInteger(MediaFormat.KEY_BIT_RATE, bitrateFor(width, height))
-            setInteger(MediaFormat.KEY_FRAME_RATE, 30)
+            setInteger(MediaFormat.KEY_BIT_RATE, choice.bitrate)
+            setInteger(MediaFormat.KEY_FRAME_RATE, choice.fps)
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
         }
-        videoCodec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+        videoCodec = MediaCodec.createEncoderByType(choice.mime)
         videoCodec.setCallback(object : MediaCodec.Callback() {
             override fun onInputBufferAvailable(codec: MediaCodec, index: Int) = Unit
 
@@ -133,21 +139,40 @@ class VideoRecorder(
     companion object {
         private const val TAG = "VideoRecorder"
 
-        fun bitrateFor(w: Int, h: Int): Int = (w.toLong() * h * 30 * 0.32).toInt().coerceIn(4_000_000, 40_000_000)
+        private fun videoCaps(mime: String) = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos
+            .filter { it.isEncoder && it.supportedTypes.any { t -> t.equals(mime, true) } }
+            .mapNotNull { runCatching { it.getCapabilitiesForType(mime).videoCapabilities }.getOrNull() }
 
-        /** Largest landscape size the AVC encoder accepts, at most [w]x[h], same aspect. */
-        fun supportedSize(w: Int, h: Int): Pair<Int, Int> {
-            val caps = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos
-                .filter { it.isEncoder && it.supportedTypes.any { t -> t.equals(MediaFormat.MIMETYPE_VIDEO_AVC, true) } }
-                .mapNotNull { runCatching { it.getCapabilitiesForType(MediaFormat.MIMETYPE_VIDEO_AVC).videoCapabilities }.getOrNull() }
+        /** Whether some encoder can take [w]x[h] at [fps] in this format. */
+        fun canEncode(mime: String, w: Int, h: Int, fps: Int): Boolean =
+            videoCaps(mime).any { runCatching { it.areSizeAndRateSupported(w, h, fps.toDouble()) }.getOrDefault(false) }
+
+        /**
+         * Picks the codec for a landscape [w]x[h] recording: HEVC from 4K up (smaller files,
+         * and often the only 8K encoder), H.264 below; whichever can actually take the size.
+         * Steps the size down if neither can. Bitrate is generous: grain eats bits.
+         */
+        fun choose(w: Int, h: Int, fps: Int): EncoderChoice {
+            val big = w.toLong() * h > 2_500_000L
+            val order = if (big) listOf(MediaFormat.MIMETYPE_VIDEO_HEVC, MediaFormat.MIMETYPE_VIDEO_AVC)
+                else listOf(MediaFormat.MIMETYPE_VIDEO_AVC, MediaFormat.MIMETYPE_VIDEO_HEVC)
             var cw = w
             var ch = h
             while (cw >= 320) {
-                if (caps.isEmpty() || caps.any { it.isSizeSupported(cw, ch) }) return cw to ch
+                for (mime in order) {
+                    if (canEncode(mime, cw, ch, fps)) {
+                        val perPixel = if (mime == MediaFormat.MIMETYPE_VIDEO_HEVC) 0.2 else 0.3
+                        var rate = (cw.toLong() * ch * fps * perPixel).toLong().coerceIn(6_000_000L, 240_000_000L)
+                        videoCaps(mime).firstOrNull { it.isSizeSupported(cw, ch) }?.bitrateRange?.let {
+                            rate = rate.coerceIn(it.lower.toLong(), it.upper.toLong())
+                        }
+                        return EncoderChoice(mime, cw, ch, fps, rate.toInt())
+                    }
+                }
                 cw = (cw * 3 / 4) and -2
                 ch = (ch * 3 / 4) and -2
             }
-            return w to h
+            return EncoderChoice(MediaFormat.MIMETYPE_VIDEO_AVC, 1920, 1080, fps, 20_000_000)
         }
     }
 }
