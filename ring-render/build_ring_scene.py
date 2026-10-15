@@ -42,9 +42,9 @@ STONE = 0.40          # princess girdle edge length
 CROWN = 0.045         # crown height
 PAVILION = 0.27       # pavilion depth
 R_GIRDLE = 1.32       # radius of girdle plane
-BAR_T = 0.075         # bar thickness (tangential)
-BAR_OVER = 0.022      # bar overhang past band edge (axial)
-BAR_TOP = 0.05        # bar height above table
+BAR_T = 0.095         # bar thickness (tangential)
+BAR_OVER = 0.032      # bar overhang past band edge (axial)
+BAR_TOP = 0.06        # bar height above table
 BAND_W = STONE + 0.02 # axial width of band / rails
 RAIL_W = 0.125        # axial width of each rail
 RAIL_T = 0.115        # radial thickness of rails
@@ -102,7 +102,7 @@ def mat_diamond():
     return m
 
 
-def mat_char(name, ember=0.0, wood_mix=0.0, block_tint=(0.016, 0.014, 0.013)):
+def mat_char(name, ember=0.0, wood_mix=0.0, block_tint=(0.026, 0.023, 0.021)):
     """Charred wood: blocks + cracks from vertex attributes, embers in cracks."""
     m, nt, out = node_mat(name)
     N = nt.nodes
@@ -119,7 +119,7 @@ def mat_char(name, ember=0.0, wood_mix=0.0, block_tint=(0.016, 0.014, 0.013)):
     L.new(crand.outputs["Fac"], blk.inputs["Factor"])
 
     col = N.new("ShaderNodeMix"); col.data_type = "RGBA"
-    col.inputs["A"].default_value = (0.004, 0.0035, 0.003, 1)
+    col.inputs["A"].default_value = (0.0015, 0.0012, 0.001, 1)
     L.new(crack.outputs["Fac"], col.inputs["Factor"])
     L.new(blk.outputs["Result"], col.inputs["B"])
     base = col.outputs["Result"]
@@ -149,10 +149,10 @@ def mat_char(name, ember=0.0, wood_mix=0.0, block_tint=(0.016, 0.014, 0.013)):
     L.new(base, p.inputs["Base Color"])
     rough = N.new("ShaderNodeMapRange")
     rough.inputs["To Min"].default_value = 0.95
-    rough.inputs["To Max"].default_value = 0.38
+    rough.inputs["To Max"].default_value = 0.42
     L.new(crack.outputs["Fac"], rough.inputs["Value"])
     L.new(rough.outputs["Result"], p.inputs["Roughness"])
-    p.inputs["Specular IOR Level"].default_value = 0.35
+    p.inputs["Specular IOR Level"].default_value = 0.38
 
     # Fine scaly bump on the block surfaces
     tc2 = N.new("ShaderNodeTexCoord")
@@ -162,7 +162,7 @@ def mat_char(name, ember=0.0, wood_mix=0.0, block_tint=(0.016, 0.014, 0.013)):
     nz.inputs["Roughness"].default_value = 0.65
     L.new(tc2.outputs["Object"], nz.inputs["Vector"])
     bump = N.new("ShaderNodeBump")
-    bump.inputs["Strength"].default_value = 0.35
+    bump.inputs["Strength"].default_value = 0.6
     bump.inputs["Distance"].default_value = 0.01
     L.new(nz.outputs["Fac"], bump.inputs["Height"])
     L.new(bump.outputs["Normal"], p.inputs["Normal"])
@@ -255,33 +255,53 @@ def add_rail_arc(bm, y0, y1, r0, r1, a0, a1, segs):
 
 
 def princess_mesh():
-    h = STONE / 2
+    """Princess cut: square girdle, stepped crown, chevron pavilion.
 
-    def loop(z, corner, mid):
+    Rings of 8 points (4 side midpoints + 4 corners) are bridged with quads.
+    On the pavilion the midpoints run ahead of the corners toward the culet,
+    which bends every tier into the V-shaped chevrons that give a princess
+    its cross pattern, while the corner ridges stay straight to the culet.
+    """
+    h = STONE / 2
+    g = 0.006
+
+    def ring(z, corner, mid):
         pts = []
         for k in range(8):
             ang = k * math.pi / 4
-            if k % 2 == 0:   # edge midpoints
+            if k % 2 == 0:
                 pts.append((math.cos(ang) * mid, math.sin(ang) * mid, z))
-            else:            # corners
-                sx = 1 if math.cos(ang) > 0 else -1
-                sy = 1 if math.sin(ang) > 0 else -1
-                pts.append((sx * corner, sy * corner, z))
+            else:
+                pts.append((math.copysign(corner, math.cos(ang)), math.copysign(corner, math.sin(ang)), z))
         return pts
 
-    g = 0.006
+    def depth(f):   # convex pavilion: steep near the girdle, flatter at the culet
+        return g + (PAVILION - g) * (1 - (1 - f) ** 1.3)
+
+    def pav_ring(a, lag):
+        mid_r, mid_z = h * (1 - a), -depth(a)
+        b = max(a - lag, 0.0)
+        cor_r, cor_z = h * (1 - b), -depth(b)
+        pts = []
+        for k in range(8):
+            ang = k * math.pi / 4
+            if k % 2 == 0:
+                pts.append((math.cos(ang) * mid_r, math.sin(ang) * mid_r, mid_z))
+            else:
+                pts.append((math.copysign(cor_r, math.cos(ang)), math.copysign(cor_r, math.sin(ang)), cor_z))
+        return pts
+
     loops = [
-        loop(CROWN, 0.76 * h, 0.76 * h),             # table
-        loop(CROWN * 0.55, 0.93 * h, 0.90 * h),     # upper crown break
-        loop(g, h, h),                               # girdle top
-        loop(-g, h, h),                              # girdle bottom
-        loop(-PAVILION * 0.30, 0.74 * h, 0.80 * h), # pavilion tier 1 (chevrons)
-        loop(-PAVILION * 0.62, 0.42 * h, 0.36 * h), # pavilion tier 2
-        loop(-PAVILION * 0.86, 0.14 * h, 0.17 * h), # pavilion tier 3
+        ring(CROWN, 0.70 * h, 0.70 * h),            # table
+        ring(CROWN * 0.55, 0.88 * h, 0.80 * h),    # crown stars (V toward table)
+        ring(g, h, h),                               # girdle top
+        ring(-g, h, h),                              # girdle bottom
     ]
+    for a in (0.30, 0.60, 0.84):
+        loops.append(pav_ring(a, 0.10))
     bm = bmesh.new()
     vl = [[bm.verts.new(p) for p in lp] for lp in loops]
-    table = bm.faces.new(vl[0])                      # table
+    table = bm.faces.new(vl[0])
     for A, B in zip(vl[:-1], vl[1:]):
         for k in range(8):
             bm.faces.new([A[k], B[k], B[(k + 1) % 8], A[(k + 1) % 8]])
@@ -289,7 +309,10 @@ def princess_mesh():
     for k in range(8):
         bm.faces.new([vl[-1][k], culet, vl[-1][(k + 1) % 8]])
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    bmesh.ops.triangulate(bm, faces=[f for f in bm.faces if len(f.verts) > 3 and f != table])
+    # Only split the clearly non-planar pavilion quads; keep crown facets whole
+    bmesh.ops.triangulate(bm, faces=[f for f in bm.faces if len(f.verts) > 3 and f != table
+                                     and f.calc_center_median().z < -g],
+                          quad_method="SHORT_EDGE")
     me = bpy.data.meshes.new("Princess")
     bm.to_mesh(me)
     bm.free()
@@ -431,7 +454,7 @@ def char_blocks(U, V, cells_v, seed):
     weak = ((hb & np.uint32(255)).astype(np.float64) / 255.0) < 0.18
     du = np.where(weak & (fu > 0.5), du + 0.25, du)
     dist = np.minimum(du, dv)
-    width = 0.07 + 0.10 * (((hb >> np.uint32(8)) & np.uint32(255)).astype(np.float64) / 255.0)
+    width = 0.12 + 0.13 * (((hb >> np.uint32(8)) & np.uint32(255)).astype(np.float64) / 255.0)
     crack = np.clip(dist / width, 0, 1)
     # random per-block tilt so neighbouring blocks catch the light differently
     ta = (((hb >> np.uint32(16)) & np.uint32(255)).astype(np.float64) / 255.0 - 0.5)
@@ -452,7 +475,7 @@ def smooth_noise(P, seed, freqs=((0.6, 1.0), (1.3, 0.45), (2.9, 0.2))):
 
 
 def make_log(name, center, axis, radius, length, cell=0.26, nu=None, nv=None,
-             seed=1, crack_depth=0.06, mat=None, glow_fn=None, wood_fn=None, bulge=0.10):
+             seed=1, crack_depth=0.06, mat=None, glow_fn=None, wood_fn=None, bulge=0.10, res=9):
     axis = Vector(axis).normalized()
     ref = Vector((0, 0, 1)) if abs(axis.z) < 0.9 else Vector((1, 0, 0))
     e1 = axis.cross(ref).normalized()
@@ -460,21 +483,36 @@ def make_log(name, center, axis, radius, length, cell=0.26, nu=None, nv=None,
     circ = 2 * math.pi * radius
     cells_v = max(6, int(round(circ / cell)))
     cells_u = length / (cell * 1.35)
-    nv = nv or int(cells_v * 9)
-    nu = nu or int(cells_u * 9)
+    nv = nv or int(cells_v * res)
+    nu = nu or int(cells_u * res)
     s = np.linspace(-length / 2, length / 2, nu)
     t = np.linspace(0, 2 * math.pi, nv, endpoint=False)
     S, T = np.meshgrid(s, t, indexing="ij")
     U = (S / length + 0.5) * cells_u
     V = T / (2 * math.pi) * cells_v
     crack, ID, tilt = char_blocks(U, V, cells_v, seed)
-    crack_profile = 1.0 - (1.0 - crack) ** 3
+    # hairline cracks that split the big blocks into smaller ones
+    crack2, _, _ = char_blocks(U * 2.2 + 0.5, V * 2.0, cells_v * 2, seed + 101)
+    # only some blocks carry a hairline split
+    split = (((ID >> np.uint32(3)) & np.uint32(7)) < 3)
+    crack2 = np.where(split, crack2, 1.0)
+    # steep crack walls, flat block tops
+    crack_profile = crack ** 0.4
+    hair_profile = crack2 ** 0.5
     cellrand = ((ID >> np.uint32(5)) & np.uint32(1023)).astype(np.float64) / 1023.0
     ax = np.array(axis); a1 = np.array(e1); a2 = np.array(e2)
     base_pts = (S[..., None] * ax + np.cos(T)[..., None] * a1 * radius + np.sin(T)[..., None] * a2 * radius)
     flat = base_pts.reshape(-1, 3)
     low = smooth_noise(flat / radius, seed).reshape(S.shape)
-    rr = radius * (1 + bulge * low) + crack_depth * (crack_profile - 1.0) + crack_depth * 0.35 * (cellrand - 0.5) + crack_depth * 0.9 * tilt * crack
+    fine = smooth_noise(flat * (14.0 / radius), seed + 7,
+                        freqs=((1.0, 1.0), (2.3, 0.5), (5.1, 0.25))).reshape(S.shape)
+    rr = (radius * (1 + bulge * low)
+          + crack_depth * (crack_profile - 1.0)
+          + crack_depth * 0.25 * (hair_profile - 1.0) * crack
+          + crack_depth * 0.35 * (cellrand - 0.5)
+          + crack_depth * 0.9 * tilt * crack
+          + crack_depth * 0.03 * fine * crack)
+    crack = np.minimum(crack, 0.45 + 0.55 * crack2)
     # taper ends slightly
     pts = (S[..., None] * ax + (np.cos(T) * rr)[..., None] * a1 + (np.sin(T) * rr)[..., None] * a2)
     pts = pts + np.array(center)
@@ -513,6 +551,9 @@ def make_log(name, center, axis, radius, length, cell=0.26, nu=None, nv=None,
         attr("woodmask", wood_fn(verts, cellrand.ravel(), S.ravel(), T.ravel()))
     me.materials.append(mat)
     ob = link(bpy.data.objects.new(name, me))
+    # Keep the busy charcoal out of the view through the diamonds (studio
+    # practice: stones see white cards and darkness, not the set).
+    ob.visible_transmission = False
     return ob
 
 
@@ -529,25 +570,25 @@ def glow_near(point, falloff, gain=1.0, cut=0.0):
 
 M_CHAR = mat_char("Charcoal", ember=0.0)
 M_CHAR_EMBER = mat_char("CharcoalEmber", ember=arg("--ember", 4.0, float))
-M_CHAR_BROWN = mat_char("CharcoalSplit", ember=0.0, wood_mix=1.0, block_tint=(0.020, 0.016, 0.014))
+M_CHAR_BROWN = mat_char("CharcoalSplit", ember=0.0, wood_mix=1.0, block_tint=(0.030, 0.025, 0.021))
 
 FIRE = Vector((0.1, 2.6, -1.4))   # heart of the ember bed, behind/below the ring
 
 # Right log the ring leans on (in focus near the ring)
 make_log("LogRight", center=(2.05, 1.1, 0.0), axis=(0.25, 0.5, 1.0), radius=1.2, length=8,
-         cell=0.22, seed=3, crack_depth=0.07, mat=M_CHAR_BROWN,
+         cell=0.24, seed=3, crack_depth=0.15, res=15, mat=M_CHAR_BROWN,
          wood_fn=lambda v, cr, S, T: np.clip((-(v[:, 2]) - 0.4) * 1.5, 0, 1) * (0.5 + 0.5 * cr))
 # Lower right split chunk (lighter fibrous wood)
 make_log("LogRightLow", center=(1.65, -0.25, -1.65), axis=(1.0, 0.55, 0.15), radius=1.1, length=6,
-         cell=0.22, seed=5, crack_depth=0.06, mat=M_CHAR_BROWN,
+         cell=0.24, seed=5, crack_depth=0.12, res=14, mat=M_CHAR_BROWN,
          wood_fn=lambda v, cr, S, T: np.clip(0.25 + 0.75 * cr, 0, 1) * np.clip((v[:, 0] - 0.5) * 1.5, 0, 1))
 # Log under the ring
 make_log("LogBottom", center=(0.25, 0.3, -1.85), axis=(1.0, -0.3, 0.1), radius=0.9, length=6,
-         cell=0.20, seed=7, crack_depth=0.06, mat=M_CHAR_EMBER,
+         cell=0.20, seed=7, crack_depth=0.10, res=13, mat=M_CHAR_EMBER,
          glow_fn=glow_near(Vector((-0.4, -0.3, -1.6)), 0.6, gain=1.0, cut=0.15))
 # Big left log
 make_log("LogLeft", center=(-2.1, 0.5, -1.0), axis=(0.5, 1.0, 0.25), radius=1.25, length=8,
-         cell=0.22, seed=11, crack_depth=0.07, mat=M_CHAR_EMBER,
+         cell=0.24, seed=11, crack_depth=0.15, res=13, mat=M_CHAR_EMBER,
          glow_fn=glow_near(Vector((-0.45, -0.2, -1.65)), 0.6, gain=1.6, cut=0.2))
 # Background log across the top (out of focus)
 make_log("LogBack", center=(-0.3, 6.0, 1.9), axis=(1.0, 0.2, -0.35), radius=2.2, length=14,
@@ -613,16 +654,75 @@ WARM = (1.0, 0.48, 0.13)
 area("Key", (-4.5, -6.0, 6.0), (0, 0, 0.2), 2.5, arg("--key", 1400, float), (1.0, 0.97, 0.93), size_y=1.2, only=RING_COLL)
 area("TopStrip", (0.5, -2.5, 6.5), (0, 0, 0), 5.0, 500, (1.0, 0.98, 0.95), size_y=0.35, only=RING_COLL)
 area("FillCard", (4.0, -6.5, 1.0), (0, 0, 0), 1.5, 120, (0.95, 0.97, 1.0), only=RING_COLL)
-# Diamond scintillation cards: many small strips around the camera hemisphere
-rng_c = np.random.default_rng(42)
-for i in range(40):
-    az = rng_c.uniform(-2.6, 2.6)
-    el = rng_c.uniform(-0.2, 1.4)
+# Diamond lighting: a few large white panels arranged around the camera so each
+# facet sees either a bright panel or the dark scene -> bold white/black facet pattern.
+PANELS = [  # (azimuth deg, elevation deg, width, height, power)
+    (-35, 35, 2.6, 1.4, 600), (25, 45, 2.8, 1.0, 500),
+    (-15, 8, 2.0, 2.0, 450), (16, 4, 2.0, 2.0, 400),
+]
+for i, (az, el, w, hgt, pw) in enumerate(PANELS):
+    az, el = math.radians(az), math.radians(el)
     rad = 7.0
     loc = (rad * math.sin(az) * math.cos(el), -rad * math.cos(az) * math.cos(el), rad * math.sin(el))
-    area(f"Spark.{i:02d}", loc, (0, 0, 0), rng_c.uniform(0.15, 0.6), rng_c.uniform(120, 420) * arg("--spark", 1.0, float),
-         (1.0, 0.98, 0.95), size_y=rng_c.uniform(1.0, 3.0), only=STONE_COLL)
-area("StoneSoftbox", (-1.5, -7.5, 3.5), (0, 0, 0), 1.2, 250, (1.0, 0.98, 0.95), size_y=2.0, only=STONE_COLL)
+    area(f"StonePanel.{i}", loc, (0, 0, 0), w, pw * arg("--spark", 1.0, float), (1.0, 0.985, 0.97),
+         size_y=hgt, only=STONE_COLL)
+# Soft studio dome: seen only in reflections/refractions (not by camera, not
+# lighting the logs). Bright overhead, grey at the horizon, dark below, with
+# broad soft bands so facets alternate between light and shadow.
+dome_me = bpy.data.meshes.new("StudioDome")
+bmd = bmesh.new()
+bmesh.ops.create_uvsphere(bmd, u_segments=64, v_segments=32, radius=40.0)
+bmesh.ops.reverse_faces(bmd, faces=bmd.faces)
+bmd.to_mesh(dome_me); bmd.free()
+for pl in dome_me.polygons:
+    pl.use_smooth = True
+dm, dnt, dout = node_mat("StudioDomeMat")
+dN, dL = dnt.nodes, dnt.links
+geo = dN.new("ShaderNodeNewGeometry")
+sep = dN.new("ShaderNodeSeparateXYZ")
+dL.new(geo.outputs["Position"], sep.inputs[0])
+nrm = dN.new("ShaderNodeVectorMath"); nrm.operation = "NORMALIZE"
+dL.new(geo.outputs["Position"], nrm.inputs[0])
+sep2 = dN.new("ShaderNodeSeparateXYZ")
+dL.new(nrm.outputs["Vector"], sep2.inputs[0])
+ramp = dN.new("ShaderNodeValToRGB")
+ramp.color_ramp.elements[0].position = 0.35
+ramp.color_ramp.elements[0].color = (0.0, 0.0, 0.0, 1)
+ramp.color_ramp.elements[1].position = 0.95
+ramp.color_ramp.elements[1].color = (1.0, 1.0, 1.0, 1)
+mr = dN.new("ShaderNodeMapRange")
+mr.inputs["From Min"].default_value = -1.0
+L_ = dL
+L_.new(sep2.outputs["Z"], mr.inputs["Value"])
+L_.new(mr.outputs["Result"], ramp.inputs["Fac"])
+# soft vertical bands (like strip boxes) to give facets contrast
+wave = dN.new("ShaderNodeTexWave")
+wave.wave_type = "BANDS"; wave.bands_direction = "X"
+wave.inputs["Scale"].default_value = 0.6
+wave.inputs["Distortion"].default_value = 0.0
+dL.new(nrm.outputs["Vector"], wave.inputs["Vector"])
+bandr = dN.new("ShaderNodeMapRange")
+bandr.inputs["To Min"].default_value = 0.25
+bandr.inputs["To Max"].default_value = 1.0
+dL.new(wave.outputs["Fac"], bandr.inputs["Value"])
+mul = dN.new("ShaderNodeMath"); mul.operation = "MULTIPLY"
+dL.new(ramp.outputs["Color"], mul.inputs[0])
+dL.new(bandr.outputs["Result"], mul.inputs[1])
+em = dN.new("ShaderNodeEmission")
+em.inputs["Color"].default_value = (1.0, 0.985, 0.97, 1)
+st = dN.new("ShaderNodeMath"); st.operation = "MULTIPLY"
+st.inputs[1].default_value = arg("--dome", 1.7, float)
+dL.new(mul.outputs[0], st.inputs[0])
+dL.new(st.outputs[0], em.inputs["Strength"])
+dL.new(em.outputs[0], dout.inputs[0])
+dome_me.materials.append(dm)
+dome = link(bpy.data.objects.new("StudioDome", dome_me))
+dome.visible_camera = False
+dome.visible_diffuse = False
+dome.visible_shadow = False
+dome.visible_volume_scatter = False
+dome.light_linking.receiver_collection = STONE_COLL
+
 # Weak warm-white grazing light for the charcoal texture
 area("LogKey", (-6.0, -3.0, 6.5), (0, 1.5, -0.5), 3.0, arg("--logkey", 500, float), (1.0, 0.85, 0.70))
 LOG_LEFT_COLL = bpy.data.collections.new("LeftLog")
@@ -695,6 +795,14 @@ try:
 except Exception as e:
     print("colour management:", e)
 scene.view_settings.exposure = arg("--exposure", 0.0, float)
+
+border = arg("--border", None)
+if border:
+    x0, x1, y0, y1 = (float(t) for t in border.split(","))
+    scene.render.use_border = True
+    scene.render.use_crop_to_border = True
+    scene.render.border_min_x, scene.render.border_max_x = x0, x1
+    scene.render.border_min_y, scene.render.border_max_y = y0, y1
 
 scene.render.filepath = OUT
 if BLEND:
