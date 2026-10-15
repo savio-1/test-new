@@ -19,7 +19,7 @@ and track.json format are unchanged.
     python3 build_home.py --blend --glb                        # also alaro-home.glb (flat materials + camera animation)
 
 Final quality on a GPU machine (see RENDER_ON_GPU.md):
-    blender -b -P build_home.py -- --render --final --gpu --w 3840 --samples 512 --set 4k --zip
+    blender -b -P build_home.py -- --render --final --gpu --w 3840 --samples 48 --set 4k --zip
         # 3840x2160: frames/4k/fNNN.png (master) + fNNN.webp (q95) + track.json, then alaro-frames-4k.zip
 
 Units are metres; Z is up. The room spans x -4.5..4.5, y -3.5..3.5.
@@ -1684,8 +1684,8 @@ def main(argv):
     R = build_scene(people='--no-people' not in argv)
 
     if '--blend' in argv or '--glb' in argv:
-        # the saved file opens ready to render the final frames (Cycles, 3840x2160, 512 spp, AgX, keyed exposure)
-        setup_cycles(3840, 2160, 512, final=True)
+        # the saved file opens ready to render the final frames (Cycles, 3840x2160, 48 spp, AgX, keyed exposure)
+        setup_cycles(3840, 2160, 48, final=True)
         bake_keyframes(R)
         bpy.context.scene.frame_set(0)
         if '--blend' in argv:
@@ -1724,7 +1724,7 @@ def main(argv):
     if '--render' in argv:
         w = int(arg('--w', 3840 if final else 960))
         h = int(arg('--h', w * 9 // 16))
-        samples = int(arg('--samples', 512 if final else 12))
+        samples = int(arg('--samples', 48 if final else 12))
         setup_cycles(w, h, samples, gpu='--gpu' in argv, final=final)
         start, end = int(arg('--start', 0)), int(arg('--end', FRAMES - 1))
         webp = final or '--webp' in argv

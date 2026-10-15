@@ -62,7 +62,7 @@ Some furniture moved so the groups are visible from Alaro and do not hide one an
 - AgX Medium High Contrast with exposure keyed per frame (as v1).
 - Depth of field on Alaro's holds (f/4 at full zoom, focused on the moment). Motion blur off.
 - Lens finish applied to every frame in `build_home.py` (`LENS`): ~17 % vignette, a sub-pixel chromatic aberration at the corners, ~1.5 % fine luminance grain seeded per frame, and a slight warm balance. No blur.
-- **Final settings** (`--final`): 3840×2160 by default (`--w 2560` / `--w 1920` still work), 512 samples, adaptive threshold 0.005, OptiX denoiser on NVIDIA and OIDN elsewhere with albedo + normal passes, light tree on, 12 bounces / 12 transmission / 2 volume, caustics off, persistent data, auto tiles, Blackman-Harris 1.5 px.
+- **Final settings** (`--final`): 3840×2160 by default (`--w 2560` / `--w 1920` still work), 48 samples (the client-approved review quality; `--samples` raises it), adaptive threshold 0.005, OptiX denoiser on NVIDIA and OIDN elsewhere with albedo + normal passes, light tree on, 12 bounces / 12 transmission / 2 volume, caustics off, persistent data, auto tiles, Blackman-Harris 1.5 px.
 - **Output:** `frames/4k/fNNN.png` (8-bit sRGB master) + `fNNN.webp` (q95) + `track.json` + `render-info.txt`, resumable and coarse-to-fine, with a time estimate after three frames; `--zip` makes `alaro-frames-4k.zip` (WebP + track.json + render-info only).
 
 ## Files

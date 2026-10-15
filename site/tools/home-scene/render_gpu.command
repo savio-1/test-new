@@ -22,9 +22,9 @@ if [ -z "$BLENDER" ]; then
 fi
 
 echo "Using Blender: $BLENDER"
-echo "Rendering 479 frames at 3840x2160 (512 samples). Leave this window open; it prints a time estimate"
+echo "Rendering 479 frames at 3840x2160 (48 samples). Leave this window open; it prints a time estimate"
 echo "after the first frames. Stopping is safe: run this again to continue."
-"$BLENDER" -b -P "$(pwd)/build_home.py" -- --render --final --gpu --w 3840 --samples 512 --set 4k --zip "$@"
+"$BLENDER" -b -P "$(pwd)/build_home.py" -- --render --final --gpu --w 3840 --samples 48 --set 4k --zip "$@"
 
 echo
 echo "Done. Send this file back: $(pwd)/alaro-frames-4k.zip"
