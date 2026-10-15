@@ -8,6 +8,35 @@ phone. What you see in the viewfinder is what gets saved, borders included.
 
 *All 48 cameras, rendered through the app's real shaders by `tools/look-preview`.*
 
+## The app
+
+![FilmCam screens, light and dark](docs/ui.png)
+
+The interface stays out of the picture.
+- **Top bar:** flash, the format chip (`4K · 30`, `50 MP`), the camera name and the settings button.
+- **Viewfinder:** rounded, with glass zoom pills (`.5  1×  2  3  10`).
+- **Dock:** four items above the shutter (*Looks*, *Adjust*, *Frame* and *Text*). Each one opens a
+  single tray, never a long panel.
+- **Adjust:** pick a group (Light, Film, Lens, Motion, Retro), then a tool, and drag the ruler.
+  While you drag, everything else fades away so you can judge the picture; only the ruler and
+  its value stay. Double-tap the ruler to go back to the camera's own setting. A dot marks the
+  tools you've changed.
+- **Themes:** light (on a fine dot grid) and dark, or follow the system.
+- **Grain:** every camera starts with the same light grain; turn it up per shot in *Adjust*.
+
+## Text overlays
+
+Burn text into video while you record, and into photos.
+- **Fonts:** eight bundled fonts (Instrument Serif, DM Serif, Playfair, Bebas, Space Mono, a
+  typewriter, a VHS face and a handwritten one), the system fonts, and any `.ttf`/`.otf` you
+  import.
+- **On the viewfinder:** drag a text to move it (it snaps to the centre lines, with guides), pinch
+  to resize, twist to rotate (it snaps to level and to 90°), and double-tap to retype.
+- **In the tray:** size, rotation, opacity, letter spacing, colour, shadow, left/centre/right
+  alignment, and a 3×3 placement grid.
+- **Placement:** text is laid out in the upright frame, so it stays put when you turn the phone,
+  and it sits above borders (a caption on an instant print works).
+
 ## Cameras
 
 Forty-eight presets in seven groups. Each one pairs a film stock with a format and the effects that go
@@ -151,8 +180,20 @@ Camera2 stream (up to 8K) ──► SurfaceTexture (OES) ─┐
 | `gl/FilmEngine.kt` | The render thread: live frames, recording, tiled stills, the sampler |
 | `film/FilmStock.kt` | 26 emulsions |
 | `film/FilmLook.kt` | Every adjustable parameter, the borders and the 48 cameras |
+| `film/TextLayer.kt` | Text layers, the font library and text rendering |
+| `ui/` | Compose UI: theme, icons, ruler, trays, text editor |
 | `film/FrameFx.kt` | Per-frame randomness: weave, slips, flicker, leaks, prism, tape tracking, scratches |
 | `record/VideoRecorder.kt` | Codec choice, MP4 muxing and audio |
+
+## Screens without a phone
+
+`app/src/test/.../ScreenshotTest.kt` renders the real Compose screens with
+[Paparazzi](https://github.com/cashapp/paparazzi), light and dark, with a sample frame in the
+viewfinder:
+
+```bash
+./gradlew recordPaparazziDebug     # PNGs in app/src/test/snapshots/images
+```
 
 ## Tuning looks without a phone
 
@@ -173,7 +214,10 @@ It fails loudly on shader compile errors, which makes it a quick check before bu
 Checked so far:
 - The app builds cleanly (debug and minified release) and Android lint reports no errors.
 - Every shader compiles and renders without GL errors in the WebGL2 harness.
-- In the harness, all 48 cameras and 17 borders render as intended. Tiled output is seamless,
+- In the harness, all 48 cameras and 17 borders render as intended, and text overlays land
+  upright in both the photo and the landscape video buffer.
+- Paparazzi renders every main screen (home, looks, adjust, focus mode, frame, text, settings)
+  in light and dark. Tiled output is seamless,
   stills in sensor orientation come out upright, and the landscape encoder path is correct.
 
 Still to check on a real phone (it has **not been run on one yet**):

@@ -143,6 +143,23 @@ async function runFilm(DATA, imgUrl, camId, opts) {
   { const c = edge.getContext('2d'); c.fillStyle = '#000'; c.fillRect(0, 0, 1024, 64); c.fillStyle = 'rgb(232,150,70)';
     c.font = 'bold 40px sans-serif'; c.fillText('▸ 14', 30, 46); c.fillText('FC 400-5', 250, 46); c.fillText('▸ 14A', 560, 46); c.fillText('SAFETY FILM', 760, 46); }
   const stampTex = texFrom(st), osdTex = texFrom(osd), edgeTex = texFrom(edge, true);
+  // Text overlay (opts.text = [{text, x, y, size, rotation}]), drawn in upright frame space
+  // like TextRenderer, premultiplied like an Android bitmap upload.
+  let textTex = null;
+  if (opts.text) {
+    const odd = ((targetRot + frameRot) & 1) === 1;
+    const fw = odd ? th : tw, fh = odd ? tw : th;
+    const tc = document.createElement('canvas'); tc.width = fw; tc.height = fh;
+    const x = tc.getContext('2d');
+    for (const l of opts.text) {
+      x.save(); x.translate(l.x * fw, l.y * fh); x.rotate((l.rotation || 0) * Math.PI / 180);
+      x.font = `${Math.round(l.size * Math.min(fw, fh))}px serif`; x.textAlign = 'center'; x.textBaseline = 'middle';
+      x.fillStyle = l.color || '#fff'; x.shadowColor = 'rgba(0,0,0,0.6)'; x.shadowBlur = 6; x.fillText(l.text, 0, 0); x.restore();
+    }
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+    textTex = texFrom(tc);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+  }
 
   const fx = Object.assign({
     seed: 12345, time: 3.0, gain: [1, 1, 1], slip: 0,
@@ -156,7 +173,7 @@ async function runFilm(DATA, imgUrl, camId, opts) {
   const f = P.fin; gl.useProgram(f);
   const bind = (u, t, n) => { gl.activeTexture(gl.TEXTURE0 + u); gl.bindTexture(gl.TEXTURE_2D, t); gl.uniform1i(U(f, n), u); };
   bind(0, srcTex, 'uImage'); bind(1, srcTex, 'uPrevImage'); bind(2, gT, 'uGlowTight'); bind(3, gW, 'uGlowWide');
-  bind(4, gS, 'uStreakTex'); bind(8, gD, 'uDiffuseTex'); bind(5, stampTex, 'uStamp'); bind(6, osdTex, 'uOsd'); bind(7, edgeTex, 'uEdge');
+  bind(4, gS, 'uStreakTex'); bind(8, gD, 'uDiffuseTex'); bind(9, textTex || edgeTex, 'uTextTex'); gl.uniform1f(U(f, 'uTextOn'), textTex ? 1 : 0); bind(5, stampTex, 'uStamp'); bind(6, osdTex, 'uOsd'); bind(7, edgeTex, 'uEdge');
   gl.uniformMatrix4fv(U(f, 'uTexMatrix'), false, ident); gl.uniformMatrix4fv(U(f, 'uImageMatrix'), false, imageMatrix);
   gl.uniform2f(U(f, 'uTargetSize'), tw, th);
   gl.uniform1i(U(f, 'uTargetRot'), targetRot); gl.uniform1i(U(f, 'uFrameRot'), frameRot);

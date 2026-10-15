@@ -16,21 +16,44 @@ import app.filmcam.film.CameraCategory
 import app.filmcam.film.FilmCamera
 import app.filmcam.film.FilmCameras
 import app.filmcam.film.FilmLook
+import app.filmcam.film.FontLibrary
 import app.filmcam.film.FrameStyle
-import app.filmcam.film.ShutterSpeed
 import app.filmcam.film.StampStyle
+import app.filmcam.film.TextLayer
 
-enum class Sheet { NONE, DEVELOP, BORDER, CAMERA }
+/** The tray above the shutter. One at a time keeps the screen calm. */
+enum class Dock(val label: String) { NONE(""), LOOKS("Looks"), ADJUST("Adjust"), FRAME("Frame"), TEXT("Text") }
+
+/** What the ruler in the text tray changes. */
+enum class TextTool(val label: String) { FONT("Font"), SIZE("Size"), ROTATE("Rotate"), OPACITY("Opacity"), SPACING("Spacing"), COLOR("Colour"), PLACE("Place") }
 
 /** Everything the screen shows. Owned by the activity, mutated on the main thread. */
 class UiState {
     var permissionAsked by mutableStateOf(false)
     var hasCamera by mutableStateOf(false)
+    var theme by mutableStateOf(ThemeMode.SYSTEM)
     var mode by mutableStateOf(CaptureMode.PHOTO)
     var camera by mutableStateOf<FilmCamera>(FilmCameras.ALL.first())
     var category by mutableStateOf(CameraCategory.FILM)
     var look by mutableStateOf(FilmCameras.ALL.first().look)
-    var sheet by mutableStateOf(Sheet.NONE)
+
+    // chrome
+    var dock by mutableStateOf(Dock.NONE)
+    var toolGroup by mutableStateOf(ToolGroup.LIGHT)
+    var toolId by mutableStateOf("exposure")
+    /** True while a ruler or a text layer is being dragged: everything else steps aside. */
+    var adjusting by mutableStateOf(false)
+    var settingsOpen by mutableStateOf(false)
+
+    // text overlays
+    var fonts: FontLibrary? = null
+    var fontsVersion by mutableIntStateOf(0)
+    var textLayers by mutableStateOf<List<TextLayer>>(emptyList())
+    var selectedText by mutableStateOf<Long?>(null)
+    var textTool by mutableStateOf(TextTool.FONT)
+    var editingText by mutableStateOf(false)
+    var guideX by mutableStateOf(false)
+    var guideY by mutableStateOf(false)
 
     // capture
     var recording by mutableStateOf(false)
@@ -69,6 +92,8 @@ class UiState {
     var quarterTurns by mutableIntStateOf(0)
     var evMin by mutableFloatStateOf(-2f)
     var evMax by mutableFloatStateOf(2f)
+
+    val selectedLayer: TextLayer? get() = textLayers.firstOrNull { it.id == selectedText }
 }
 
 /** What the screen can ask for. */
@@ -77,12 +102,10 @@ interface CameraActions {
     fun shutter()
     fun setMode(mode: CaptureMode)
     fun switchFacing()
-    fun selectLens(lens: Lens)
     fun setZoom(total: Float)
     fun selectCamera(camera: FilmCamera)
     fun updateLook(look: FilmLook)
     fun resetLook()
-    fun setShutter(speed: ShutterSpeed)
     fun setFrame(frame: FrameStyle)
     fun setStamp(stamp: StampStyle)
     fun toggleFlash()
@@ -91,8 +114,11 @@ interface CameraActions {
     fun setFps(fps: Int)
     fun setRealShutter(on: Boolean)
     fun setStabilization(on: Boolean)
+    fun setTheme(mode: ThemeMode)
+    fun setTextLayers(layers: List<TextLayer>)
+    fun importFont()
     fun openLast()
     fun tapToFocus(x: Float, y: Float, w: Float, h: Float)
     fun zoom(scale: Float)
-    fun bindPreview(view: android.view.SurfaceView)
+    fun bindPreview(view: android.view.TextureView)
 }

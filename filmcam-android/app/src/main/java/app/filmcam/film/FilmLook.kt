@@ -95,9 +95,9 @@ data class FilmLook(
     /** Horizontal anamorphic streaks from bright lights. */
     val streak: Float = 0f,
     // emulsion
-    val grain: Float = 0.35f,
+    val grain: Float = 0.2f,
     /** Grain cell size in pixels of a 1080-line frame (0.6..3). */
-    val grainSize: Float = 1.3f,
+    val grainSize: Float = 1.2f,
     val fade: Float = 0f,
     /** Extra warmth on top of the stock's own, -1..1. */
     val warmth: Float = 0f,
@@ -177,8 +177,12 @@ data class FilmCamera(
 )
 
 object FilmCameras {
+    /** Every camera starts with the same light grain: present, never in the way. */
+    const val DEFAULT_GRAIN = 0.2f
+    const val DEFAULT_GRAIN_SIZE = 1.2f
+
     private fun cam(id: String, name: String, sub: String, cat: CameraCategory, look: FilmLook) =
-        FilmCamera(id, name, sub, cat, look)
+        FilmCamera(id, name, sub, cat, look.copy(grain = DEFAULT_GRAIN, grainSize = DEFAULT_GRAIN_SIZE))
 
     val ALL: List<FilmCamera> = listOf(
         // ------------------------------------------------------------ 35mm stills

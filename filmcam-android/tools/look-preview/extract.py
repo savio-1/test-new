@@ -84,6 +84,11 @@ for cid, name, sub, cat, body in re.findall(
         elif k == 'frame': look['frame'] = enum_ids['FrameStyle'][v.split('.')[-1]]
         elif k == 'stamp': look['stamp'] = enum_ids['StampStyle'][v.split('.')[-1]]
         else: look[k] = value(v)
+    # FilmCameras.cam() gives every camera the same default grain.
+    g = re.search(r'const val DEFAULT_GRAIN = ([\d.]+)f', look_src)
+    gs = re.search(r'const val DEFAULT_GRAIN_SIZE = ([\d.]+)f', look_src)
+    if g: look['grain'] = float(g.group(1))
+    if gs: look['grainSize'] = float(gs.group(1))
     cams.append({'id': cid, 'name': name, 'subtitle': sub, 'category': cat, 'look': look})
 
 json.dump({'shaders': shaders, 'cameras': cams, 'frames': enum_ids['FrameStyle']},

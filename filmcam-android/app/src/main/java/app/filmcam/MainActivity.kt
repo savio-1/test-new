@@ -13,7 +13,7 @@ import android.util.Log
 import android.util.Size
 import android.view.KeyEvent
 import android.view.OrientationEventListener
-import android.view.SurfaceView
+import android.view.TextureView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -34,8 +34,10 @@ import app.filmcam.film.FilmCameras
 import app.filmcam.film.FilmLook
 import app.filmcam.film.FrameStyle
 import app.filmcam.film.MultiShot
-import app.filmcam.film.ShutterSpeed
 import app.filmcam.film.StampStyle
+import app.filmcam.film.FontLibrary
+import app.filmcam.film.TextLayer
+import app.filmcam.ui.ThemeMode
 import app.filmcam.gl.FilmEngine
 import app.filmcam.record.VideoRecorder
 import app.filmcam.ui.CameraActions
@@ -58,6 +60,20 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
     private var halfFrameFirst: Bitmap? = null
     private val encodeCache = HashMap<String, Boolean>()
 
+    private lateinit var fonts: FontLibrary
+
+    private val fontPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@registerForActivityResult
+        io.execute {
+            val key = fonts.import(uri)
+            runOnUiThread {
+                if (key == null) { ui.message = "That file isn't a font this phone can read"; return@runOnUiThread }
+                ui.fontsVersion++
+                ui.selectedLayer?.let { l -> setTextLayers(ui.textLayers.map { if (it.id == l.id) it.copy(font = key) else it }) }
+            }
+        }
+    }
+
     private val permissionLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         ui.permissionAsked = true
         onPermissionsChanged()
@@ -67,6 +83,12 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         engine = FilmEngine()
+        fonts = FontLibrary(this)
+        ui.fonts = fonts
+        engine.fonts = fonts
+        ui.theme = enumPref("theme", ThemeMode.SYSTEM)
+        ui.textLayers = TextLayer.listFromJson(prefs.getString("text", null))
+        engine.textLayers = ui.textLayers
 
         val saved = FilmCameras.byId(prefs.getString("camera", null))
         ui.camera = saved
@@ -236,8 +258,23 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         permissionLauncher.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO))
     }
 
-    override fun bindPreview(view: SurfaceView) {
-        view.holder.addCallback(engine.surfaceCallback)
+    override fun bindPreview(view: TextureView) {
+        view.surfaceTextureListener = engine.textureListener
+    }
+
+    override fun setTheme(mode: ThemeMode) {
+        ui.theme = mode
+        prefs.edit { putString("theme", mode.name) }
+    }
+
+    override fun setTextLayers(layers: List<TextLayer>) {
+        ui.textLayers = layers
+        engine.textLayers = layers
+        prefs.edit { putString("text", TextLayer.listToJson(layers)) }
+    }
+
+    override fun importFont() {
+        fontPicker.launch(arrayOf("font/ttf", "font/otf", "font/sfnt", "application/x-font-ttf", "application/x-font-otf", "application/octet-stream"))
     }
 
     override fun shutter() {
@@ -262,7 +299,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         selectLens(other)
     }
 
-    override fun selectLens(lens: Lens) {
+    private fun selectLens(lens: Lens) {
         val current = ui.lens
         if (ui.recording && lens.cameraId != current?.cameraId) return
         val facingChanged = lens.front != current?.front
@@ -330,8 +367,6 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
     }
 
     override fun resetLook() = updateLook(ui.camera.look.copy(exposureEv = 0f))
-
-    override fun setShutter(speed: ShutterSpeed) = updateLook(ui.look.copy(shutter = speed))
 
     override fun setFrame(frame: FrameStyle) = updateLook(ui.look.copy(frame = frame))
 
@@ -533,7 +568,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         sound.play(MediaActionSound.START_VIDEO_RECORDING)
         engine.startRecording(recorder)
         ui.recording = true
-        ui.sheet = app.filmcam.ui.Sheet.NONE
+        ui.dock = app.filmcam.ui.Dock.NONE
         ui.recordStartMs = System.currentTimeMillis()
     }
 

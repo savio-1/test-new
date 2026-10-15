@@ -138,6 +138,10 @@ class FilmRenderer {
     private var osdTex = 0
     private var osdKey = ""
     private val edgeTex: Int
+    private var textTex = 0
+    private var textW = 0
+    private var textH = 0
+    private var hasText = false
     val identity = FloatArray(16).also { android.opengl.Matrix.setIdentityM(it, 0) }
 
     init {
@@ -188,6 +192,22 @@ class FilmRenderer {
         GLUtils.texImage2D(GLES30.GL_TEXTURE_2D, 0, bmp, 0)
         bmp.recycle()
         return tex
+    }
+
+    /** Text overlays as a premultiplied bitmap in frame orientation; null clears them. */
+    fun setText(bmp: Bitmap?) {
+        if (bmp == null) { hasText = false; return }
+        if (textTex == 0) textTex = IntArray(1).also { GLES30.glGenTextures(1, it, 0) }[0]
+        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, textTex)
+        GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MIN_FILTER, GLES30.GL_LINEAR)
+        GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MAG_FILTER, GLES30.GL_LINEAR)
+        GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_S, GLES30.GL_CLAMP_TO_EDGE)
+        GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_T, GLES30.GL_CLAMP_TO_EDGE)
+        if (bmp.width == textW && bmp.height == textH) GLUtils.texSubImage2D(GLES30.GL_TEXTURE_2D, 0, 0, 0, bmp)
+        else GLUtils.texImage2D(GLES30.GL_TEXTURE_2D, 0, bmp, 0)
+        textW = bmp.width
+        textH = bmp.height
+        hasText = true
     }
 
     /** Keeps the date stamp and the camcorder display current (date, clock, REC light). */
@@ -349,6 +369,7 @@ class FilmRenderer {
         src: FinalSource, look: FilmLook, fx: FrameFx,
         targetW: Int, targetH: Int, targetRot: Int, frameRot: Int,
         fullW: Int = targetW, fullH: Int = targetH, tileX: Int = 0, tileY: Int = 0,
+        withText: Boolean = true,
     ) {
         GLES30.glViewport(0, 0, targetW, targetH)
         val s = look.stock
@@ -363,6 +384,8 @@ class FilmRenderer {
             bindTex(6, if (osdTex != 0) osdTex else stampTex); set1i("uOsd", 6)
             bindTex(7, edgeTex); set1i("uEdge", 7)
             bindTex(8, src.glow.diffuse); set1i("uDiffuseTex", 8)
+            bindTex(9, if (textTex != 0) textTex else edgeTex); set1i("uTextTex", 9)
+            set1f("uTextOn", if (withText && hasText && textTex != 0) 1f else 0f)
             setMat4("uTexMatrix", identity)
             setMat4("uImageMatrix", src.imageMatrix)
 
@@ -463,6 +486,6 @@ class FilmRenderer {
         listOf(developOes, develop2d, trail, bright, blur, final).forEach { it.release() }
         GLES30.glDeleteBuffers(1, intArrayOf(vbo), 0)
         GLES30.glDeleteVertexArrays(1, intArrayOf(vao), 0)
-        GlUtil.deleteTextures(*listOf(stampTex, osdTex, edgeTex).filter { it != 0 }.toIntArray())
+        GlUtil.deleteTextures(*listOf(stampTex, osdTex, edgeTex, textTex).filter { it != 0 }.toIntArray())
     }
 }

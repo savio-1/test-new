@@ -14,6 +14,7 @@ import android.util.Log
 import android.util.Size
 import android.view.Surface
 import android.view.SurfaceHolder
+import android.view.TextureView
 import androidx.core.graphics.createBitmap
 import app.filmcam.film.FilmFrameRate
 import app.filmcam.film.FilmLook
@@ -21,6 +22,9 @@ import app.filmcam.film.FrameFx
 import app.filmcam.film.FrameStyle
 import app.filmcam.film.FxAnimator
 import app.filmcam.film.StampStyle
+import app.filmcam.film.FontLibrary
+import app.filmcam.film.TextLayer
+import app.filmcam.film.TextRenderer
 import app.filmcam.record.VideoRecorder
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -63,6 +67,12 @@ class FilmEngine {
     @Volatile var maxWorkSide = 1920
     /** Off when the sensor itself does the slow shutter (real shutter speed). */
     @Volatile var simulateShutter = true
+    /** Text overlays burnt into preview, video and stills. */
+    @Volatile var textLayers: List<TextLayer> = emptyList()
+    @Volatile var fonts: FontLibrary? = null
+    private var textKey: Any? = null
+    private var textBitmap: Bitmap? = null
+
     /** Working-frame size once the camera is running, portrait (w, h). */
     @Volatile var outputSize: Size? = null
         private set
@@ -164,6 +174,44 @@ class FilmEngine {
         }
     }
 
+    private fun attachDisplay(surface: Surface, width: Int, height: Int) {
+        handler.post {
+            if (displaySurface !== surface) {
+                releaseDisplay()
+                display = egl.createWindowSurface(surface)
+                displaySurface = surface
+            }
+            displayW = width
+            displayH = height
+        }
+    }
+
+    /** For a TextureView viewfinder (it can be clipped and faded, unlike a SurfaceView). */
+    val textureListener = object : TextureView.SurfaceTextureListener {
+        private var surface: Surface? = null
+
+        override fun onSurfaceTextureAvailable(st: SurfaceTexture, width: Int, height: Int) {
+            val s = Surface(st)
+            surface = s
+            attachDisplay(s, width, height)
+        }
+
+        override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, width: Int, height: Int) {
+            surface?.let { attachDisplay(it, width, height) }
+        }
+
+        override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean {
+            val latch = CountDownLatch(1)
+            handler.post { releaseDisplay(); latch.countDown() }
+            latch.await(2, TimeUnit.SECONDS)
+            surface?.release()
+            surface = null
+            return true
+        }
+
+        override fun onSurfaceTextureUpdated(st: SurfaceTexture) = Unit
+    }
+
     private fun releaseDisplay() {
         display?.let {
             egl.makeCurrent(pbuffer)
@@ -210,6 +258,7 @@ class FilmEngine {
         }
 
         val src = liveSource(p)
+        if (turns % 2 == 0) updateText(p.width, p.height, 2048) else updateText(p.height, p.width, 2048)
         if (disp != null && displayW > 0) {
             GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
             renderer.drawFinal(src, look, fx, displayW, displayH, 0, turns)
@@ -224,6 +273,27 @@ class FilmEngine {
             egl.makeCurrent(disp ?: pbuffer)
             if (rec.stopAtNs in 1..now) finishRecording()
         }
+    }
+
+    /** Re-renders the text overlay when the layers or the frame shape change. */
+    private fun updateText(frameW: Int, frameH: Int, maxSide: Int) {
+        val layers = textLayers
+        val key = Triple(layers, frameW, frameH)
+        if (key == textKey) return
+        textKey = key
+        val f = fonts
+        if (layers.isEmpty() || f == null) { renderer.setText(null); return }
+        val scale = min(1f, maxSide.toFloat() / max(frameW, frameH))
+        val w = max(1, (frameW * scale).roundToInt())
+        val h = max(1, (frameH * scale).roundToInt())
+        var bmp = textBitmap
+        if (bmp == null || bmp.width != w || bmp.height != h) {
+            bmp?.recycle()
+            bmp = createBitmap(w, h).also { textBitmap = it }
+        }
+        bmp.eraseColor(Color.TRANSPARENT)
+        TextRenderer.draw(Canvas(bmp), layers, f, w.toFloat(), h.toFloat())
+        renderer.setText(bmp)
     }
 
     private fun liveSource(p: Pipeline) = FinalSource(p.current, p.previous, p.width, p.height, renderer.identity, p.glow)
@@ -429,7 +499,9 @@ class FilmEngine {
                     FinalSource(src, src, w, h, imageMatrix, glow!!)
                 }
                 renderer.glow(source, look, 0)
+                updateText(w, h, 4096)
                 result = renderTiled(source, look, stillFx(look), w, h, targetRot = 0, frameRot = 0)
+                textKey = null   // the live view re-renders its own size next frame
             } catch (e: Throwable) {
                 Log.e(TAG, "developStill", e)
                 if (!still.isRecycled) still.recycle()
@@ -471,7 +543,7 @@ class FilmEngine {
                     val odd = turns % 2 == 1
                     val w = if (odd) p.height else p.width
                     val h = if (odd) p.width else p.height
-                    shots += renderTiled(liveSource(p), quarterLook, fx, w, h, targetRot = (4 - turns) % 4, frameRot = turns)
+                    shots += renderTiled(liveSource(p), quarterLook, fx, w, h, targetRot = (4 - turns) % 4, frameRot = turns, withText = false)
                 } catch (e: Throwable) {
                     Log.e(TAG, "sampler", e)
                 }
@@ -495,11 +567,16 @@ class FilmEngine {
             c.drawBitmap(b, x.toFloat(), y.toFloat(), null)
             b.recycle()
         }
+        // Text goes across the whole grid, not into each quarter.
+        fonts?.let { TextRenderer.draw(c, textLayers, it, out.width.toFloat(), out.height.toFloat()) }
         return out
     }
 
     /** Runs the final pass in tiles into a bitmap of [w]x[h] (top row first). */
-    private fun renderTiled(src: FinalSource, look: FilmLook, frameFx: FrameFx, w: Int, h: Int, targetRot: Int, frameRot: Int): Bitmap {
+    private fun renderTiled(
+        src: FinalSource, look: FilmLook, frameFx: FrameFx, w: Int, h: Int, targetRot: Int, frameRot: Int,
+        withText: Boolean = true,
+    ): Bitmap {
         val tile = min(2048, maxTextureSize)
         val tex = GlUtil.createTexture(tile, tile, GLES30.GL_RGBA8)
         val fbo = GlUtil.createFramebuffer(tex)
@@ -517,7 +594,7 @@ class FilmEngine {
                 while (x0 < w) {
                     val tw = min(tile, w - x0)
                     GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, fbo)
-                    renderer.drawFinal(src, look, frameFx, tw, th, targetRot, frameRot, w, h, x0, y0)
+                    renderer.drawFinal(src, look, frameFx, tw, th, targetRot, frameRot, w, h, x0, y0, withText)
                     buf.clear()
                     GLES30.glReadPixels(0, 0, tw, th, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, buf)
                     flipRows(buf, tile * 4, th)

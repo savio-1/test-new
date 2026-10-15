@@ -136,6 +136,8 @@ uniform sampler2D uStamp;
 uniform sampler2D uOsd;
 uniform sampler2D uEdge;
 uniform sampler2D uDiffuseTex;
+uniform sampler2D uTextTex;  // text overlays, premultiplied, upright frame space
+uniform float uTextOn;
 uniform mat4 uImageMatrix;  // screen uv -> image texture uv (rotation of unrotated stills)
 
 uniform vec2 uTargetSize;   // pixels of the whole output (all tiles)
@@ -788,6 +790,12 @@ void main() {
 
     c *= mask;                      // fisheye circle and the frame line during a slip are black
     c = mix(L.border, c, L.inside);
+
+    // ---- text overlays, on top of everything (border included)
+    if (uTextOn > 0.5) {
+        vec4 t = texture(uTextTex, vec2(f.x, 1.0 - f.y));
+        c = c * (1.0 - t.a) + t.rgb;
+    }
 
     // A hair of dither so smooth skies never band.
     c += (rnd(uvec3(uvec2(gl_FragCoord.xy + uTileOffset), uSeed + 99u)) - 0.5) / 255.0;
