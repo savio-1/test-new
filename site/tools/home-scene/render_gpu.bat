@@ -24,10 +24,10 @@ if not defined BLENDER (
 )
 
 echo Using Blender: "%BLENDER%"
-echo Rendering 479 frames at 3840x2160 (512 samples). This window shows progress and a time estimate;
+echo Rendering 479 frames at 3840x2160 (48 samples). This window shows progress and a time estimate;
 echo leave it open. Stopping is safe: run this again to continue.
 echo.
-"%BLENDER%" -b -P "%~dp0build_home.py" -- --render --final --gpu --w 3840 --samples 512 --set 4k --zip %*
+"%BLENDER%" -b -P "%~dp0build_home.py" -- --render --final --gpu --w 3840 --samples 48 --set 4k --zip %*
 if errorlevel 1 (
   echo.
   echo Blender stopped with an error. Scroll up for the message, or send it to Claude.

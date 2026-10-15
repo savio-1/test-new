@@ -28,15 +28,17 @@ The website's 3D home is a sequence of frames rendered in Blender. Version 2 add
 
 ## How long it takes
 
-At 3840×2160, 512 samples (adaptive), all 479 frames:
+At 3840×2160, 48 samples (adaptive, denoised), all 479 frames:
 
 | Graphics card | Per frame | All 479 frames |
 |---|---|---|
-| RTX 4090 | 60–90 s | ~8–12 h |
-| RTX 4070 | 2–3 min | ~16–24 h |
-| RTX 3080 | 2.5–3.5 min | ~20–28 h |
-| Apple M3 Max | 4–6 min | ~32–48 h |
-| CPU only | 30+ min | days |
+| RTX 4090 | 15–20 s | ~2–2.7 h |
+| RTX 4070 | 20–30 s | ~2.7–4 h |
+| RTX 3080 | 25–30 s | ~3.3–4 h |
+| Apple M3 Max | 35–45 s | ~4.7–6 h |
+| CPU only | ~30 min (a 4-core cloud CPU took 21.5 min at 32 samples) | ~10 days |
+
+48 samples is the quality the client approved from a 32-sample 4K test frame: the denoiser keeps it clean at full size. For more headroom on fine texture, add `--samples 128` (roughly 2–2.5× the time) or `--samples 512` (the old default, roughly 8–10× the time).
 
 These are estimates; the script's own ESTIMATE line after three frames is the number to trust.
 
@@ -79,12 +81,12 @@ In `site/tools/home-scene/frames/4k/`:
 
 ## Options
 
-The launchers already pass `--render --final --gpu --w 3840 --samples 512 --set 4k --zip`. Extra options are added after those and win:
+The launchers already pass `--render --final --gpu --w 3840 --samples 48 --set 4k --zip`. Extra options are added after those and win:
 
 | Option | Default | What it does |
 |---|---|---|
 | `--w 2560` | 3840 | Width; the height follows at 16:9. |
-| `--samples 1024` | 512 | Maximum samples per pixel (adaptive sampling stops earlier where the image is clean). |
+| `--samples 128` | 48 | Maximum samples per pixel (adaptive sampling stops earlier where the image is clean). |
 | `--start N --end M` | 0, 478 | Render only these frames. |
 | `--step 1` | 2 | Frames per story beat: 2 gives 479 frames, 1 the original 240. |
 | `--force` | off | Re-render frames that already exist. |
@@ -92,14 +94,14 @@ The launchers already pass `--render --final --gpu --w 3840 --samples 512 --set 
 Run it directly, without the launcher:
 
 ```
-blender -b -P build_home.py -- --render --final --gpu --w 3840 --samples 512 --set 4k --zip
+blender -b -P build_home.py -- --render --final --gpu --w 3840 --samples 48 --set 4k --zip
 ```
 
-**Render settings used:** Cycles, 512 samples with an adaptive threshold of 0.005, OptiX denoiser on NVIDIA and OpenImageDenoise elsewhere (with albedo and normal guiding passes), light tree on, 12 bounces (12 transmission, 2 volume), caustics off, persistent data on, automatic tiles, Blackman-Harris 1.5 px pixel filter, no motion blur, AgX Medium High Contrast with exposure keyed per frame. A light lens finish (slight vignetting, a hint of chromatic aberration at the corners and about 1.5 % fine grain) is applied to each frame in the script itself, with no blur.
+**Render settings used:** Cycles, 48 samples with an adaptive threshold of 0.005, OptiX denoiser on NVIDIA and OpenImageDenoise elsewhere (with albedo and normal guiding passes), light tree on, 12 bounces (12 transmission, 2 volume), caustics off, persistent data on, automatic tiles, Blackman-Harris 1.5 px pixel filter, no motion blur, AgX Medium High Contrast with exposure keyed per frame. A light lens finish (slight vignetting, a hint of chromatic aberration at the corners and about 1.5 % fine grain) is applied to each frame in the script itself, with no blur.
 
 ## Opening the scene in Blender
 
-`home.blend` is the whole home with everything packed inside (textures, artwork, statue figures), already keyed for all 479 frames and set to 3840×2160 / 512 samples. Open it and use *Render ▸ Render Animation* if you prefer Blender's own interface. Note that the launcher route is the one that was tested: it also writes `track.json`, the WebP copies and the lens finish.
+`home.blend` is the whole home with everything packed inside (textures, artwork, statue figures), already keyed for all 479 frames and set to 3840×2160 / 48 samples. Open it and use *Render ▸ Render Animation* if you prefer Blender's own interface. Note that the launcher route is the one that was tested: it also writes `track.json`, the WebP copies and the lens finish.
 
 ## Bringing the frames back
 
