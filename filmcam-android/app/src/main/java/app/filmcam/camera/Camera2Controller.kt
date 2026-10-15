@@ -28,16 +28,21 @@ import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.roundToInt
 
-/** A JPEG straight off the sensor, plus how to turn it upright. */
-class StillJpeg(val bytes: ByteArray, val rotationCw: Int, val mirror: Boolean)
+/**
+ * A JPEG straight off the sensor, plus how to turn it upright. [zoomCrop] is digital zoom the
+ * sensor couldn't apply (full-resolution mode shoots the whole sensor), left for the GPU.
+ */
+class StillJpeg(val bytes: ByteArray, val rotationCw: Int, val mirror: Boolean, val zoomCrop: Float = 1f)
 
 /** How the camera should be opened. Changing any of this rebuilds the session. */
 data class CameraConfig(
     val lens: Lens,
     val mode: CaptureMode,
     val videoRes: VideoResolution,
-    val photoRes: PhotoResolution,
+    val photo: PhotoSize,
     val fps: Int,
+    /** Video in log: our own tone curve in the camera's ISP instead of its picture style. */
+    val log: Boolean = false,
 )
 
 /**
@@ -50,6 +55,8 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
         /** The camera is streaming with [config] (which may differ from the request after a fallback). */
         fun onCameraReady(config: CameraConfig, caps: CameraCaps)
         fun onCameraError(message: String)
+        /** Log video: stops of underexposure to give back, and whether the camera applies the curve. */
+        fun onLogState(under: Float, inIsp: Boolean) = Unit
     }
 
     var listener: Listener? = null
@@ -76,13 +83,13 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
     private var previewSurface: Surface? = null
     private var reader: ImageReader? = null
     private var streamSize = Size(1920, 1080)
-    private var highResFailed = false
 
     private var lastExposureNs = 0L
     private var lastIso = 0
     private var focusRegion: MeteringRectangle? = null
     private var pendingStill: ((StillJpeg?) -> Unit)? = null
     private var pendingRotation = 0
+    private var pendingZoomCrop = 1f
     private var precaptureFrames = -1
 
     // ------------------------------------------------------------------ lifecycle
@@ -122,7 +129,8 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
                     if (gen != generation) { dev.close(); return }
                     device = dev
                     engine.openCameraInput(streamSize.width, streamSize.height) { surface ->
-                        handler.post { if (gen == generation) createSession(surface, gen) }
+                        // Closed in the meantime: hand the stream back rather than leave it open.
+                        handler.post { if (gen == generation) createSession(surface, gen) else engine.closeCameraInput(surface) }
                     }
                 }
 
@@ -153,10 +161,14 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
         previewSurface = surface
         val outputs = arrayListOf(OutputConfiguration(surface))
         if (cfg.mode == CaptureMode.PHOTO) {
-            val js = c.jpegSize(cfg.photoRes, allowHighRes = !highResFailed)
+            val js = cfg.photo
             reader = ImageReader.newInstance(js.width, js.height, ImageFormat.JPEG, 2).also { r ->
                 r.setOnImageAvailableListener({ onJpeg(it) }, handler)
-                outputs += OutputConfiguration(r.surface)
+                val out = OutputConfiguration(r.surface)
+                if (js.maxRes && Build.VERSION.SDK_INT >= 31) {
+                    out.addSensorPixelModeUsed(CameraMetadata.SENSOR_PIXEL_MODE_MAXIMUM_RESOLUTION)
+                }
+                outputs += out
             }
         }
         val sessionCfg = SessionConfiguration(
@@ -173,9 +185,10 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
                     Log.e(TAG, "configure failed for $streamSize")
                     if (gen != generation) return
                     // Fall back: drop high-res stills first, then step the video size down.
+                    val smaller = c.photoSizes.filter { it.pixels < cfg.photo.pixels }.maxByOrNull { it.pixels }
                     val retry = when {
-                        cfg.mode == CaptureMode.PHOTO && !highResFailed && c.hasHighResJpeg -> { highResFailed = true; cfg }
-                        cfg.mode == CaptureMode.VIDEO && cfg.videoRes != VideoResolution.FHD ->
+                        cfg.mode == CaptureMode.PHOTO && smaller != null -> cfg.copy(photo = smaller)
+                        cfg.mode == CaptureMode.VIDEO && cfg.videoRes != VideoResolution.HD ->
                             cfg.copy(videoRes = VideoResolution.entries[cfg.videoRes.ordinal - 1])
                         else -> null
                     }
@@ -201,6 +214,7 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
         VideoResolution.entries.firstOrNull { it.width == size.width && it.height == size.height } ?: fallback
 
     private fun closeInternal() {
+        val surface = previewSurface
         generation++
         runCatching { session?.close() }
         runCatching { device?.close() }
@@ -212,7 +226,8 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
         pendingStill?.invoke(null)
         pendingStill = null
         precaptureFrames = -1
-        engine.closeCameraInput()
+        // Only our own stream: an imported clip may already be playing into the engine.
+        engine.closeCameraInput(surface ?: return)
     }
 
     // ------------------------------------------------------------------ requests
@@ -235,6 +250,26 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
 
     /** True when exposure is set by hand (real shutter speed). */
     private fun manual() = realShutter && caps?.manualSensor == true
+
+    /**
+     * Log puts 18% grey low, like a cinema camera, to leave room above it for highlights.
+     * Returns the stops of underexposure actually applied (AE steps are coarse).
+     */
+    private fun logUnder(c: CameraCaps): Float {
+        if (config?.log != true) return 0f
+        if (manual() || c.evStep <= 0f) return LogCurve.UNDER
+        val idx = ((exposureEv - LogCurve.UNDER) / c.evStep).roundToInt().coerceIn(c.evRange.lower, c.evRange.upper)
+        return (exposureEv - idx * c.evStep).coerceAtLeast(0f)
+    }
+
+    /** Exposure compensation to send, log offset included. */
+    private fun effectiveEv(c: CameraCaps) = exposureEv - logUnder(c)
+
+    /** Stops of underexposure the log curve gives back, and whether the ISP applies it. */
+    @Volatile var appliedLogUnder = 0f
+        private set
+    @Volatile var logInIsp = false
+        private set
 
     private fun fill(b: CaptureRequest.Builder, still: Boolean) {
         val c = caps ?: return
@@ -265,7 +300,7 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
             if (expRange != null) exp = exp.coerceIn(expRange.lower, expRange.upper)
             val baseExp = if (lastExposureNs > 0) lastExposureNs else 16_666_666L
             val baseIso = if (lastIso > 0) lastIso else 200
-            var iso = (baseIso * baseExp.toDouble() / exp * 2.0.pow(exposureEv.toDouble())).roundToInt()
+            var iso = (baseIso * baseExp.toDouble() / exp * 2.0.pow(effectiveEv(c).toDouble())).roundToInt()
             c.isoRange?.let { iso = iso.coerceIn(it.lower, it.upper) }
             b.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_OFF)
             b.set(CaptureRequest.SENSOR_EXPOSURE_TIME, exp)
@@ -279,7 +314,7 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
                 if (photoFlash) CameraMetadata.CONTROL_AE_MODE_ON_ALWAYS_FLASH else CameraMetadata.CONTROL_AE_MODE_ON,
             )
             if (c.evStep > 0f) {
-                val idx = (exposureEv / c.evStep).roundToInt().coerceIn(c.evRange.lower, c.evRange.upper)
+                val idx = (effectiveEv(c) / c.evStep).roundToInt().coerceIn(c.evRange.lower, c.evRange.upper)
                 b.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, idx)
             }
             (if (video) c.fpsRange(cfg.fps) else c.fpsRange(30))?.let { b.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, it) }
@@ -299,6 +334,22 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
             val w = (a.width() / z).roundToInt()
             val h = (a.height() / z).roundToInt()
             b.set(CaptureRequest.SCALER_CROP_REGION, Rect(a.centerX() - w / 2, a.centerY() - h / 2, a.centerX() + w / 2, a.centerY() + h / 2))
+        }
+
+        // Log: an S-Log3 curve on the sensor's linear signal in place of the phone's picture
+        // style, and no extra sharpening (it bakes in halos a grade can't take out).
+        val log = video && cfg.log
+        val under = if (log) logUnder(c) else 0f
+        val isp = log && c.contrastCurve
+        if (!still && (under != appliedLogUnder || isp != logInIsp)) {
+            appliedLogUnder = under
+            logInIsp = isp
+            listener?.onLogState(under, isp)
+        }
+        if (logInIsp) {
+            b.set(CaptureRequest.TONEMAP_MODE, CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE)
+            b.set(CaptureRequest.TONEMAP_CURVE, LogCurve.tonemap(min(c.maxCurvePoints, 64), appliedLogUnder))
+            if (CameraMetadata.EDGE_MODE_OFF in c.edgeModes) b.set(CaptureRequest.EDGE_MODE, CameraMetadata.EDGE_MODE_OFF)
         }
 
         if (video && c.stabilization) {
@@ -405,11 +456,23 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
         val dev = device ?: return failStill()
         val s = session ?: return failStill()
         val r = reader ?: return failStill()
+        val cfg = config ?: return failStill()
         try {
             val b = dev.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
             b.addTarget(r.surface)
-            previewSurface?.let { b.addTarget(it) }
+            val maxRes = cfg.photo.maxRes && Build.VERSION.SDK_INT >= 31
+            // Full-resolution captures can only go to streams set up for that mode.
+            if (!maxRes) previewSurface?.let { b.addTarget(it) }
             fill(b, still = true)
+            pendingZoomCrop = 1f
+            if (maxRes) {
+                b.set(CaptureRequest.SENSOR_PIXEL_MODE, CameraMetadata.SENSOR_PIXEL_MODE_MAXIMUM_RESOLUTION)
+                // The sensor's full mode reads the whole array; the GPU crops the zoom instead.
+                if (caps?.zoomRange != null) b.set(CaptureRequest.CONTROL_ZOOM_RATIO, 1f)
+                b.set(CaptureRequest.CONTROL_AF_REGIONS, null)
+                b.set(CaptureRequest.CONTROL_AE_REGIONS, null)
+                pendingZoomCrop = (cfg.lens.zoom * userZoom).coerceAtLeast(1f)
+            }
             // Keep the pixels in sensor orientation; the film pipeline turns them upright.
             b.set(CaptureRequest.JPEG_ORIENTATION, 0)
             b.set(CaptureRequest.JPEG_QUALITY, 97.toByte())
@@ -435,7 +498,7 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
         }
         val cb = pendingStill ?: return
         pendingStill = null
-        cb(StillJpeg(bytes, pendingRotation, caps?.front == true))
+        cb(StillJpeg(bytes, pendingRotation, caps?.front == true, pendingZoomCrop))
     }
 
     companion object {

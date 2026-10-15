@@ -32,13 +32,13 @@ data class TextLayer(
     val size: Float = 0.07f,
     /** Centre of the text block in the frame, 0..1, y down. */
     val x: Float = 0.5f,
-    val y: Float = 0.82f,
+    val y: Float = 0.5f,
     /** Clockwise, in degrees. */
     val rotation: Float = 0f,
     val align: TextAlign = TextAlign.CENTER,
     val color: Int = Color.WHITE,
     val opacity: Float = 1f,
-    val shadow: Boolean = true,
+    val shadow: Boolean = false,
     /** Extra letter spacing in ems. */
     val tracking: Float = 0f,
 ) {
@@ -60,7 +60,7 @@ data class TextLayer(
             align = runCatching { TextAlign.valueOf(o.optString("align")) }.getOrDefault(TextAlign.CENTER),
             color = o.optInt("color", Color.WHITE),
             opacity = o.optDouble("opacity", 1.0).toFloat(),
-            shadow = o.optBoolean("shadow", true),
+            shadow = o.optBoolean("shadow", false),
             tracking = o.optDouble("tracking", 0.0).toFloat(),
         )
 
@@ -127,6 +127,8 @@ class FontLibrary(private val context: Context) {
         const val DEFAULT = "asset:InstrumentSerif.ttf"
         val BUNDLED = listOf(
             "InstrumentSerif.ttf" to "Instrument",
+            "Inter.ttf" to "Inter",
+            "InterBold.ttf" to "Inter Bold",
             "DMSerifDisplay.ttf" to "DM Serif",
             "PlayfairDisplay.ttf" to "Playfair",
             "BebasNeue.ttf" to "Bebas",

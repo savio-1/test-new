@@ -262,7 +262,77 @@ object FilmStocks {
         swatch = 0xFF7BB0E0,
     )
 
+    /** No emulsion at all: the camera's own picture, untouched (every step is identity). */
+    val NEUTRAL = FilmStock(
+        id = "neutral", name = "Original",
+        saturation = 1f, satShadows = 1f, satHighlights = 1f, contrast = 1f, fade = 0f, highlightRolloff = 0f,
+        colorGrain = 0.3f, swatch = 0xFF9A9A96,
+    )
+
+    // ---------------------------------------------------------------- after the retro apps
+    val PRO_160 = FilmStock(
+        id = "pro160", name = "Pro 160",
+        temperature = 0.12f, tint = 0.04f, saturation = 0.95f, contrast = 1.04f, fade = 0.03f, highlightRolloff = 0.06f,
+        gamma = Rgb(0.98f, 1f, 1.02f), hueShift = Rgb(0.15f, -0.25f, -0.15f), satHighlights = 0.72f,
+        shadowTint = Rgb(0f, 0.005f, 0.012f), highlightTint = Rgb(0.03f, 0.018f, -0.01f),
+        swatch = 0xFFE3BFA0,
+    )
+    val NIGHT_1600 = FilmStock(
+        id = "night1600", name = "Night 1600",
+        temperature = 0.18f, tint = -0.06f, saturation = 1.1f, contrast = 1.15f, fade = 0.05f,
+        gamma = Rgb(1f, 0.98f, 1.04f), hueShift = Rgb(0.2f, -0.2f, -0.1f),
+        shadowTint = Rgb(-0.01f, 0.025f, 0f), highlightTint = Rgb(0.04f, 0.02f, -0.02f), colorGrain = 0.5f,
+        swatch = 0xFFC8A060,
+    )
+    val SNAP_400 = FilmStock(
+        id = "snap400", name = "Snap 400",
+        temperature = -0.05f, tint = -0.1f, saturation = 1.15f, contrast = 1.2f, fade = 0.04f,
+        gamma = Rgb(1.04f, 0.98f, 0.98f), hueShift = Rgb(0.1f, 0.3f, -0.2f),
+        shadowTint = Rgb(-0.02f, 0.015f, 0.02f), highlightTint = Rgb(0.03f, 0.02f, -0.01f),
+        swatch = 0xFF4FA89A,
+    )
+    val DAILY_200 = FilmStock(
+        id = "daily200", name = "Daily 200",
+        temperature = 0.3f, tint = 0.02f, saturation = 1f, contrast = 1.08f, fade = 0.07f,
+        gamma = Rgb(0.97f, 0.99f, 1.08f), hueShift = Rgb(0.25f, -0.3f, -0.1f), highlightTint = Rgb(0.05f, 0.035f, -0.03f),
+        swatch = 0xFFE8C46A,
+    )
+    val ULTRA_400 = FilmStock(
+        id = "ultra400", name = "Ultra 400",
+        temperature = 0.4f, tint = 0.05f, saturation = 1.25f, contrast = 1.22f, fade = 0.02f,
+        gamma = Rgb(0.96f, 1f, 1.08f), hueShift = Rgb(0.3f, -0.35f, -0.15f), highlightTint = Rgb(0.05f, 0.02f, -0.03f),
+        mixer = floatArrayOf(1.05f, -0.03f, -0.02f, -0.02f, 1.04f, -0.02f, -0.02f, -0.05f, 1.07f),
+        swatch = 0xFFF0A93A,
+    )
+    val KINO_500T = FilmStock(
+        id = "kino500t", name = "Kino 500T",
+        temperature = -0.05f, saturation = 1.05f, contrast = 1.12f, fade = 0.04f, highlightRolloff = 0.08f,
+        gamma = Rgb(0.98f, 1f, 0.98f), hueShift = Rgb(0.15f, 0.2f, -0.3f),
+        shadowTint = Rgb(-0.02f, 0.01f, 0.03f), highlightTint = Rgb(0.05f, 0.02f, -0.03f),
+        swatch = 0xFF3E7C86,
+    )
+    val FUN_200 = FilmStock(
+        id = "fun200", name = "Fun 200",
+        temperature = 0.1f, tint = 0.08f, saturation = 1.38f, contrast = 1.28f, satShadows = 0.95f,
+        gamma = Rgb(0.98f, 1f, 1.02f), hueShift = Rgb(0.1f, -0.1f, 0.15f),
+        swatch = 0xFFEF5E7A,
+    )
+    val STREET_POSITIVE = FilmStock(
+        id = "street", name = "Street Positive",
+        temperature = -0.08f, saturation = 0.92f, contrast = 1.3f, fade = 0f,
+        gamma = Rgb(1.02f, 1f, 0.97f), hueShift = Rgb(0f, 0.15f, 0.1f),
+        shadowTint = Rgb(-0.015f, 0f, 0.025f), highlightTint = Rgb(0.02f, 0.015f, 0f),
+        swatch = 0xFF6E8796,
+    )
+    val AMBER_100 = FilmStock(
+        id = "amber100", name = "Amber 100",
+        temperature = 0.45f, tint = 0.03f, saturation = 0.78f, contrast = 1.05f, fade = 0.08f,
+        gamma = Rgb(0.95f, 0.99f, 1.1f), shadowTint = Rgb(0.02f, 0.005f, -0.01f), highlightTint = Rgb(0.04f, 0.02f, -0.04f),
+        swatch = 0xFFC58A4A,
+    )
+
     val ALL = listOf(
+        NEUTRAL, PRO_160, NIGHT_1600, SNAP_400, DAILY_200, ULTRA_400, KINO_500T, FUN_200, STREET_POSITIVE, AMBER_100,
         GOLD_200, PORTRAIT_400, VERDE_400, VIVID_100, GOLDEN, EXPIRED, CROSS_PRO, REDSCALE,
         CINE_800T, CINE_250D, BLEACH, TWO_STRIP, THREE_STRIP, SUPER8_REVERSAL, SUMMER_REEL, K64,
         CHROME_100, INSTANT, PEEL_APART,

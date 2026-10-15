@@ -7,6 +7,10 @@ import app.cash.paparazzi.DeviceConfig
 import app.cash.paparazzi.Paparazzi
 import app.filmcam.camera.CaptureMode
 import app.filmcam.camera.Lens
+import app.filmcam.camera.PhotoSize
+import app.filmcam.ui.EditSession
+import app.filmcam.ui.Quick
+import app.filmcam.ui.Screen
 import app.filmcam.film.FilmCameras
 import app.filmcam.film.FontLibrary
 import app.filmcam.film.TextLayer
@@ -39,7 +43,8 @@ class ScreenshotTest {
         lens = lenses[1]
         zoomStops = listOf(0.5f, 1f, 2f, 3f, 10f)
         hasFlash = true
-        maxPhotoMp = 50
+        photoSizes = listOf(PhotoSize(4000, 3000), PhotoSize(8160, 6120, highRes = true), PhotoSize(16320, 12240, maxRes = true))
+        photoSize = photoSizes[1]
         fonts = FontLibrary(paparazzi.context)
         setup()
     }
@@ -62,5 +67,17 @@ class ScreenshotTest {
         textLayers = listOf(TextLayer(id = 1, text = "Summer '26", y = 0.8f), TextLayer(id = 2, text = "Lisbon", font = "asset:BebasNeue.ttf", y = 0.15f, size = 0.05f, tracking = 0.3f))
         selectedText = 1
     })
+    @Test fun burstPanelLight() = shot(state(ThemeMode.LIGHT) { quick = Quick.BURST; burstCount = 10; burstInterval = 2f; timerSeconds = 3 })
+    @Test fun sizePanelDark() = shot(state(ThemeMode.DARK) { quick = Quick.SIZE })
+    @Test fun logPanelDark() = shot(state(ThemeMode.DARK) {
+        mode = CaptureMode.VIDEO; log = true; logInIsp = true; quick = Quick.LOG
+        availableVideoRes = setOf(app.filmcam.camera.VideoResolution.FHD, app.filmcam.camera.VideoResolution.UHD)
+    })
+    @Test fun ratioSquareLight() = shot(state(ThemeMode.LIGHT) { photoRatio = app.filmcam.camera.AspectRatio.R1_1; dock = Dock.LOOKS })
+    @Test fun countdownDark() = shot(state(ThemeMode.DARK) { countdown = 3; timerSeconds = 3 })
+    @Test fun editImportLight() = shot(state(ThemeMode.LIGHT) {
+        edit = EditSession(android.net.Uri.EMPTY, video = false, width = 3000, height = 4000); dock = Dock.LOOKS
+    })
+    @Test fun galleryEmptyDark() = shot(state(ThemeMode.DARK) { screen = Screen.GALLERY })
     @Test fun settingsDark() = shot(state(ThemeMode.DARK) { settingsOpen = true; mode = CaptureMode.VIDEO; availableVideoRes = setOf(app.filmcam.camera.VideoResolution.FHD, app.filmcam.camera.VideoResolution.UHD); availableFps = setOf(24, 25, 30) })
 }

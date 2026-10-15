@@ -3,6 +3,7 @@ package app.filmcam.util
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
+import android.media.ExifInterface
 import android.net.Uri
 import android.os.Environment
 import android.os.ParcelFileDescriptor
@@ -38,6 +39,67 @@ object MediaSaver {
             null
         }
     }
+
+    /**
+     * Saves the camera's own JPEG untouched (no re-encode), turned upright by its EXIF
+     * orientation tag rather than by rotating pixels: the full-resolution original.
+     */
+    fun saveJpeg(context: Context, bytes: ByteArray, rotationCw: Int): Uri? {
+        val resolver = context.contentResolver
+        val values = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, "FILM_${stamp()}.jpg")
+            put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+            put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/$ALBUM")
+            put(MediaStore.Images.Media.IS_PENDING, 1)
+        }
+        val uri = resolver.insert(MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), values)
+            ?: return null
+        return try {
+            resolver.openOutputStream(uri)?.use { it.write(bytes) }
+            resolver.openFileDescriptor(uri, "rw")?.use { pfd ->
+                val exif = ExifInterface(pfd.fileDescriptor)
+                exif.setAttribute(ExifInterface.TAG_ORIENTATION, when ((rotationCw / 90) and 3) {
+                    1 -> ExifInterface.ORIENTATION_ROTATE_90
+                    2 -> ExifInterface.ORIENTATION_ROTATE_180
+                    3 -> ExifInterface.ORIENTATION_ROTATE_270
+                    else -> ExifInterface.ORIENTATION_NORMAL
+                }.toString())
+                exif.saveAttributes()
+            }
+            values.clear()
+            values.put(MediaStore.Images.Media.IS_PENDING, 0)
+            resolver.update(uri, values, null, null)
+            uri
+        } catch (e: Exception) {
+            resolver.delete(uri, null, null)
+            null
+        }
+    }
+
+    /** Writes a text file (the log LUT) to Download/FilmCam. */
+    fun saveDownload(context: Context, name: String, mime: String, text: String): Uri? {
+        val resolver = context.contentResolver
+        val values = ContentValues().apply {
+            put(MediaStore.Downloads.DISPLAY_NAME, name)
+            put(MediaStore.Downloads.MIME_TYPE, mime)
+            put(MediaStore.Downloads.RELATIVE_PATH, "${Environment.DIRECTORY_DOWNLOADS}/$ALBUM")
+            put(MediaStore.Downloads.IS_PENDING, 1)
+        }
+        val uri = resolver.insert(MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), values) ?: return null
+        return try {
+            resolver.openOutputStream(uri)?.use { it.write(text.toByteArray()) }
+            values.clear()
+            values.put(MediaStore.Downloads.IS_PENDING, 0)
+            resolver.update(uri, values, null, null)
+            uri
+        } catch (e: Exception) {
+            resolver.delete(uri, null, null)
+            null
+        }
+    }
+
+    /** Deletes one of the app's own files. */
+    fun delete(context: Context, uri: Uri): Boolean = runCatching { context.contentResolver.delete(uri, null, null) > 0 }.getOrDefault(false)
 
     /** A pending video entry plus a writable descriptor for the muxer. */
     fun createVideo(context: Context): Pair<Uri, ParcelFileDescriptor>? {

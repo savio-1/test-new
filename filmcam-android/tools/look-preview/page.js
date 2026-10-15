@@ -180,6 +180,8 @@ async function runFilm(DATA, imgUrl, camId, opts) {
   const [iw, ih] = targetRot % 2 === 0 ? [tw, th] : [th, tw];
   gl.uniform2f(U(f, 'uImageTexel'), 1 / W, 1 / H);
   gl.uniform1f(U(f, 'uBaseLod'), Math.max(0, Math.log2(Math.min(W, H) / Math.min(iw, ih))));
+  gl.uniform1f(U(f, 'uRefScale'), opts.refScale || Math.max(1, Math.min(iw, ih) / 1080));
+  gl.uniform1i(U(f, 'uLogMode'), opts.logMode || 0); gl.uniform1f(U(f, 'uLogGain'), opts.logGain || 1);
   const s = look.stock;
   const f1 = (n, v) => gl.uniform1f(U(f, n), v), f3 = (n, v) => gl.uniform3fv(U(f, n), v);
   f1('uTemp', s.temperature + look.warmth * 0.6); f1('uTint', s.tint); f1('uSat', s.saturation);

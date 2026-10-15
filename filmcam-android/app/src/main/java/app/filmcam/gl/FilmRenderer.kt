@@ -143,6 +143,8 @@ class FilmRenderer {
     private var textH = 0
     private var hasText = false
     val identity = FloatArray(16).also { android.opengl.Matrix.setIdentityM(it, 0) }
+    /** 2^stops of underexposure that log footage gives back. */
+    var logGain = 1f
 
     init {
         val quad = floatArrayOf(
@@ -249,6 +251,28 @@ class FilmRenderer {
         // With a single buffer "previous" is the frame being written; never read it.
         developOes.set1f("uPersistence", if (p.previous != p.current) persistence else 0f)
         developOes.set1f("uTrailAmount", 0f)
+        draw()
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
+        bindTex(0, p.current)
+        GLES30.glGenerateMipmap(GLES30.GL_TEXTURE_2D)
+    }
+
+    /** Pass 1 for a 2D image (an imported photo shown live): no trail, no previous frame. */
+    fun developTexture(p: Pipeline, tex: Int, texMatrix: FloatArray) {
+        p.advance()
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, p.currentFbo)
+        GLES30.glViewport(0, 0, p.width, p.height)
+        develop2d.use()
+        bindTex(0, tex)
+        bindTex(1, tex)
+        bindTex(2, tex)
+        develop2d.set1i("uSource", 0)
+        develop2d.set1i("uPrev", 1)
+        develop2d.set1i("uTrail", 2)
+        develop2d.setMat4("uTexMatrix", texMatrix)
+        develop2d.setMat4("uTrailMatrix", identity)
+        develop2d.set1f("uPersistence", 0f)
+        develop2d.set1f("uTrailAmount", 0f)
         draw()
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
         bindTex(0, p.current)
@@ -370,6 +394,7 @@ class FilmRenderer {
         targetW: Int, targetH: Int, targetRot: Int, frameRot: Int,
         fullW: Int = targetW, fullH: Int = targetH, tileX: Int = 0, tileY: Int = 0,
         withText: Boolean = true,
+        logMode: Int = 0,
     ) {
         GLES30.glViewport(0, 0, targetW, targetH)
         val s = look.stock
@@ -396,6 +421,7 @@ class FilmRenderer {
             val (iw, ih) = if (targetRot % 2 == 0) fullW to fullH else fullH to fullW
             set2f("uImageTexel", 1f / src.width, 1f / src.height)
             set1f("uBaseLod", max(0f, log2(min(src.width, src.height).toFloat() / min(iw, ih))))
+            set1f("uRefScale", max(1f, min(iw, ih) / 1080f))
 
             set1f("uTemp", s.temperature + look.warmth * 0.6f)
             set1f("uTint", s.tint)
@@ -461,6 +487,8 @@ class FilmRenderer {
             set2f("uPrismGhost", fx.prismGhost[0], fx.prismGhost[1])
             set1f("uTracking", fx.tracking)
             set1f("uRollBurn", fx.rollBurn)
+            set1i("uLogMode", logMode)
+            set1f("uLogGain", logGain)
         }
         draw()
     }

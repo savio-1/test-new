@@ -17,14 +17,37 @@ import kotlin.math.roundToInt
 enum class CaptureMode { PHOTO, VIDEO }
 
 enum class VideoResolution(val label: String, val width: Int, val height: Int) {
+    HD("720p", 1280, 720),
     FHD("1080p", 1920, 1080),
     UHD("4K", 3840, 2160),
     UHD8K("8K", 7680, 4320),
 }
 
-enum class PhotoResolution(val label: String) {
-    STANDARD("12 MP"),
-    MAX("Max"),
+/**
+ * A still size the sensor offers. [maxRes] sizes need the sensor's full-resolution pixel mode
+ * (the 50/108/200 MP modes of quad-Bayer sensors); [highRes] ones are slow "burst-less" sizes.
+ */
+data class PhotoSize(val width: Int, val height: Int, val highRes: Boolean = false, val maxRes: Boolean = false) {
+    val pixels get() = width.toLong() * height
+    val mp: Int get() = ((pixels + 500_000) / 1_000_000).toInt().coerceAtLeast(1)
+    val label get() = "$mp MP"
+    val size get() = Size(width, height)
+}
+
+/**
+ * Frame shapes, as width:height with the phone upright. The frame turns with the phone, so
+ * 9:16 becomes 16:9 when it is held sideways.
+ */
+enum class AspectRatio(val w: Int, val h: Int) {
+    R3_4(3, 4),
+    R4_5(4, 5),
+    R1_1(1, 1),
+    R2_3(2, 3),
+    R9_16(9, 16);
+
+    val value get() = w.toFloat() / h
+    /** The label for how the phone is held: 3:4 upright, 4:3 sideways. */
+    fun label(sideways: Boolean) = if (sideways && w != h) "$h:$w" else "$w:$h"
 }
 
 /** One button on the lens row: a camera, and the zoom ratio that selects a lens on it. */
@@ -94,17 +117,45 @@ class CameraCaps(val id: String, ch: CameraCharacteristics) {
 
     private fun is43(s: Size) = abs(s.width.toFloat() / s.height - 4f / 3f) < 0.02f
 
-    /** JPEG size for stills. High-resolution sizes are tried first for [PhotoResolution.MAX]. */
-    fun jpegSize(res: PhotoResolution, allowHighRes: Boolean): Size {
-        val all = (jpegStandard + if (allowHighRes) jpegHighRes else emptyList()).filter(::is43)
-            .ifEmpty { jpegStandard }.ifEmpty { listOf(Size(4000, 3000)) }
-        return when (res) {
-            PhotoResolution.MAX -> all.maxBy { it.width.toLong() * it.height }
-            PhotoResolution.STANDARD -> all.minBy { abs(it.width.toLong() * it.height - 12_000_000L) }
-        }
+    /** Sizes from the sensor's full-resolution mode (quad-Bayer 50/200 MP), API 31+. */
+    private val jpegMaxRes: List<Size> = if (Build.VERSION.SDK_INT >= 31 &&
+        CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_ULTRA_HIGH_RESOLUTION_SENSOR in capabilities
+    ) {
+        ch.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP_MAXIMUM_RESOLUTION)
+            ?.getOutputSizes(ImageFormat.JPEG)?.toList() ?: emptyList()
+    } else emptyList()
+
+    /** Active array of the full-resolution mode, for regions in max-res requests. */
+    val maxResArray: Rect? = if (Build.VERSION.SDK_INT >= 31)
+        ch.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE_MAXIMUM_RESOLUTION) else null
+
+    /**
+     * The photo sizes worth offering, smallest first: about 12 MP, then every larger size the
+     * sensor really has (e.g. 12, 50 and 200 MP on a 200 MP phone). 4:3 only, the sensor shape.
+     */
+    val photoSizes: List<PhotoSize> = run {
+        val all = jpegStandard.filter(::is43).map { PhotoSize(it.width, it.height) } +
+            jpegHighRes.filter(::is43).map { PhotoSize(it.width, it.height, highRes = true) } +
+            jpegMaxRes.filter(::is43).map { PhotoSize(it.width, it.height, maxRes = true) }
+        if (all.isEmpty()) return@run listOf(PhotoSize(4000, 3000))
+        val base = all.filter { !it.highRes && !it.maxRes }.ifEmpty { all }
+            .minBy { abs(it.pixels - 12_000_000L) }
+        val out = arrayListOf(base)
+        // Larger sizes, one per megapixel class; plain streams before high-res before max-res.
+        all.filter { it.pixels > base.pixels * 1.3 }
+            .sortedWith(compareBy<PhotoSize>({ it.maxRes }, { it.highRes }))
+            .forEach { s -> if (out.none { abs(it.pixels - s.pixels) < s.pixels * 0.15 }) out += s }
+        out.sortedBy { it.pixels }
     }
 
-    val hasHighResJpeg get() = jpegHighRes.any(::is43)
+    /** The offered size closest to [mp] megapixels. */
+    fun photoSize(mp: Int): PhotoSize = photoSizes.minBy { abs(it.pixels - mp * 1_000_000L) }
+
+    /** Whether the camera can apply our own tone curve (needed for true log). */
+    val contrastCurve: Boolean = (ch.get(CameraCharacteristics.TONEMAP_AVAILABLE_TONE_MAP_MODES) ?: IntArray(0))
+        .contains(CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE) && (ch.get(CameraCharacteristics.TONEMAP_MAX_CURVE_POINTS) ?: 0) >= 32
+    val maxCurvePoints: Int = ch.get(CameraCharacteristics.TONEMAP_MAX_CURVE_POINTS) ?: 0
+    val edgeModes: IntArray = ch.get(CameraCharacteristics.EDGE_AVAILABLE_EDGE_MODES) ?: IntArray(0)
 
     /** Exact size for a resolution choice, or null if this camera can't stream it. */
     fun videoSize(res: VideoResolution): Size? = videoSizes.firstOrNull { it.width == res.width && it.height == res.height }

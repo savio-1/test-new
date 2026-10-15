@@ -70,7 +70,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import app.filmcam.camera.CaptureMode
-import app.filmcam.camera.PhotoResolution
 import app.filmcam.film.FilmFrameRate
 import kotlinx.coroutines.delay
 import kotlin.math.abs
@@ -89,24 +88,33 @@ fun CameraScreen(ui: UiState, actions: CameraActions) {
         // Everything except the control being dragged fades out, so the picture can be judged.
         val chrome by animateFloatAsState(if (ui.adjusting) 0f else 1f, tween(160), label = "chrome")
         Box(Modifier.fillMaxSize().background(p.bg).dotGrid(p)) {
-            if (!ui.hasCamera) {
+            if (!ui.hasCamera && ui.edit == null && ui.screen == Screen.CAMERA) {
                 PermissionPrompt(ui, actions)
                 return@Box
             }
+            when (ui.screen) {
+                Screen.GALLERY -> { GalleryScreen(ui, actions); return@Box }
+                Screen.VIEWER -> { ViewerScreen(ui, actions); return@Box }
+                Screen.CAMERA -> Unit
+            }
             val iconRotation by animateFloatAsState(
-                when (ui.quarterTurns and 3) { 1 -> -90f; 2 -> 180f; 3 -> 90f; else -> 0f },
+                when (ui.frameTurns and 3) { 1 -> -90f; 2 -> 180f; 3 -> 90f; else -> 0f },
                 tween(260), label = "iconRotation",
             )
 
             Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
                 TopBar(ui, actions, iconRotation, Modifier.alpha(chrome))
+                QuickBar(ui, Modifier.alpha(chrome))
                 Box(
                     Modifier.weight(1f).fillMaxWidth().padding(horizontal = 10.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     Viewfinder(ui, actions, chrome, iconRotation)
+                    ui.quick?.let { q ->
+                        QuickPanel(q, ui, actions, Modifier.align(Alignment.TopCenter).padding(top = 6.dp).alpha(chrome))
+                    }
                     AnimatedContent(
-                        targetState = if (ui.recording) Dock.NONE else ui.dock,
+                        targetState = if ((ui.recording && ui.dock != Dock.TEXT) || ui.logActive) Dock.NONE else ui.dock,
                         transitionSpec = {
                             (fadeIn(tween(180)) + slideInVertically(tween(220)) { it / 4 }) togetherWith
                                 (fadeOut(tween(120)) + slideOutVertically(tween(160)) { it / 4 })
@@ -124,10 +132,11 @@ fun CameraScreen(ui: UiState, actions: CameraActions) {
                     }
                 }
                 DockBar(ui, Modifier.alpha(chrome))
-                ModeSwitch(ui, actions, Modifier.alpha(chrome))
+                if (ui.edit != null) EditLabel(ui, Modifier.alpha(chrome)) else ModeSwitch(ui, actions, Modifier.alpha(chrome))
                 ShutterRow(ui, actions, iconRotation, Modifier.alpha(chrome))
             }
 
+            if (ui.progress >= 0f) ProgressVeil(ui)
             if (ui.settingsOpen) SettingsSheet(ui, actions)
             if (ui.editingText) TextEditOverlay(ui, actions)
 
@@ -185,43 +194,136 @@ private fun PermissionPrompt(ui: UiState, actions: CameraActions) {
 @Composable
 private fun TopBar(ui: UiState, actions: CameraActions, iconRotation: Float, modifier: Modifier) {
     val p = LocalPalette.current
+    val edit = ui.edit
     Row(
         modifier.fillMaxWidth().height(56.dp).padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-            IconCircle(if (ui.flash) Ico.Flash else Ico.FlashOff, enabled = ui.hasFlash, rotation = iconRotation,
-                tint = if (ui.flash) p.accent else p.text) { actions.toggleFlash() }
-            Spacer(Modifier.width(6.dp))
-            Text(
-                if (ui.mode == CaptureMode.VIDEO) "${ui.videoRes.label} · ${ui.fps}"
-                else if (ui.photoRes == PhotoResolution.MAX) "${ui.maxPhotoMp} MP" else "12 MP",
-                color = p.text, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .border(1.dp, p.line, RoundedCornerShape(10.dp))
-                    .clickable(enabled = !ui.recording) { ui.settingsOpen = true }
-                    .padding(horizontal = 9.dp, vertical = 5.dp),
-            )
+            if (edit != null) {
+                IconCircle(Ico.Close) { actions.cancelEdit() }
+            } else {
+                IconCircle(if (ui.flash) Ico.Flash else Ico.FlashOff, enabled = ui.hasFlash && !ui.logActive, rotation = iconRotation,
+                    tint = if (ui.flash) p.accent else p.text) { actions.toggleFlash() }
+            }
         }
         Column(
             Modifier
                 .clip(RoundedCornerShape(12.dp))
-                .clickable(enabled = !ui.recording) { ui.dock = if (ui.dock == Dock.LOOKS) Dock.NONE else Dock.LOOKS }
+                .clickable(enabled = !ui.recording && !ui.logActive) { ui.dock = if (ui.dock == Dock.LOOKS) Dock.NONE else Dock.LOOKS }
                 .padding(horizontal = 10.dp, vertical = 2.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text(ui.camera.name, color = p.text, fontSize = 21.sp, fontFamily = SerifDisplay, maxLines = 1)
-            Text(
-                (listOf(ui.look.stock.name, ui.look.shutter.label) +
-                    if (ui.mode == CaptureMode.VIDEO && ui.look.frameRate != FilmFrameRate.NATIVE) listOf("${ui.look.frameRate.label}fps") else emptyList())
-                    .joinToString("  ·  ").uppercase(),
-                color = p.muted, fontSize = 9.sp, letterSpacing = 1.2.sp, maxLines = 1,
-            )
+            Text(if (ui.logActive) "Log" else ui.camera.name, color = p.text, fontSize = 21.sp, fontFamily = SerifDisplay, maxLines = 1)
+            val sub = when {
+                ui.logActive -> listOf("S-Log3", "Rec.709", if (ui.logInIsp) "in camera" else "approx.")
+                edit != null -> listOf("Developing", ui.look.stock.name)
+                else -> listOf(ui.look.stock.name, ui.look.shutter.label) +
+                    if (ui.mode == CaptureMode.VIDEO && ui.look.frameRate != FilmFrameRate.NATIVE) listOf("${ui.look.frameRate.label}fps") else emptyList()
+            }
+            Text(sub.joinToString("  ·  ").uppercase(), color = p.muted, fontSize = 9.sp, letterSpacing = 1.2.sp, maxLines = 1)
         }
         Row(Modifier.weight(1f), horizontalArrangement = Arrangement.End) {
+            if (edit == null) IconCircle(Ico.Gallery, rotation = iconRotation, enabled = !ui.recording) { actions.openGallery() }
             IconCircle(Ico.Tune, rotation = iconRotation, enabled = !ui.recording) { ui.settingsOpen = true }
         }
+    }
+}
+
+/** Chips for the shot's shape and options; each opens a small panel over the picture. */
+@Composable
+private fun QuickBar(ui: UiState, modifier: Modifier) {
+    val sideways = ui.frameTurns % 2 == 1
+    val edit = ui.edit
+    Row(
+        modifier.fillMaxWidth().padding(bottom = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (edit != null) {
+            QuickChip(ui, Quick.RATIO, Ico.Ratio, ui.editRatio?.label(false) ?: "Original")
+            QuickChip(ui, null, null, if (edit.video) clipLabel(edit.durationMs) else "${edit.width}×${edit.height}")
+            return@Row
+        }
+        val video = ui.mode == CaptureMode.VIDEO
+        QuickChip(ui, Quick.RATIO, Ico.Ratio, (if (video) ui.videoRatio else ui.photoRatio).label(sideways))
+        if (video) {
+            QuickChip(ui, Quick.VIDEO, null, "${ui.videoRes.label} · ${ui.fps}")
+            QuickChip(ui, Quick.LOG, Ico.Log, if (ui.log) "Log" else "Std", active = ui.log)
+            QuickChip(ui, Quick.TIMER, Ico.Timer, timerLabel(ui.timerSeconds), active = ui.timerSeconds > 0)
+        } else {
+            QuickChip(ui, Quick.SIZE, null, ui.photoSize?.label ?: "—")
+            QuickChip(ui, Quick.TIMER, Ico.Timer, timerLabel(ui.timerSeconds), active = ui.timerSeconds > 0)
+            QuickChip(ui, Quick.BURST, Ico.Burst, burstLabel(ui.burstCount, ui.burstInterval), active = ui.burstCount != 1)
+        }
+    }
+}
+
+fun timerLabel(s: Int) = if (s == 0) "Off" else "${s}s"
+fun burstLabel(count: Int, interval: Float) = when (count) {
+    1 -> "Off"
+    0 -> "∞ · ${intervalLabel(interval)}"
+    else -> "$count · ${intervalLabel(interval)}"
+}
+fun intervalLabel(v: Float) = if (v < 1f) "${v}s" else "${v.roundToInt()}s"
+fun clipLabel(ms: Long): String { val s = (ms + 500) / 1000; return "%d:%02d".format(s / 60, s % 60) }
+
+@Composable
+private fun QuickChip(ui: UiState, quick: Quick?, icon: ImageVector?, text: String, active: Boolean = false) {
+    val p = LocalPalette.current
+    val open = quick != null && ui.quick == quick
+    val shape = RoundedCornerShape(10.dp)
+    Row(
+        Modifier
+            .clip(shape)
+            .background(if (open) p.text else Color.Transparent)
+            .border(1.dp, if (open) p.text else p.line, shape)
+            .clickable(enabled = quick != null && !ui.recording) { ui.quick = if (open) null else quick }
+            .padding(horizontal = 9.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val tint = if (open) p.bg else if (active) p.accent else p.text
+        if (icon != null) {
+            Icon(icon, null, tint = tint, modifier = Modifier.size(14.dp))
+            Spacer(Modifier.width(5.dp))
+        }
+        Text(text, color = tint, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace, maxLines = 1)
+    }
+}
+
+/** While a clip is being developed or trimmed: progress over everything, nothing to tap. */
+@Composable
+private fun ProgressVeil(ui: UiState) {
+    val p = LocalPalette.current
+    Box(
+        Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f))
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            Modifier.width(220.dp).background(p.surface, RoundedCornerShape(18.dp)).border(1.dp, p.line, RoundedCornerShape(18.dp))
+                .padding(18.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text("${ui.progressLabel}  ${(ui.progress * 100).roundToInt()}%", color = p.text, fontSize = 14.sp)
+            Spacer(Modifier.height(12.dp))
+            Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(p.surfaceHigh)) {
+                Box(Modifier.fillMaxWidth(ui.progress.coerceIn(0f, 1f)).height(3.dp).background(p.accent))
+            }
+        }
+    }
+}
+
+@Composable
+private fun EditLabel(ui: UiState, modifier: Modifier) {
+    val p = LocalPalette.current
+    val e = ui.edit ?: return
+    Row(modifier.fillMaxWidth().padding(top = 2.dp), horizontalArrangement = Arrangement.Center) {
+        Text(
+            (if (e.video) "IMPORTED CLIP" else "IMPORTED PHOTO") + "  ·  SHUTTER SAVES A COPY",
+            color = p.muted, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.6.sp,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+        )
     }
 }
 
@@ -269,7 +371,7 @@ fun Pill(text: String, filled: Boolean = false, enabled: Boolean = true, onClick
 
 @Composable
 private fun Viewfinder(ui: UiState, actions: CameraActions, chrome: Float, iconRotation: Float) {
-    val aspect = if (ui.mode == CaptureMode.PHOTO) 3f / 4f else 9f / 16f
+    val aspect = ui.frameAspect
     var focus by remember { mutableStateOf<Offset?>(null) }
     var focusKey by remember { mutableLongStateOf(0L) }
     val flash = remember { Animatable(0f) }
@@ -295,14 +397,17 @@ private fun Viewfinder(ui: UiState, actions: CameraActions, chrome: Float, iconR
                 modifier = Modifier.fillMaxSize(),
             )
         }
-        if (ui.dock == Dock.TEXT) {
+        if (ui.dock == Dock.TEXT && !ui.logActive) {
             TextEditorLayer(ui, actions)
+        } else if (ui.edit != null) {
+            Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { ui.quick = null } })
         } else {
             Box(
                 Modifier
                     .fillMaxSize()
                     .pointerInput(Unit) {
                         detectTapGestures { pos ->
+                            if (ui.quick != null) { ui.quick = null; return@detectTapGestures }
                             focus = pos
                             focusKey = System.nanoTime()
                             actions.tapToFocus(pos.x, pos.y, size.width.toFloat(), size.height.toFloat())
@@ -322,12 +427,26 @@ private fun Viewfinder(ui: UiState, actions: CameraActions, chrome: Float, iconR
             if (ui.halfFramePending) {
                 GlassText("½  Take the second half", Modifier.align(Alignment.TopCenter).padding(top = 12.dp))
             }
-            if (ui.dock == Dock.NONE || ui.recording) {
+            if (ui.burstTotal >= 0) {
+                GlassText(
+                    if (ui.burstTotal == 0) "Burst  ${ui.burstTaken}" else "Burst  ${ui.burstTaken} / ${ui.burstTotal}",
+                    Modifier.align(Alignment.TopCenter).padding(top = 12.dp),
+                )
+            }
+            if (ui.edit == null && (ui.dock == Dock.NONE || ui.recording)) {
                 ZoomPills(ui, actions, iconRotation, Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp))
             }
         }
         if (ui.zooming) {
             GlassText(zoomLabel(ui.zoom, true), Modifier.align(Alignment.Center), big = true)
+        }
+        if (ui.countdown > 0) {
+            Box(
+                Modifier.align(Alignment.Center).size(132.dp).background(Glass, CircleShape).rotate(iconRotation),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("${ui.countdown}", color = Color.White, fontSize = 76.sp, fontFamily = SerifDisplay)
+            }
         }
     }
 }
@@ -348,6 +467,7 @@ private fun StatusPill(ui: UiState, modifier: Modifier) {
         ui.sampling -> "Sampling"
         ui.savingVideo -> "Saving"
         ui.developing > 0 -> "Developing"
+        ui.logActive -> if (ui.logInIsp) "Log" else "Log · approx."
         else -> null
     } ?: return
     Row(
@@ -453,7 +573,8 @@ private fun DockBar(ui: UiState, modifier: Modifier) {
             Column(
                 Modifier
                     .clip(RoundedCornerShape(14.dp))
-                    .clickable(enabled = !ui.recording || d == Dock.TEXT) { ui.dock = if (sel) Dock.NONE else d }
+                    .alpha(if (ui.logActive) 0.35f else 1f)
+                    .clickable(enabled = (!ui.recording || d == Dock.TEXT) && !ui.logActive) { ui.dock = if (sel) Dock.NONE else d }
                     .padding(horizontal = 14.dp, vertical = 6.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
@@ -500,34 +621,40 @@ private fun ShutterRow(ui: UiState, actions: CameraActions, iconRotation: Float,
                 .clip(RoundedCornerShape(13.dp))
                 .background(p.surfaceHigh)
                 .border(1.dp, p.line, RoundedCornerShape(13.dp))
-                .clickable(enabled = ui.lastUri != null) { actions.openLast() },
+                .clickable(enabled = !ui.recording) { actions.openLast() },
+            contentAlignment = Alignment.Center,
         ) {
-            ui.thumbnail?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
+            val thumb = ui.thumbnail
+            if (thumb != null) Image(thumb.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            else Icon(Ico.Gallery, null, tint = p.muted, modifier = Modifier.size(18.dp))
         }
         Spacer(Modifier.weight(1f))
         ShutterButton(ui) { actions.shutter() }
         Spacer(Modifier.weight(1f))
         Box(
             Modifier.size(46.dp).clip(CircleShape).background(p.surfaceHigh).border(1.dp, p.line, CircleShape)
-                .clickable(enabled = !ui.recording) { actions.switchFacing() },
+                .clickable(enabled = !ui.recording) { if (ui.edit != null) actions.importMedia() else actions.switchFacing() },
             contentAlignment = Alignment.Center,
-        ) { Icon(Ico.Flip, null, tint = p.text, modifier = Modifier.size(21.dp).rotate(iconRotation)) }
+        ) {
+            Icon(if (ui.edit != null) Ico.Import else Ico.Flip, null, tint = p.text, modifier = Modifier.size(21.dp).rotate(iconRotation))
+        }
     }
 }
 
 @Composable
 private fun ShutterButton(ui: UiState, onClick: () -> Unit) {
     val p = LocalPalette.current
-    val video = ui.mode == CaptureMode.VIDEO
-    val inner by animateFloatAsState(if (ui.recording) 0.38f else 0.8f, label = "shutterInner")
-    val corner by animateFloatAsState(if (ui.recording) 0.22f else 0.5f, label = "shutterCorner")
+    val video = ui.mode == CaptureMode.VIDEO && ui.edit == null
+    val stop = ui.recording || ui.seriesRunning
+    val inner by animateFloatAsState(if (stop) 0.38f else 0.8f, label = "shutterInner")
+    val corner by animateFloatAsState(if (stop) 0.22f else 0.5f, label = "shutterCorner")
     Box(
         Modifier
             .size(74.dp)
             .clip(CircleShape)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() }, indication = null,
-                enabled = !ui.savingVideo && !ui.sampling, onClick = onClick,
+                enabled = !ui.savingVideo && !ui.sampling && ui.progress < 0f, onClick = onClick,
             ),
         contentAlignment = Alignment.Center,
     ) {
@@ -541,6 +668,7 @@ private fun ShutterButton(ui: UiState, onClick: () -> Unit) {
                 cornerRadius = CornerRadius(s * corner),
             )
         }
+        if (ui.edit != null) Icon(Ico.Check, null, tint = p.bg, modifier = Modifier.size(28.dp))
     }
 }
 

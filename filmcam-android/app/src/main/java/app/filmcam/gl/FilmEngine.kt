@@ -36,6 +36,12 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
+ * How a still is framed: [aspect] (width / height of the saved picture, null to keep the
+ * sensor's) and digital [zoom] the camera left to us.
+ */
+data class StillCrop(val aspect: Float? = null, val zoom: Float = 1f)
+
+/**
  * The render thread. Receives camera frames, runs them through the film pipeline and draws
  * the result to the screen and, while recording, to the video encoder. Also develops stills.
  *
@@ -70,6 +76,12 @@ class FilmEngine {
     /** Text overlays burnt into preview, video and stills. */
     @Volatile var textLayers: List<TextLayer> = emptyList()
     @Volatile var fonts: FontLibrary? = null
+    /** Log video: what the screen and the encoder get (see Shaders uLogMode), and the gain. */
+    @Volatile var logDisplay = 0
+    @Volatile var logEncode = 0
+    @Volatile var logGain = 1f
+    /** Editing an imported picture: the frame stays upright whichever way the phone is held. */
+    @Volatile var upright = false
     private var textKey: Any? = null
     private var textBitmap: Bitmap? = null
 
@@ -91,14 +103,20 @@ class FilmEngine {
 
     private val fx = FrameFx()
     private val animator = FxAnimator()
-    private val startNs = System.nanoTime()
+    /** Zero point of effect time: engine start, or the first frame of an export. */
+    private var timeBaseNs = System.nanoTime()
     private var lastFilmFrameNs = 0L
     private var lastDevelopNs = 0L
     private var lastOverlayNs = 0L
 
     private class Recording(
         val surface: EGLSurface, val recorder: VideoRecorder, val frameTurns: Int, val startNs: Long, val burn: Boolean,
+        /** Quarter turns from the encoder buffer to screen space (1: landscape buffer, portrait picture). */
+        val targetRot: Int = 1,
+        /** Exporting an imported video: frames carry their own timestamps, one in, one out. */
+        val onFrame: (() -> Unit)? = null,
     ) {
+        val offline get() = onFrame != null
         var stopAtNs = 0L
         var stopRequestNs = 0L
     }
@@ -116,7 +134,13 @@ class FilmEngine {
 
     // ------------------------------------------------------------------ camera input
 
-    private class CameraInput(val tex: Int, val st: SurfaceTexture, val surface: Surface, val bufW: Int, val bufH: Int) {
+    /**
+     * A stream of frames: the camera, or a video decoder. [rotation] is how far a decoded video
+     * must turn clockwise to stand upright (the camera's own transform already does this).
+     */
+    private class CameraInput(
+        val tex: Int, val st: SurfaceTexture, val surface: Surface, val bufW: Int, val bufH: Int, val rotation: Int = 0,
+    ) {
         var released = false
         fun release() {
             if (released) return
@@ -128,23 +152,29 @@ class FilmEngine {
         }
     }
 
-    /** A Surface for the camera to stream [width]x[height] frames into (sensor orientation). */
-    fun openCameraInput(width: Int, height: Int, onReady: (Surface) -> Unit) {
+    /**
+     * A Surface for the camera (or a video decoder) to stream [width]x[height] frames into, in
+     * their own orientation; [rotation] turns decoded video upright.
+     */
+    fun openCameraInput(width: Int, height: Int, rotation: Int = 0, onReady: (Surface) -> Unit) {
         handler.post {
             input?.release()
             val tex = GlUtil.createOesTexture()
             val st = SurfaceTexture(tex).apply { setDefaultBufferSize(width, height) }
             val surface = Surface(st)
-            val inp = CameraInput(tex, st, surface, width, height)
+            val inp = CameraInput(tex, st, surface, width, height, ((rotation % 360) + 360) % 360)
             st.setOnFrameAvailableListener({ onFrame(inp) }, handler)
             input = inp
             onReady(surface)
         }
     }
 
-    fun closeCameraInput() {
+    /** Closes the input; with [only], just if that surface is still the current one. */
+    fun closeCameraInput(only: Surface? = null) {
         handler.post {
-            input?.release()
+            val inp = input ?: return@post
+            if (only != null && inp.surface !== only) return@post
+            inp.release()
             input = null
         }
     }
@@ -231,48 +261,118 @@ class FilmEngine {
             return
         }
         inp.st.getTransformMatrix(stMatrix)
-        val now = System.nanoTime()
-        val disp = display
         val rec = recording
+        // An export runs on the video's own clock; everything else on the wall clock.
+        val now = if (rec?.offline == true) inp.st.timestamp else System.nanoTime()
+        val disp = display
         if (disp == null && rec == null) return
 
         egl.makeCurrent(disp ?: pbuffer)
-        val look = look
-        val p = ensurePipeline(inp) ?: return
-        val turns = rec?.frameTurns ?: deviceQuarterTurns
+        val (uw, uh) = uprightSize(inp)
+        val p = ensurePipeline(uw, uh) ?: run { rec?.onFrame?.invoke(); return }
+        renderFrame(p, now, rec) { look, persistence ->
+            buildTexMatrix(inp, look)
+            renderer.developCamera(p, inp.tex, texMatrix, persistence)
+        }
+        rec?.onFrame?.invoke()
+    }
 
+    /** The turns of the frame: how the phone is held, or upright while editing an import. */
+    private fun frameTurns(rec: Recording?) = rec?.frameTurns ?: if (upright) 0 else deviceQuarterTurns
+
+    /**
+     * Everything after the camera: develop (when a film frame is due), glow, and the final pass
+     * to the screen and, while recording, to the encoder.
+     */
+    private inline fun renderFrame(p: Pipeline, now: Long, rec: Recording?, develop: (FilmLook, Float) -> Unit) {
+        val disp = display
+        val look = look
+        val turns = frameTurns(rec)
         if (filmFrameDue(if (videoMode) look.frameRate else FilmFrameRate.NATIVE, now)) {
-            animator.next(look, (now - startNs) / 1e9f, fx)
+            animator.next(look, (now - timeBaseNs) / 1e9f, fx)
             val dt = if (lastDevelopNs == 0L) 1f / 30f else ((now - lastDevelopNs) / 1e9f).coerceIn(0.005f, 0.2f)
             lastDevelopNs = now
             val persistence = if (simulateShutter) look.shutter.persistence(dt) else 0f
             if (persistence > 0f || look.interlace > 0f) p.keepPrevious()
-            buildTexMatrix(inp, look)
-            renderer.developCamera(p, inp.tex, texMatrix, persistence)
+            develop(look, persistence)
             renderer.glow(liveSource(p), look, turns)
         }
         fx.rollBurn = rollBurn(rec, now)
-        if (now - lastOverlayNs > 250_000_000L) {
-            lastOverlayNs = now
+        val wall = System.nanoTime()
+        if (wall - lastOverlayNs > 250_000_000L) {
+            lastOverlayNs = wall
             renderer.updateOverlays(look.stamp, rec != null)
         }
+        renderer.logGain = logGain
 
         val src = liveSource(p)
         if (turns % 2 == 0) updateText(p.width, p.height, 2048) else updateText(p.height, p.width, 2048)
         if (disp != null && displayW > 0) {
             GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
-            renderer.drawFinal(src, look, fx, displayW, displayH, 0, turns)
+            renderer.drawFinal(src, look, fx, displayW, displayH, 0, turns, logMode = logDisplay)
             egl.swap(disp)
         }
         if (rec != null) {
             egl.makeCurrent(rec.surface)
             GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
-            renderer.drawFinal(src, look, fx, rec.recorder.width, rec.recorder.height, 1, turns)
+            renderer.drawFinal(src, look, fx, rec.recorder.width, rec.recorder.height, rec.targetRot, turns, logMode = logEncode)
             egl.setPresentationTime(rec.surface, now)
             egl.swap(rec.surface)
             egl.makeCurrent(disp ?: pbuffer)
             if (rec.stopAtNs in 1..now) finishRecording()
         }
+    }
+
+    // ------------------------------------------------------------------ still source (imports)
+
+    private class StillSource(val tex: Int, val w: Int, val h: Int)
+    private var stillSource: StillSource? = null
+    private val stillMatrixBuf = FloatArray(16)
+
+    private val stillTick = object : Runnable {
+        override fun run() {
+            renderStillFrame()
+            if (stillSource != null) handler.postDelayed(this, 40)
+        }
+    }
+
+    /**
+     * Shows an upright picture in the viewfinder instead of the camera, running through the
+     * film pipeline ~25 times a second so grain and leaks stay alive. Null stops it. The
+     * bitmap is recycled.
+     */
+    fun showStill(bmp: Bitmap?) {
+        handler.post {
+            handler.removeCallbacks(stillTick)
+            egl.makeCurrent(display ?: pbuffer)
+            stillSource?.let { GlUtil.deleteTextures(it.tex) }
+            stillSource = null
+            if (bmp == null) return@post
+            val tex = renderer.uploadMipmapped(bmp)
+            stillSource = StillSource(tex, bmp.width, bmp.height)
+            bmp.recycle()
+            lastDevelopNs = 0L
+            handler.post(stillTick)
+        }
+    }
+
+    private fun renderStillFrame() {
+        val src = stillSource ?: return
+        val disp = display ?: return
+        if (input != null) return
+        egl.makeCurrent(disp)
+        val p = ensurePipeline(src.w, src.h) ?: return
+        renderFrame(p, System.nanoTime(), null) { _, _ ->
+            val (sx, sy) = cropFractions(src.w, src.h, p)
+            stillMatrix(0, false, sx, sy, stillMatrixBuf)
+            renderer.developTexture(p, src.tex, stillMatrixBuf)
+        }
+    }
+
+    /** How much of an upright [uw]x[uh] picture the working frame shows (centre crop). */
+    private fun cropFractions(uw: Int, uh: Int, p: Pipeline): Pair<Float, Float> {
+        val cropFracW = p.width.toFloat() / p.height * uh / uw
+        return if (cropFracW <= 1f) cropFracW to 1f else 1f to 1f / cropFracW
     }
 
     /** Re-renders the text overlay when the layers or the frame shape change. */
@@ -325,20 +425,30 @@ class FilmEngine {
     /** Upright (as displayed) size of the camera buffer. */
     private fun uprightSize(inp: CameraInput): Pair<Int, Int> {
         val rotatedBySt = abs(stMatrix[0]) < abs(stMatrix[4])
-        val extraOdd = (extraRotation() / 90) % 2 == 1
+        val extraOdd = ((extraRotation() + inp.rotation) / 90) % 2 == 1
         return if (rotatedBySt xor extraOdd) inp.bufH to inp.bufW else inp.bufW to inp.bufH
     }
 
-    private fun ensurePipeline(inp: CameraInput): Pipeline? {
-        val (uw, uh) = uprightSize(inp)
+    /** The working-frame size (and so the video size) for an upright [uw]x[uh] source. */
+    fun frameSizeFor(uw: Int, uh: Int): Size {
+        val (w, h) = frameSize(uw, uh)
+        return Size(w, h)
+    }
+
+    private fun frameSize(uw: Int, uh: Int): Pair<Int, Int> {
         val aspect = outputAspect
         val cw: Float
         val ch: Float
         if (uw.toFloat() / uh > aspect) { ch = uh.toFloat(); cw = ch * aspect } else { cw = uw.toFloat(); ch = cw / aspect }
         val limit = min(maxWorkSide, maxTextureSize).toFloat()
         val scale = min(1f, limit / max(cw, ch))
-        val w = ((cw * scale).roundToInt() / 2) * 2
-        val h = ((ch * scale).roundToInt() / 2) * 2
+        // Video sizes stay on 16-pixel steps: some encoders want that for odd shapes like 4:5.
+        val step = if (videoMode) 16 else 2
+        return ((cw * scale).roundToInt() / step) * step to ((ch * scale).roundToInt() / step) * step
+    }
+
+    private fun ensurePipeline(uw: Int, uh: Int): Pipeline? {
+        val (w, h) = frameSize(uw, uh)
         if (w < 16 || h < 16) return null
         val p = pipeline
         if (p != null && p.width == w && p.height == h && p.raw != 0 == !videoMode) return p
@@ -361,11 +471,8 @@ class FilmEngine {
     private fun buildTexMatrix(inp: CameraInput, look: FilmLook) {
         val p = pipeline ?: return
         val (uw, uh) = uprightSize(inp)
-        val cropFracW = p.width.toFloat() / p.height * uh / uw
-        val sx: Float
-        val sy: Float
-        if (cropFracW <= 1f) { sx = cropFracW; sy = 1f } else { sx = 1f; sy = 1f / cropFracW }
-        val overscan = 1f - 2.2f * FxAnimator.MAX_WEAVE * look.gateWeave
+        val (sx, sy) = cropFractions(uw, uh, p)
+        val overscan = overscan(look)
 
         // C = T(0.5 + weave) * S(sx, sy) * T(-0.5)
         val c = tmpA
@@ -377,7 +484,7 @@ class FilmEngine {
         // R = T(0.5) * Rz(extra) * T(-0.5)
         val r = tmpB
         Matrix.setIdentityM(r, 0)
-        val extra = extraRotation()
+        val extra = (extraRotation() + inp.rotation) % 360
         if (extra != 0) {
             Matrix.translateM(r, 0, 0.5f, 0.5f, 0f)
             Matrix.rotateM(r, 0, extra.toFloat(), 0f, 0f, 1f)
@@ -387,6 +494,9 @@ class FilmEngine {
         Matrix.multiplyMM(rc, 0, r, 0, c, 0)
         Matrix.multiplyMM(texMatrix, 0, stMatrix, 0, rc, 0)
     }
+
+    /** Gate weave moves the picture; this much is cropped so the edges never show. */
+    private fun overscan(look: FilmLook) = 1f - 2.2f * FxAnimator.MAX_WEAVE * look.gateWeave
 
     /**
      * Where a point of the preview (0..1, y down) lands in the camera buffer (0..1, y down),
@@ -409,6 +519,28 @@ class FilmEngine {
                 recorder.start()
                 recording = Recording(surface, recorder, deviceQuarterTurns, System.nanoTime(), look.rollBurn)
                 lastOverlayNs = 0L
+            } catch (e: Exception) {
+                Log.e(TAG, "startRecording", e)
+                recorder.stop()
+            }
+        }
+    }
+
+    /**
+     * Starts exporting an imported video: frames decoded into the input surface are rendered,
+     * one by one, into [recorder] with their own timestamps. [onFrame] runs on the render
+     * thread after each one, so the decoder can send the next. [targetRot] is 0 for a
+     * landscape picture, 1 for a portrait one in a landscape buffer.
+     */
+    fun startExport(recorder: VideoRecorder, targetRot: Int, onFrame: () -> Unit) {
+        handler.post {
+            try {
+                val surface = egl.createWindowSurface(recorder.inputSurface)
+                recorder.start()
+                recording = Recording(surface, recorder, 0, 0L, burn = false, targetRot = targetRot, onFrame = onFrame)
+                timeBaseNs = 0L
+                lastFilmFrameNs = 0L
+                lastDevelopNs = 0L
             } catch (e: Exception) {
                 Log.e(TAG, "startRecording", e)
                 recorder.stop()
@@ -440,9 +572,25 @@ class FilmEngine {
         egl.releaseSurface(rec.surface)
         rec.recorder.stop()
         lastOverlayNs = 0L
+        if (rec.offline) {
+            timeBaseNs = System.nanoTime()
+            lastFilmFrameNs = 0L
+            lastDevelopNs = 0L
+        }
+    }
+
+    /** Ends an export once the last frame is in. */
+    fun finishExport() {
+        handler.post { if (recording?.offline == true) finishRecording() }
     }
 
     // ------------------------------------------------------------------ stills
+
+    /**
+     * This frame's leaks, flicker and scratches, for a still taken now: the saved picture gets
+     * the same ones the viewfinder showed at the press, not a new roll of the dice.
+     */
+    fun liveFx(): FrameFx = FrameFx().also { it.copyFrom(fx); it.slip = 0f; it.rollBurn = 0f }
 
     /** Freezes the live motion trail at the shutter press. */
     fun snapshotTrail() {
@@ -465,6 +613,7 @@ class FilmEngine {
      */
     fun developStill(
         still: Bitmap, rotationCw: Int, mirror: Boolean, look: FilmLook, frameTurns: Int,
+        crop: StillCrop = StillCrop(), frameFx: FrameFx? = null,
         done: (Bitmap?) -> Unit,
     ) {
         handler.post {
@@ -476,11 +625,20 @@ class FilmEngine {
                 egl.makeCurrent(pbuffer)
                 renderer.updateOverlays(look.stamp, false)
                 val odd = (rotationCw / 90) % 2 == 1
-                val w = if (odd) still.height else still.width
-                val h = if (odd) still.width else still.height
+                val uw = if (odd) still.height else still.width
+                val uh = if (odd) still.width else still.height
+                // Same framing as the viewfinder: its aspect, its zoom, its weave margin.
+                var sx = 1f
+                var sy = 1f
+                crop.aspect?.let { a -> if (uw.toFloat() / uh > a) sx = a * uh / uw else sy = uw / (a * uh) }
+                val z = overscan(look) / max(1f, crop.zoom)
+                sx *= z
+                sy *= z
+                val w = max(2, ((uw * sx).roundToInt() / 2) * 2)
+                val h = max(2, ((uh * sy).roundToInt() / 2) * 2)
                 val src = renderer.uploadMipmapped(still).also { textures += it }
                 still.recycle()
-                val imageMatrix = stillMatrix(rotationCw, mirror)
+                val imageMatrix = stillMatrix(rotationCw, mirror, sx, sy, FloatArray(16))
 
                 // Slow shutter: add the trail from the live view (needs a second full-size frame).
                 val preview = pipeline
@@ -500,7 +658,7 @@ class FilmEngine {
                 }
                 renderer.glow(source, look, 0)
                 updateText(w, h, 4096)
-                result = renderTiled(source, look, stillFx(look), w, h, targetRot = 0, frameRot = 0)
+                result = renderTiled(source, look, frameFx ?: stillFx(look), w, h, targetRot = 0, frameRot = 0)
                 textKey = null   // the live view re-renders its own size next frame
             } catch (e: Throwable) {
                 Log.e(TAG, "developStill", e)
@@ -632,10 +790,13 @@ class FilmEngine {
 
     /**
      * Screen uv (y up, upright picture) -> texture uv of a still kept in sensor orientation
-     * (row 0 at the top), undoing the mirror and a clockwise rotation of [rotationCw].
+     * (row 0 at the top), undoing the mirror and a clockwise rotation of [rotationCw], showing
+     * the central [cropX] x [cropY] of the upright picture.
      */
-    private fun stillMatrix(rotationCw: Int, mirror: Boolean): FloatArray {
-        fun map(x: Float, y: Float): Pair<Float, Float> {
+    private fun stillMatrix(rotationCw: Int, mirror: Boolean, cropX: Float, cropY: Float, m: FloatArray): FloatArray {
+        fun map(x0: Float, y0: Float): Pair<Float, Float> {
+            val x = 0.5f + (x0 - 0.5f) * cropX            // centre crop of the upright picture
+            val y = 0.5f + (y0 - 0.5f) * cropY
             var ox = x
             val oy = 1f - y                               // image coordinates, y down
             if (mirror) ox = 1f - ox
@@ -649,7 +810,6 @@ class FilmEngine {
         val (tx, ty) = map(0f, 0f)
         val (ax, ay) = map(1f, 0f)
         val (bx, by) = map(0f, 1f)
-        val m = FloatArray(16)
         Matrix.setIdentityM(m, 0)
         m[0] = ax - tx; m[1] = ay - ty
         m[4] = bx - tx; m[5] = by - ty

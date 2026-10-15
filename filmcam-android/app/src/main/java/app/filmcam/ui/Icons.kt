@@ -93,4 +93,17 @@ object Ico {
     val TextSize = icon("textsize", "M4 19l5-14 5 14", "M5.8 14h6.4", "M17.5 9.5l2-2 2 2", "M19.5 7.5v9", "M17.5 14.5l2 2 2-2")
     val Fonts = icon("fonts", "M3.5 18.5l4.5-13 4.5 13", "M5 14.5h6", "M20 18.5v-5.8a2.7 2.7 0 1 0-2.7 2.7H20")
     val Import = icon("import", "M12 4v11", "M7.5 10.5L12 15l4.5-4.5", "M5 20h14")
+
+    // ---- capture options and media
+    val Timer = icon("timer", c(12f, 13.5f, 7.5f), "M12 9.5v4l2.5 2", "M9.5 2.5h5", "M18.5 6.5l1.5-1.5")
+    val Burst = icon("burst", "M7 7.5h10a1.5 1.5 0 0 1 1.5 1.5v8A1.5 1.5 0 0 1 17 18.5H7A1.5 1.5 0 0 1 5.5 17V9A1.5 1.5 0 0 1 7 7.5z", "M8 5h8", "M10 2.8h4")
+    val Ratio = icon("ratio", "M5.5 4.5h13a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-13a1 1 0 0 1 1-1z", "M8 8h3", "M8 8v3", "M16 16h-3", "M16 16v-3")
+    val Log = icon("log", "M4 19.5h16", "M4 19.5V4.5", "M4 17C8 9 12 7 20 6")
+    val Gallery = icon("gallery", "M4.5 4.5h6v6h-6z", "M13.5 4.5h6v6h-6z", "M4.5 13.5h6v6h-6z", "M13.5 13.5h6v6h-6z")
+    val Share = icon("share", "M12 15V4", "M8 7.5L12 3.5l4 4", "M6.5 11.5H5v8h14v-8h-1.5")
+    val Scissors = icon("scissors", c(6.5f, 6.5f, 2.5f), c(6.5f, 17.5f, 2.5f), "M8.6 8L19.5 18", "M8.6 16L19.5 6")
+    val Wand = icon("wand", "M4 20L15 9", "M13.5 7.5l3 3", "M18 3.5v3", "M16.5 5h3", "M20 9.5v2", "M19 10.5h2", "M9.5 3.5v2", "M8.5 4.5h2")
+    val Back = icon("back", "M15 5l-7 7 7 7")
+    val Play = icon("play", fills = listOf("M8 5.5v13l10.5-6.5z"))
+    val Pause = icon("pause", fills = listOf("M7 5h3.5v14H7z", "M13.5 5H17v14h-3.5z"))
 }

@@ -158,6 +158,8 @@ data class FilmLook(
 )
 
 enum class CameraCategory(val label: String) {
+    /** The no-filter camera. Pinned first in every row rather than given a tab. */
+    ORIGINAL("Original"),
     FILM("35mm"),
     CINE("Cine"),
     INSTANT("Instant"),
@@ -184,7 +186,45 @@ object FilmCameras {
     private fun cam(id: String, name: String, sub: String, cat: CameraCategory, look: FilmLook) =
         FilmCamera(id, name, sub, cat, look.copy(grain = DEFAULT_GRAIN, grainSize = DEFAULT_GRAIN_SIZE))
 
+    /** No filter: the phone's own picture, straight through. Borders, stamps and text still work. */
+    val ORIGINAL = FilmCamera(
+        "original", "Original", "No filter", CameraCategory.ORIGINAL,
+        FilmLook(stock = FilmStocks.NEUTRAL, halation = 0f, bloom = 0f, grain = 0f, vignette = 0f, aberration = 0f),
+    )
+
     val ALL: List<FilmCamera> = listOf(
+        ORIGINAL,
+        // ------------------------------------------------------------ after the retro camera apps
+        cam("medium67", "Medium 67", "Pro 160 · 6×7 portraits", CameraCategory.FILM,
+            FilmLook(stock = FilmStocks.PRO_160, halation = 0.25f, bloom = 0.2f, vignette = 0.25f, aberration = 0.04f,
+                softness = -0.05f, frame = FrameStyle.WHITE)),
+        cam("nightclassic", "Night Classic", "Night 1600 · warm low light", CameraCategory.FILM,
+            FilmLook(stock = FilmStocks.NIGHT_1600, halation = 0.45f, bloom = 0.3f, vignette = 0.4f, aberration = 0.15f,
+                flash = 0.15f, softness = 0.1f, stamp = StampStyle.DATE)),
+        cam("quicksnap", "Quick Snap", "Snap 400 · flash disposable", CameraCategory.FILM,
+            FilmLook(stock = FilmStocks.SNAP_400, halation = 0.4f, bloom = 0.3f, lightLeak = 0.2f, vignette = 0.55f,
+                aberration = 0.4f, softness = 0.25f, flash = 0.28f, stamp = StampStyle.DATE_98)),
+        cam("dailyclassic", "Daily Classic", "Daily 200 · faded & dated", CameraCategory.FILM,
+            FilmLook(stock = FilmStocks.DAILY_200, halation = 0.35f, bloom = 0.25f, lightLeak = 0.2f, vignette = 0.35f,
+                aberration = 0.12f, fade = 0.1f, stamp = StampStyle.DATE)),
+        cam("classicultra", "Classic Ultra", "Ultra 400 · golden & bold", CameraCategory.FILM,
+            FilmLook(stock = FilmStocks.ULTRA_400, halation = 0.35f, bloom = 0.22f, vignette = 0.35f, aberration = 0.12f)),
+        cam("streetsnap", "Street Snap", "Street positive · crisp & cool", CameraCategory.FILM,
+            FilmLook(stock = FilmStocks.STREET_POSITIVE, halation = 0.2f, bloom = 0.12f, vignette = 0.25f, aberration = 0.05f,
+                softness = -0.2f, frame = FrameStyle.BLACK)),
+        cam("amberm", "Amber M", "Amber 100 · muted & warm", CameraCategory.FILM,
+            FilmLook(stock = FilmStocks.AMBER_100, halation = 0.3f, bloom = 0.25f, vignette = 0.4f, aberration = 0.1f,
+                fade = 0.15f, lightLeak = 0.1f)),
+        cam("kino", "Kino", "Kino 500T · teal & amber", CameraCategory.CINE,
+            FilmLook(stock = FilmStocks.KINO_500T, halation = 0.6f, halationSize = 0.5f, bloom = 0.3f, vignette = 0.35f,
+                gateWeave = 0.1f, aberration = 0.1f, frameRate = FilmFrameRate.FPS_24, shutter = ShutterSpeed.S48)),
+        cam("funvivid", "Fun Vivid", "Fun 200 · toy-camera colour", CameraCategory.TOY,
+            FilmLook(stock = FilmStocks.FUN_200, halation = 0.35f, bloom = 0.3f, lightLeak = 0.3f, vignette = 0.7f,
+                cornerBlur = 0.35f, aberration = 0.35f, softness = 0.15f)),
+        cam("streetmono", "Street Mono", "Mono 400 · hard & contrasty", CameraCategory.MONO,
+            FilmLook(stock = FilmStocks.MONO_400.copy(id = "mono400hard", contrast = 1.55f), halation = 0.15f, bloom = 0.1f,
+                vignette = 0.3f, softness = -0.25f, frame = FrameStyle.FILED)),
+
         // ------------------------------------------------------------ 35mm stills
         cam("classic35", "Classic 35", "Gold 200 · point & shoot", CameraCategory.FILM,
             FilmLook(stock = FilmStocks.GOLD_200, halation = 0.35f, bloom = 0.2f, grain = 0.38f, grainSize = 1.3f,
@@ -369,5 +409,5 @@ object FilmCameras {
                 stamp = StampStyle.DATE)),
     )
 
-    fun byId(id: String?): FilmCamera = ALL.firstOrNull { it.id == id } ?: ALL.first()
+    fun byId(id: String?): FilmCamera = ALL.firstOrNull { it.id == id } ?: ALL.first { it.id == "classic35" }
 }

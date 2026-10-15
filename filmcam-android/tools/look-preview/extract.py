@@ -74,21 +74,34 @@ for enum in ('FrameStyle', 'StampStyle'):
     body = re.search(r'enum class %s\(.*?\) \{(.*?)\}' % enum, look_src, re.S).group(1)
     enum_ids[enum] = {n: int(i) for n, i in re.findall(r'(\w+)\("[^"]*", (\d+)\)', body)}
 look_defaults = named(re.search(r'data class FilmLook\((.*?)\n\)', look_src, re.S).group(1))
+def stock_of(v):
+    # FilmStocks.NAME, or FilmStocks.NAME.copy(field = value, ...)
+    m = re.match(r'FilmStocks\.(\w+)(?:\.copy\((.*)\))?$', v, re.S)
+    st = dict(stocks[m.group(1)])
+    if m.group(2):
+        st.update({k: value(x) for k, x in named(m.group(2)).items() if value(x) is not None})
+    return st
+
+
 cams = []
-for cid, name, sub, cat, body in re.findall(
-        r'cam\("(\w+)", "([^"]+)", "([^"]+)", CameraCategory\.(\w+),\s*FilmLook\((.*?)\)\),', look_src, re.S):
+# The no-filter camera is built directly, without cam()'s default grain.
+plain = re.findall(r'val \w+ = FilmCamera\(\s*"(\w+)", "([^"]+)", "([^"]+)", CameraCategory\.(\w+),\s*FilmLook\((.*?)\),\s*\)', look_src, re.S)
+found = [(c, n, s_, cat, b, False) for c, n, s_, cat, b in plain]
+found += [(c, n, s_, cat, b, True) for c, n, s_, cat, b in re.findall(
+        r'cam\("(\w+)", "([^"]+)", "([^"]+)", CameraCategory\.(\w+),\s*FilmLook\((.*?)\)\),', look_src, re.S)]
+for cid, name, sub, cat, body, uniform_grain in found:
     a = dict(look_defaults); a.update(named(body))
     look = {}
     for k, v in a.items():
-        if k == 'stock': look['stock'] = stocks[v.split('.')[-1]]
+        if k == 'stock': look['stock'] = stock_of(v)
         elif k == 'frame': look['frame'] = enum_ids['FrameStyle'][v.split('.')[-1]]
         elif k == 'stamp': look['stamp'] = enum_ids['StampStyle'][v.split('.')[-1]]
         else: look[k] = value(v)
     # FilmCameras.cam() gives every camera the same default grain.
     g = re.search(r'const val DEFAULT_GRAIN = ([\d.]+)f', look_src)
     gs = re.search(r'const val DEFAULT_GRAIN_SIZE = ([\d.]+)f', look_src)
-    if g: look['grain'] = float(g.group(1))
-    if gs: look['grainSize'] = float(gs.group(1))
+    if uniform_grain and g: look['grain'] = float(g.group(1))
+    if uniform_grain and gs: look['grainSize'] = float(gs.group(1))
     cams.append({'id': cid, 'name': name, 'subtitle': sub, 'category': cat, 'look': look})
 
 json.dump({'shaders': shaders, 'cameras': cams, 'frames': enum_ids['FrameStyle']},

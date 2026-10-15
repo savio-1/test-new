@@ -43,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
@@ -53,11 +54,13 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign as ComposeAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -122,11 +125,23 @@ private class FrameMap(val w: Float, val h: Float, val k: Int) {
 private fun replace(ui: UiState, actions: CameraActions, layer: TextLayer) =
     actions.setTextLayers(ui.textLayers.map { if (it.id == layer.id) layer else it })
 
+private fun deleteLayer(ui: UiState, actions: CameraActions, id: Long) {
+    actions.setTextLayers(ui.textLayers.filter { it.id != id })
+    if (ui.selectedText == id) ui.selectedText = null
+}
+
+/** Where the delete badge of the selected layer sits: its top-right corner, in view pixels. */
+private fun deleteBadge(map: FrameMap, layer: TextLayer, fonts: FontLibrary, pad: Float): Offset? {
+    if (layer.text.isBlank()) return null
+    // The corner that is top-right on screen, whatever the rotation.
+    return map.corners(layer, fonts, pad).maxByOrNull { it.x - it.y }
+}
+
 /** Touch handling and selection box on the viewfinder while the Text tray is open. */
 @Composable
 fun TextEditorLayer(ui: UiState, actions: CameraActions) {
     val fonts = ui.fonts ?: return
-    val turns = ui.quarterTurns
+    val turns = ui.frameTurns
     val latestUi by rememberUpdatedState(ui)
     Box(
         Modifier
@@ -135,6 +150,12 @@ fun TextEditorLayer(ui: UiState, actions: CameraActions) {
                 detectTapGestures(
                     onTap = { pos ->
                         val map = FrameMap(size.width.toFloat(), size.height.toFloat(), turns)
+                        val sel = latestUi.selectedLayer
+                        val badge = sel?.let { deleteBadge(map, it, fonts, 8.dp.toPx()) }
+                        if (sel != null && badge != null && (badge - pos).getDistance() < 20.dp.toPx()) {
+                            deleteLayer(latestUi, actions, sel.id)
+                            return@detectTapGestures
+                        }
                         val hit = latestUi.textLayers.lastOrNull { map.hit(it, fonts, pos, 12.dp.toPx()) }
                         latestUi.selectedText = hit?.id
                     },
@@ -212,6 +233,15 @@ fun TextEditorLayer(ui: UiState, actions: CameraActions) {
             drawPath(path, Color.Black.copy(alpha = 0.35f), style = Stroke(2.5.dp.toPx()))
             drawPath(path, Color.White, style = Stroke(1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 7f))))
             c.forEach { drawCircle(Color.White, 3.dp.toPx(), it) }
+            // Delete badge: a small x on the top-right corner.
+            deleteBadge(map, sel, fonts, 8.dp.toPx())?.let { b ->
+                val r = 10.dp.toPx()
+                val a = 3.5.dp.toPx()
+                drawCircle(Color(0xFFE5402B), r, b)
+                drawCircle(Color.White, r, b, style = Stroke(1.dp.toPx()))
+                drawLine(Color.White, b + Offset(-a, -a), b + Offset(a, a), strokeWidth = 1.6.dp.toPx())
+                drawLine(Color.White, b + Offset(-a, a), b + Offset(a, -a), strokeWidth = 1.6.dp.toPx())
+            }
         }
         if (ui.textLayers.isEmpty()) {
             Text(
@@ -255,8 +285,8 @@ fun TextTray(ui: UiState, actions: CameraActions, chrome: Float) {
                 item {
                     Box(
                         Modifier.size(34.dp).clip(CircleShape).border(1.dp, p.line, CircleShape).clickable {
-                            val n = ui.textLayers.size
-                            val new = TextLayer(text = "", y = listOf(0.82f, 0.5f, 0.18f)[n % 3])
+                            // New text always starts in the middle of the frame, without a shadow.
+                            val new = TextLayer(text = "", x = 0.5f, y = 0.5f)
                             actions.setTextLayers(ui.textLayers + new)
                             ui.selectedText = new.id
                             ui.editingText = true
@@ -281,6 +311,7 @@ fun TextTray(ui: UiState, actions: CameraActions, chrome: Float) {
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 item { ToolButton(Ico.Text, "Edit", false) { ui.editingText = true } }
+                item { ToolButton(Ico.Trash, "Delete", false, danger = true) { deleteLayer(ui, actions, layer.id) } }
                 item { ToolButton(Ico.Fonts, "Font", ui.textTool == TextTool.FONT) { ui.textTool = TextTool.FONT } }
                 item { ToolButton(Ico.TextSize, "Size", ui.textTool == TextTool.SIZE) { ui.textTool = TextTool.SIZE } }
                 item { ToolButton(Ico.Rotate, "Rotate", ui.textTool == TextTool.ROTATE) { ui.textTool = TextTool.ROTATE } }
@@ -295,12 +326,6 @@ fun TextTray(ui: UiState, actions: CameraActions, chrome: Float) {
                     }
                 }
                 item { ToolButton(Ico.Shadow, "Shadow", layer.shadow) { replace(ui, actions, layer.copy(shadow = !layer.shadow)) } }
-                item {
-                    ToolButton(Ico.Trash, "Delete", false) {
-                        actions.setTextLayers(ui.textLayers.filter { it.id != layer.id })
-                        ui.selectedText = null
-                    }
-                }
             }
             Spacer(Modifier.height(10.dp))
             when (ui.textTool) {
@@ -351,34 +376,44 @@ private fun FontRow(ui: UiState, actions: CameraActions, fonts: FontLibrary, lay
     LazyRow(Modifier.alpha(chrome), contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         items(fonts.fonts, key = { it.key }) { f ->
             val sel = f.key == layer.font
-            Column(
-                Modifier
-                    .width(76.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(if (sel) p.text else p.surfaceHigh)
-                    .clickable { replace(ui, actions, layer.copy(font = f.key)) }
-                    .padding(vertical = 8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text("Aa", color = if (sel) p.bg else p.text, fontSize = 22.sp, fontFamily = FontFamily(f.typeface), maxLines = 1)
-                Text(f.label, color = if (sel) p.bg.copy(alpha = 0.7f) else p.muted, fontSize = 9.sp, maxLines = 1)
+            FontTile(f.label, sel, onClick = { replace(ui, actions, layer.copy(font = f.key)) }) {
+                // Every face gets the same box, whatever its own line height.
+                Text(
+                    "Aa", color = if (sel) p.bg else p.text, fontSize = 21.sp, fontFamily = FontFamily(f.typeface), maxLines = 1,
+                    style = TextStyle(lineHeight = 24.sp, platformStyle = PlatformTextStyle(includeFontPadding = false)),
+                )
             }
         }
         item {
-            Column(
-                Modifier
-                    .width(76.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .border(1.dp, p.line, RoundedCornerShape(14.dp))
-                    .clickable { actions.importFont() }
-                    .padding(vertical = 8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Icon(Ico.Import, null, tint = p.text, modifier = Modifier.size(22.dp).padding(top = 2.dp))
-                Spacer(Modifier.height(3.dp))
-                Text("Import", color = p.muted, fontSize = 9.sp)
+            FontTile("Import", selected = false, outlined = true, onClick = { actions.importFont() }) {
+                Icon(Ico.Import, null, tint = p.text, modifier = Modifier.size(20.dp))
             }
         }
+    }
+}
+
+/** One font in the picker: a fixed-size tile so the row lines up. */
+@Composable
+private fun FontTile(label: String, selected: Boolean, outlined: Boolean = false, onClick: () -> Unit, sample: @Composable () -> Unit) {
+    val p = LocalPalette.current
+    val shape = RoundedCornerShape(14.dp)
+    Column(
+        Modifier
+            .size(width = 74.dp, height = 62.dp)
+            .clip(shape)
+            .background(if (selected) p.text else if (outlined) Color.Transparent else p.surfaceHigh)
+            .border(1.dp, if (outlined) p.line else Color.Transparent, shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Box(Modifier.height(30.dp).fillMaxWidth().clipToBounds(), contentAlignment = Alignment.Center) { sample() }
+        Spacer(Modifier.height(3.dp))
+        Text(
+            label, color = if (selected) p.bg.copy(alpha = 0.75f) else p.muted, fontSize = 9.sp, maxLines = 1,
+            overflow = TextOverflow.Ellipsis, style = TextStyle(platformStyle = PlatformTextStyle(includeFontPadding = false)),
+        )
     }
 }
 

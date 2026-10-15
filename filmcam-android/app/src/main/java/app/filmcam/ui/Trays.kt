@@ -53,7 +53,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.filmcam.camera.CaptureMode
-import app.filmcam.camera.PhotoResolution
 import app.filmcam.camera.VideoResolution
 import app.filmcam.film.CameraCategory
 import app.filmcam.film.FilmCamera
@@ -106,7 +105,7 @@ fun <T> Segmented(
 
 /** A round tool button with a label under it, as in the adjustment row. */
 @Composable
-fun ToolButton(icon: ImageVector, label: String, selected: Boolean, changed: Boolean = false, onClick: () -> Unit) {
+fun ToolButton(icon: ImageVector, label: String, selected: Boolean, changed: Boolean = false, danger: Boolean = false, onClick: () -> Unit) {
     val p = LocalPalette.current
     Column(
         Modifier
@@ -122,10 +121,10 @@ fun ToolButton(icon: ImageVector, label: String, selected: Boolean, changed: Boo
                 .background(if (selected) p.text else p.surfaceHigh),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(icon, null, tint = if (selected) p.bg else p.text, modifier = Modifier.size(20.dp))
+            Icon(icon, null, tint = if (selected) p.bg else if (danger) p.danger else p.text, modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.height(5.dp))
-        Text(label, color = if (selected) p.text else p.muted, fontSize = 10.sp, maxLines = 1)
+        Text(label, color = if (selected) p.text else if (danger) p.danger else p.muted, fontSize = 10.sp, maxLines = 1)
         Spacer(Modifier.height(3.dp))
         // A dot marks tools moved away from the camera's own setting.
         Box(Modifier.size(3.dp).clip(CircleShape).background(if (changed) p.accent else Color.Transparent))
@@ -138,12 +137,14 @@ fun ToolButton(icon: ImageVector, label: String, selected: Boolean, changed: Boo
 fun LooksTray(ui: UiState, actions: CameraActions, chrome: Float) {
     TrayCard(chrome) {
         Column {
-            TextTabs(CameraCategory.entries, ui.category, { it.label }) { ui.category = it }
+            val category = if (ui.category == CameraCategory.ORIGINAL) CameraCategory.FILM else ui.category
+            TextTabs(CameraCategory.entries.filter { it != CameraCategory.ORIGINAL }, category, { it.label }) { ui.category = it }
             Spacer(Modifier.height(8.dp))
-            val cams = FilmCameras.ALL.filter { it.category == ui.category }
+            // "Original" (no filter) leads every row.
+            val cams = listOf(FilmCameras.ORIGINAL) + FilmCameras.ALL.filter { it.category == category }
             val state = rememberLazyListState(cams.indexOf(ui.camera).coerceAtLeast(0))
             LaunchedEffect(ui.category) { state.scrollToItem(cams.indexOf(ui.camera).coerceAtLeast(0)) }
-            LazyRow(state = state, contentPadding = PaddingValues(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            LazyRow(state = state, contentPadding = PaddingValues(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(cams, key = { it.id }) { cam -> LookCard(cam, cam.id == ui.camera.id) { actions.selectCamera(cam) } }
             }
         }
@@ -155,12 +156,12 @@ private fun LookCard(cam: FilmCamera, selected: Boolean, onClick: () -> Unit) {
     val p = LocalPalette.current
     val thumb = rememberLookThumb(cam.id)
     Column(
-        Modifier.width(70.dp).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick),
+        Modifier.width(64.dp).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
             Modifier
-                .size(width = 66.dp, height = 84.dp)
+                .size(width = 62.dp, height = 64.dp)
                 .border(if (selected) 2.dp else 0.dp, if (selected) p.text else Color.Transparent, RoundedCornerShape(14.dp))
                 .padding(if (selected) 3.dp else 0.dp)
                 .clip(RoundedCornerShape(if (selected) 11.dp else 14.dp))
@@ -168,8 +169,8 @@ private fun LookCard(cam: FilmCamera, selected: Boolean, onClick: () -> Unit) {
         ) {
             if (thumb != null) Image(thumb, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         }
-        Spacer(Modifier.height(6.dp))
-        Text(cam.name, color = if (selected) p.text else p.muted, fontSize = 11.sp, maxLines = 1,
+        Spacer(Modifier.height(4.dp))
+        Text(cam.name, color = if (selected) p.text else p.muted, fontSize = 10.sp, maxLines = 1,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
     }
 }
@@ -359,10 +360,10 @@ fun SettingsSheet(ui: UiState, actions: CameraActions) {
                     Text(ui.encoderInfo, color = p.muted, fontSize = 11.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(top = 8.dp))
                 }
                 if (ui.stabilizationSupported) SettingSwitch("Stabilisation", "Steadier, slightly cropped", ui.stabilization) { actions.setStabilization(it) }
-            } else {
+                SettingSwitch("Log", "Flat S-Log3 video for colour grading", ui.log) { actions.setLog(it) }
+            } else if (ui.photoSizes.isNotEmpty()) {
                 SettingLabel("Photo size")
-                Segmented(PhotoResolution.entries, ui.photoRes, { if (it == PhotoResolution.MAX) "Max · ${ui.maxPhotoMp} MP" else it.label },
-                    Modifier.fillMaxWidth()) { actions.setPhotoResolution(it) }
+                Segmented(ui.photoSizes, ui.photoSize ?: ui.photoSizes.last(), { it.label }, Modifier.fillMaxWidth()) { actions.setPhotoSize(it) }
             }
             if (ui.manualSupported) {
                 SettingSwitch("Real shutter speed", "The sensor exposes for the chosen speed", ui.realShutter) { actions.setRealShutter(it) }

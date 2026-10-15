@@ -146,6 +146,7 @@ uniform int uTargetRot;     // quarter turns: target -> screen space
 uniform int uFrameRot;      // quarter turns: screen space -> frame space
 uniform vec2 uImageTexel;   // 1 / image size
 uniform float uBaseLod;     // mip level that matches the output resolution
+uniform float uRefScale;    // output short side / 1080: effects are sized for a 1080 p picture
 
 // Stock
 uniform float uTemp;
@@ -214,6 +215,11 @@ uniform vec2 uPrismGhost;
 uniform float uTracking;
 uniform float uRollBurn;
 
+// Log video: 0 off, 1 encode the camera's picture to S-Log3 (when the ISP can't),
+// 2 show S-Log3 as Rec.709 (view assist), 3 both. See LogCurve.kt.
+uniform int uLogMode;
+uniform float uLogGain;     // 2^stops of underexposure to give back
+
 out vec4 oColor;
 
 const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
@@ -230,7 +236,14 @@ vec2 rot(int k, vec2 p) {
 }
 vec2 toScreen(vec2 u) { return rot(4 - (uFrameRot & 3), u); }
 vec2 toImage(vec2 s) { return (uImageMatrix * vec4(s, 0.0, 1.0)).xy; }
-vec3 sampleAt(vec2 u, float lod) { return textureLod(uImage, toImage(toScreen(u)), uBaseLod + lod).rgb; }
+// Mip level for an effect blur of 'lod' levels, as it would look at 1080 p. At lod 0 this is
+// the native level, so a 50 MP still stays sharp; blurs grow with the output so a still
+// looks like the viewfinder, only finer.
+float lodOf(float lod) {
+    return lod <= 0.0 ? uBaseLod : uBaseLod + log2(1.0 + (exp2(lod) - 1.0) * uRefScale);
+}
+vec3 sampleLod(vec2 u, float level) { return textureLod(uImage, toImage(toScreen(u)), level).rgb; }
+vec3 sampleAt(vec2 u, float lod) { return sampleLod(u, lodOf(lod)); }
 
 // ---------------------------------------------------------------- noise
 uint hash(uint x) {
@@ -317,6 +330,23 @@ vec3 grade(vec3 c) {
     vec3 black = vec3(uFade) * vec3(1.0, 0.97, 1.03);
     vec3 white = vec3(1.0 - uFade * 0.25 - uRolloff * 0.3);
     return black + clamp(c, 0.0, 1.0) * (white - black);
+}
+
+// ---------------------------------------------------------------- log
+float slog3(float x) {
+    return x >= 0.01125 ? (420.0 + log(max((x + 0.01) / 0.19, 1e-6)) / log(10.0) * 261.5) / 1023.0
+                        : (x * (171.2102946929 - 95.0) / 0.01125 + 95.0) / 1023.0;
+}
+float slog3Inv(float y) {
+    float v = y * 1023.0;
+    return v >= 171.2102946929 ? pow(10.0, (v - 420.0) / 261.5) * 0.19 - 0.01
+                               : (v - 95.0) * 0.01125 / (171.2102946929 - 95.0);
+}
+vec3 srgbToLinear(vec3 c) { return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c)); }
+vec3 linearToSrgb(vec3 c) { return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
+vec3 logView(vec3 y) {
+    vec3 lin = vec3(slog3Inv(y.r), slog3Inv(y.g), slog3Inv(y.b));
+    return linearToSrgb(1.0 - exp(-max(lin, 0.0) * 1.6));
 }
 
 // ---------------------------------------------------------------- frame layout
@@ -542,12 +572,14 @@ void main() {
     c.g = sampleAt(u, lod).g;
     c.b = sampleAt(u - dir * ca, lod).b;
 
-    vec2 o1 = uImageTexel * (1.0 + 2.5 * max(uSoftness, 0.0)) * exp2(uBaseLod + lod);
+    // Softness and sharpening work on a 1080 p-sized neighbourhood at any output size.
+    float softLod = uBaseLod + lod + log2(uRefScale);
+    vec2 o1 = uImageTexel * (1.0 + 2.5 * max(uSoftness, 0.0)) * exp2(softLod);
     vec2 ti = toImage(s);
-    vec3 blur = 0.25 * (textureLod(uImage, ti + vec2(o1.x, o1.y), uBaseLod + lod).rgb
-                      + textureLod(uImage, ti + vec2(-o1.x, o1.y), uBaseLod + lod).rgb
-                      + textureLod(uImage, ti + vec2(o1.x, -o1.y), uBaseLod + lod).rgb
-                      + textureLod(uImage, ti + vec2(-o1.x, -o1.y), uBaseLod + lod).rgb);
+    vec3 blur = 0.25 * (textureLod(uImage, ti + vec2(o1.x, o1.y), softLod).rgb
+                      + textureLod(uImage, ti + vec2(-o1.x, o1.y), softLod).rgb
+                      + textureLod(uImage, ti + vec2(o1.x, -o1.y), softLod).rgb
+                      + textureLod(uImage, ti + vec2(-o1.x, -o1.y), softLod).rgb);
     if (uSoftness > 0.0) c = mix(c, blur, min(uSoftness * 1.2, 1.0));
     else c = c + (c - blur) * (-uSoftness) * 1.5;
     c = clamp(c, 0.0, 1.0);
@@ -580,7 +612,7 @@ void main() {
                     float rad = sqrt((float(i) + 0.5) / 12.0) * uBlur * 0.03 * w;
                     p = u + vec2(cos(ang), sin(ang)) * rad / ua;
                 }
-                acc += sampleAt(p, lod + blurLod);
+                acc += sampleLod(p, lodOf(lod) + blurLod);
             }
             c = acc / 12.0;
         }
@@ -590,7 +622,7 @@ void main() {
     if (uInterlace > 0.0) {
         float field = floor(f.y * framePx.y / max(1.0, framePx.y / 540.0));
         if (mod(field, 2.0) > 0.5) {
-            vec3 prev = textureLod(uPrevImage, toImage(s), uBaseLod + lod).rgb;
+            vec3 prev = textureLod(uPrevImage, toImage(s), lodOf(lod)).rgb;
             c = mix(c, prev, uInterlace);
         }
     }
@@ -716,7 +748,8 @@ void main() {
 
     // ---- tape noise and scanlines
     if (uVhs > 0.0) {
-        float n = rnd(uvec3(uvec2(gl_FragCoord.xy + uTileOffset) / uvec2(2u, 1u), uSeed + 41u)) - 0.5;
+        // Noise cells sized for a 1080 p picture, so a still shows the same tape noise.
+        float n = rnd(uvec3(uvec2((gl_FragCoord.xy + uTileOffset) / (vec2(2.0, 1.0) * uRefScale)), uSeed + 41u)) - 0.5;
         c += n * (0.05 + 0.5 * band) * uVhs;
         c += band * uVhs * 0.12 * step(0.93, rnd(uvec3(uint(line), uint(fragUV.x * 60.0), uSeed)));
         float scan = 0.5 + 0.5 * cos(f.y * framePx.y * PI / max(1.0, framePx.y / 480.0));
@@ -796,6 +829,12 @@ void main() {
         vec4 t = texture(uTextTex, vec2(f.x, 1.0 - f.y));
         c = c * (1.0 - t.a) + t.rgb;
     }
+
+    if (uLogMode == 1 || uLogMode == 3) {
+        vec3 lin = srgbToLinear(clamp(c, 0.0, 1.0)) * uLogGain;
+        c = vec3(slog3(lin.r), slog3(lin.g), slog3(lin.b));
+    }
+    if (uLogMode == 2 || uLogMode == 3) c = logView(clamp(c, 0.0, 1.0));
 
     // A hair of dither so smooth skies never band.
     c += (rnd(uvec3(uvec2(gl_FragCoord.xy + uTileOffset), uSeed + 99u)) - 0.5) / 255.0;

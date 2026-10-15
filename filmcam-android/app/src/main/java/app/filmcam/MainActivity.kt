@@ -3,6 +3,26 @@ package app.filmcam
 import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.graphics.ImageDecoder
+import android.os.Handler
+import android.os.Looper
+import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.PickVisualMediaRequest
+import app.filmcam.camera.AspectRatio
+import app.filmcam.camera.LogCurve
+import app.filmcam.camera.PhotoSize
+import app.filmcam.gl.StillCrop
+import app.filmcam.record.AudioPump
+import app.filmcam.record.PreviewPlayer
+import app.filmcam.record.Trimmer
+import app.filmcam.record.VideoExporter
+import app.filmcam.ui.Dock
+import app.filmcam.ui.EditSession
+import app.filmcam.ui.Screen
+import app.filmcam.util.MediaItem
+import app.filmcam.util.MediaLibrary
+import kotlin.math.min
+import kotlin.math.pow
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -26,7 +46,6 @@ import app.filmcam.camera.CameraCaps
 import app.filmcam.camera.CameraConfig
 import app.filmcam.camera.CaptureMode
 import app.filmcam.camera.Lens
-import app.filmcam.camera.PhotoResolution
 import app.filmcam.camera.StillJpeg
 import app.filmcam.camera.VideoResolution
 import app.filmcam.film.FilmCamera
@@ -59,6 +78,16 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
     private var resumed = false
     private var halfFrameFirst: Bitmap? = null
     private val encodeCache = HashMap<String, Boolean>()
+    private val main = Handler(Looper.getMainLooper())
+    private var previewPlayer: PreviewPlayer? = null
+    private var exporter: VideoExporter? = null
+    private var viewerFromGallery = false
+
+    private val mediaPicker = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri == null) return@registerForActivityResult
+        val video = contentResolver.getType(uri)?.startsWith("video/") == true
+        startEdit(uri, video)
+    }
 
     private lateinit var fonts: FontLibrary
 
@@ -92,15 +121,37 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
 
         val saved = FilmCameras.byId(prefs.getString("camera", null))
         ui.camera = saved
-        ui.category = saved.category
+        ui.category = if (saved.category == app.filmcam.film.CameraCategory.ORIGINAL) app.filmcam.film.CameraCategory.FILM else saved.category
         ui.look = saved.look
         ui.mode = enumPref("mode", CaptureMode.PHOTO)
         ui.videoRes = enumPref("videoRes", VideoResolution.UHD)
-        ui.photoRes = enumPref("photoRes", PhotoResolution.MAX)
+        ui.photoRatio = enumPref("photoRatio", AspectRatio.R3_4)
+        ui.videoRatio = enumPref("videoRatio", AspectRatio.R9_16)
+        ui.log = prefs.getBoolean("log", false)
+        ui.logViewAssist = prefs.getBoolean("logViewAssist", true)
+        ui.timerSeconds = prefs.getInt("timer", 0)
+        ui.burstCount = prefs.getInt("burstCount", 1)
+        ui.burstInterval = prefs.getFloat("burstInterval", 1f)
         ui.fps = prefs.getInt("fps", 30)
         ui.realShutter = prefs.getBoolean("realShutter", false)
         ui.stabilization = prefs.getBoolean("stabilization", false)
-        engine.look = ui.look
+        pushLook()
+
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                when {
+                    ui.progress >= 0f -> Unit
+                    ui.screen == Screen.VIEWER -> closeViewer()
+                    ui.screen == Screen.GALLERY -> closeGallery()
+                    ui.editingText -> ui.editingText = false
+                    ui.settingsOpen -> ui.settingsOpen = false
+                    ui.quick != null -> ui.quick = null
+                    ui.edit != null -> cancelEdit()
+                    ui.dock != Dock.NONE -> ui.dock = Dock.NONE
+                    else -> { isEnabled = false; onBackPressedDispatcher.onBackPressed(); isEnabled = true }
+                }
+            }
+        })
 
         orientation = object : OrientationEventListener(this) {
             override fun onOrientationChanged(deg: Int) {
@@ -131,14 +182,18 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         updateDisplayRotation()
         if (orientation.canDetectOrientation()) orientation.enable()
         if (camera == null && hasPermission(Manifest.permission.CAMERA)) onPermissionsChanged()
+        val e = ui.edit
+        if (e != null && e.video && exporter == null) startPreviewPlayer(e)
         openCamera()
     }
 
     override fun onPause() {
         resumed = false
         orientation.disable()
+        cancelSeries()
         if (ui.recording) stopRecording(immediately = true)
         camera?.close()
+        stopPreviewPlayer()
         super.onPause()
     }
 
@@ -158,6 +213,8 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
     }
 
     override fun onDestroy() {
+        exporter?.cancel()
+        stopPreviewPlayer()
         camera?.release()
         engine.release()
         sound.release()
@@ -209,25 +266,32 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         ui.manualSupported = c.manualSensor
         ui.stabilizationSupported = c.stabilization
         ui.hasFlash = c.hasFlash
-        val maxJpeg = c.jpegSize(PhotoResolution.MAX, allowHighRes = true)
-        ui.maxPhotoMp = ((maxJpeg.width.toLong() * maxJpeg.height + 500_000) / 1_000_000).toInt()
+        // Full-resolution sensor modes only work on the main lens, unzoomed by the camera.
+        val onMain = ui.lens?.zoom == 1f
+        ui.photoSizes = c.photoSizes.filter { onMain || !it.maxRes }.ifEmpty { c.photoSizes }
+        // Default: the biggest size that doesn't need the slow full-sensor mode.
+        val wantMp = prefs.getInt("photoMp", ui.photoSizes.filter { !it.maxRes }.ifEmpty { ui.photoSizes }.maxOf { it.mp })
+        ui.photoSize = ui.photoSizes.minBy { kotlin.math.abs(it.mp - wantMp) }
+        ui.logInIsp = c.contrastCurve
         if (c.evStep > 0f) {
             ui.evMin = (c.evRange.lower * c.evStep).coerceAtLeast(-3f)
             ui.evMax = (c.evRange.upper * c.evStep).coerceAtMost(3f)
         }
-        val enc = VideoRecorder.choose(ui.videoRes.width, ui.videoRes.height, ui.fps)
+        val enc = VideoRecorder.choose(ui.videoRes.width, ui.videoRes.height, ui.fps, log = ui.log)
         ui.encoderInfo = "${enc.width}×${enc.height} ${enc.codecName} ${enc.fps}p ${enc.bitrate / 1_000_000} Mb/s"
     }
 
     private fun openCamera() {
         val c = camera ?: return
         val lens = ui.lens ?: return
-        if (!resumed) return
+        if (!resumed || ui.edit != null || ui.screen != Screen.CAMERA) return
         refreshAvailability()
         val caps = caps()
         val video = ui.mode == CaptureMode.VIDEO
-        engine.outputAspect = if (video) 9f / 16f else 3f / 4f
+        engine.upright = false
+        engine.outputAspect = ui.frameAspect
         engine.videoMode = video
+        pushLook()
         engine.maxWorkSide = if (video) max(ui.videoRes.width, 1920) else 1920
         engine.simulateShutter = !(ui.realShutter && caps?.manualSensor == true)
         c.realShutter = ui.realShutter
@@ -235,11 +299,45 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         c.exposureEv = ui.look.exposureEv
         c.flash = ui.flash
         c.stabilization = ui.stabilization
-        c.open(CameraConfig(lens, ui.mode, ui.videoRes, ui.photoRes, ui.fps))
+        val photo = ui.photoSize ?: caps?.photoSizes?.first() ?: PhotoSize(4000, 3000)
+        c.open(CameraConfig(lens, ui.mode, ui.videoRes, photo, ui.fps, log = ui.logActive))
+    }
+
+    /** What the engine draws: the look (plain in log, which is for grading) and the text. */
+    private fun pushLook() {
+        val log = ui.logActive
+        engine.look = if (log) FilmCameras.ORIGINAL.look.copy(exposureEv = ui.look.exposureEv) else ui.look
+        engine.textLayers = if (log) emptyList() else ui.textLayers
+        applyLogModes()
+    }
+
+    private var logUnder = LogCurve.UNDER
+
+    private fun applyLogModes() {
+        val isp = ui.logInIsp
+        engine.logGain = 2f.pow(logUnder)
+        if (!ui.logActive) { engine.logDisplay = 0; engine.logEncode = 0; return }
+        // The camera makes log itself where it can; otherwise the GPU turns its picture into log.
+        engine.logEncode = if (isp) 0 else 1
+        engine.logDisplay = when {
+            isp && ui.logViewAssist -> 2
+            isp -> 0
+            ui.logViewAssist -> 3
+            else -> 1
+        }
+    }
+
+    override fun onLogState(under: Float, inIsp: Boolean) {
+        runOnUiThread {
+            logUnder = if (under > 0f) under else LogCurve.UNDER
+            if (ui.logActive) ui.logInIsp = inIsp
+            applyLogModes()
+        }
     }
 
     override fun onCameraReady(config: CameraConfig, caps: CameraCaps) {
         runOnUiThread {
+            if (config.mode == CaptureMode.PHOTO && config.photo != ui.photoSize) ui.photoSize = config.photo
             if (config.mode == CaptureMode.VIDEO && config.videoRes != ui.videoRes) {
                 ui.videoRes = config.videoRes
                 engine.maxWorkSide = max(ui.videoRes.width, 1920)
@@ -269,7 +367,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
 
     override fun setTextLayers(layers: List<TextLayer>) {
         ui.textLayers = layers
-        engine.textLayers = layers
+        pushLook()
         prefs.edit { putString("text", TextLayer.listToJson(layers)) }
     }
 
@@ -278,14 +376,125 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
     }
 
     override fun shutter() {
+        if (ui.edit != null) { saveEdit(); return }
+        if (ui.seriesRunning) { cancelSeries(); return }
         when (ui.mode) {
-            CaptureMode.PHOTO -> takePhoto()
-            CaptureMode.VIDEO -> if (ui.recording) stopRecording() else startRecording()
+            CaptureMode.PHOTO -> if (ui.timerSeconds > 0 || ui.burstCount != 1) startSeries() else takePhoto()
+            CaptureMode.VIDEO -> when {
+                ui.recording -> stopRecording()
+                ui.timerSeconds > 0 -> startSeries()
+                else -> startRecording()
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ timer and bursts
+
+    private val countdownTick = object : Runnable {
+        override fun run() {
+            if (ui.countdown <= 0) return
+            ui.countdown--
+            if (ui.countdown > 0) {
+                sound.play(MediaActionSound.FOCUS_COMPLETE)
+                main.postDelayed(this, 1000)
+            } else if (ui.mode == CaptureMode.VIDEO) {
+                startRecording()
+            } else {
+                startBurst()
+            }
+        }
+    }
+
+    private val burstShot = object : Runnable {
+        override fun run() {
+            if (ui.burstTotal < 0) return
+            // Wait for the camera rather than drop a frame of the series.
+            if (ui.developing >= 2 || ui.sampling) { main.postDelayed(this, 120); return }
+            takePhoto()
+            ui.burstTaken++
+            if (ui.burstTotal > 0 && ui.burstTaken >= ui.burstTotal) { ui.burstTotal = -1; return }
+            main.postDelayed(this, (ui.burstInterval * 1000).toLong())
+        }
+    }
+
+    private fun startSeries() {
+        if (ui.timerSeconds > 0) {
+            ui.countdown = ui.timerSeconds
+            sound.play(MediaActionSound.FOCUS_COMPLETE)
+            main.postDelayed(countdownTick, 1000)
+        } else {
+            startBurst()
+        }
+    }
+
+    private fun startBurst() {
+        if (ui.burstCount == 1) { takePhoto(); return }
+        ui.burstTaken = 0
+        ui.burstTotal = ui.burstCount
+        burstShot.run()
+    }
+
+    private fun cancelSeries() {
+        main.removeCallbacks(countdownTick)
+        main.removeCallbacks(burstShot)
+        ui.countdown = 0
+        ui.burstTotal = -1
+    }
+
+    override fun setTimer(seconds: Int) {
+        ui.timerSeconds = seconds
+        prefs.edit { putInt("timer", seconds) }
+    }
+
+    override fun setBurst(count: Int, interval: Float) {
+        ui.burstCount = count
+        ui.burstInterval = interval
+        prefs.edit { putInt("burstCount", count); putFloat("burstInterval", interval) }
+    }
+
+    override fun setRatio(ratio: AspectRatio?) {
+        if (ui.recording) return
+        if (ui.edit != null) {
+            ui.editRatio = ratio
+            engine.outputAspect = ui.frameAspect
+            return
+        }
+        if (ratio == null) return
+        if (ui.mode == CaptureMode.VIDEO) {
+            ui.videoRatio = ratio
+            prefs.edit { putString("videoRatio", ratio.name) }
+        } else {
+            ui.photoRatio = ratio
+            prefs.edit { putString("photoRatio", ratio.name) }
+        }
+        dropHalfFrame()
+        engine.outputAspect = ui.frameAspect
+    }
+
+    override fun setLog(on: Boolean) {
+        if (ui.recording) return
+        ui.log = on
+        prefs.edit { putBoolean("log", on) }
+        pushLook()
+        openCamera()
+    }
+
+    override fun setLogViewAssist(on: Boolean) {
+        ui.logViewAssist = on
+        prefs.edit { putBoolean("logViewAssist", on) }
+        applyLogModes()
+    }
+
+    override fun saveLut() {
+        io.execute {
+            val uri = MediaSaver.saveDownload(this, "FilmCam S-Log3 to Rec709.cube", "application/octet-stream", LogCurve.cube())
+            runOnUiThread { ui.message = if (uri != null) "LUT saved to Download/FilmCam" else "Couldn't save the LUT" }
         }
     }
 
     override fun setMode(mode: CaptureMode) {
         if (ui.recording || mode == ui.mode) return
+        cancelSeries()
         ui.mode = mode
         dropHalfFrame()
         prefs.edit { putString("mode", mode.name) }
@@ -356,7 +565,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
     override fun updateLook(look: FilmLook) {
         val old = ui.look
         ui.look = look
-        engine.look = look
+        pushLook()
         val c = camera ?: return
         if (look.exposureEv != old.exposureEv || look.shutter != old.shutter) {
             c.exposureEv = look.exposureEv
@@ -385,9 +594,9 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         openCamera()
     }
 
-    override fun setPhotoResolution(res: PhotoResolution) {
-        ui.photoRes = res
-        prefs.edit { putString("photoRes", res.name) }
+    override fun setPhotoSize(size: PhotoSize) {
+        ui.photoSize = size
+        prefs.edit { putInt("photoMp", size.mp) }
         openCamera()
     }
 
@@ -414,12 +623,257 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
     }
 
     override fun openLast() {
-        val uri = ui.lastUri ?: return
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, if (ui.lastIsVideo) "video/*" else "image/*")
+        val uri = ui.lastUri
+        if (uri == null) { openGallery(); return }
+        val info = if (ui.lastIsVideo) MediaLibrary.videoInfo(this, uri) else null
+        showViewer(MediaItem(uri, ui.lastIsVideo, System.currentTimeMillis(), info?.durationMs ?: 0L,
+            info?.uprightW ?: 0, info?.uprightH ?: 0), fromGallery = false)
+        refreshGallery()
+    }
+
+    // ------------------------------------------------------------------ gallery and viewer
+
+    /** Leaves the camera for a full-screen page; the camera is closed while it isn't seen. */
+    private fun leaveCamera(screen: Screen) {
+        cancelSeries()
+        if (ui.recording) stopRecording()
+        ui.screen = screen
+        ui.dock = Dock.NONE
+        ui.quick = null
+        camera?.close()
+    }
+
+    private fun backToCamera() {
+        ui.screen = Screen.CAMERA
+        ui.viewing = null
+        openCamera()
+    }
+
+    private fun refreshGallery() {
+        io.execute {
+            val items = MediaLibrary.list(this)
+            runOnUiThread { ui.gallery = items }
+        }
+    }
+
+    override fun openGallery() {
+        leaveCamera(Screen.GALLERY)
+        refreshGallery()
+    }
+
+    override fun closeGallery() {
+        if (ui.edit != null) { ui.screen = Screen.CAMERA; return }
+        backToCamera()
+    }
+
+    private fun showViewer(item: MediaItem, fromGallery: Boolean) {
+        viewerFromGallery = fromGallery
+        ui.viewing = item
+        leaveCamera(Screen.VIEWER)
+    }
+
+    override fun openItem(item: MediaItem) = showViewer(item, fromGallery = true)
+
+    override fun closeViewer() {
+        ui.viewing = null
+        if (viewerFromGallery) ui.screen = Screen.GALLERY
+        else if (ui.edit != null) ui.screen = Screen.CAMERA
+        else backToCamera()
+    }
+
+    override fun shareItem(item: MediaItem) {
+        val send = Intent(Intent.ACTION_SEND).apply {
+            type = if (item.video) "video/mp4" else "image/jpeg"
+            putExtra(Intent.EXTRA_STREAM, item.uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        try { startActivity(intent) } catch (e: ActivityNotFoundException) { ui.message = "No app to open it" }
+        try { startActivity(Intent.createChooser(send, null)) } catch (e: ActivityNotFoundException) { ui.message = "No app to share with" }
+    }
+
+    override fun deleteItem(item: MediaItem) {
+        io.execute {
+            val ok = MediaSaver.delete(this, item.uri)
+            val items = MediaLibrary.list(this)
+            runOnUiThread {
+                if (!ok) { ui.message = "Couldn't delete it"; return@runOnUiThread }
+                ui.gallery = items
+                if (ui.lastUri == item.uri) {
+                    ui.lastUri = items.firstOrNull()?.uri
+                    ui.lastIsVideo = items.firstOrNull()?.video == true
+                    ui.thumbnail = null
+                    items.firstOrNull()?.let { loadThumb(it) }
+                }
+                if (ui.viewing?.uri == item.uri) closeViewer()
+            }
+        }
+    }
+
+    private fun loadThumb(item: MediaItem) {
+        io.execute {
+            val t = runCatching { contentResolver.loadThumbnail(item.uri, Size(240, 240), null) }.getOrNull()
+            runOnUiThread { if (ui.lastUri == item.uri) ui.thumbnail = t }
+        }
+    }
+
+    override fun trimItem(item: MediaItem, startMs: Long, endMs: Long) {
+        if (ui.progress >= 0f) return
+        ui.progress = 0f
+        ui.progressLabel = "Trimming"
+        io.execute {
+            val out = Trimmer.trim(this, item.uri, startMs * 1000L, endMs * 1000L) { f -> runOnUiThread { ui.progress = f } }
+            val items = MediaLibrary.list(this)
+            runOnUiThread {
+                ui.progress = -1f
+                ui.gallery = items
+                if (out == null) { ui.message = "Couldn't trim the clip"; return@runOnUiThread }
+                ui.message = "Trimmed copy saved"
+                items.firstOrNull { it.uri == out }?.let { ui.viewing = it }
+                ui.lastUri = out
+                ui.lastIsVideo = true
+                items.firstOrNull { it.uri == out }?.let { loadThumb(it) }
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ importing
+
+    override fun importMedia() {
+        try {
+            mediaPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+        } catch (e: ActivityNotFoundException) {
+            ui.message = "No photo picker on this phone"
+        }
+    }
+
+    override fun editItem(item: MediaItem) = startEdit(item.uri, item.video)
+
+    /** Brings a picture or clip into the viewfinder to develop with any look. */
+    private fun startEdit(uri: Uri, video: Boolean) {
+        stopPreviewPlayer()
+        engine.showStill(null)
+        cancelSeries()
+        if (ui.recording) stopRecording(immediately = true)
+        camera?.close()
+        io.execute {
+            val session: EditSession? = if (video) {
+                MediaLibrary.videoInfo(this, uri)?.let { EditSession(uri, true, it.uprightW, it.uprightH, it.durationMs) }
+            } else {
+                decodeUpright(uri, 2048)?.let { bmp ->
+                    val s = EditSession(uri, false, bmp.width, bmp.height)
+                    engine.showStill(bmp)
+                    s
+                }
+            }
+            runOnUiThread {
+                if (session == null) { ui.message = "Couldn't open that file"; if (ui.edit == null) backToCamera(); return@runOnUiThread }
+                ui.edit = session
+                ui.editRatio = null
+                ui.viewing = null
+                ui.screen = Screen.CAMERA
+                ui.dock = Dock.LOOKS
+                ui.quick = null
+                engine.upright = true
+                engine.videoMode = video
+                engine.maxWorkSide = 1920
+                engine.simulateShutter = true
+                engine.outputAspect = ui.frameAspect
+                pushLook()
+                if (video) startPreviewPlayer(session)
+            }
+        }
+    }
+
+    private fun startPreviewPlayer(e: EditSession) {
+        stopPreviewPlayer()
+        val info = MediaLibrary.videoInfo(this, e.uri) ?: return
+        engine.openCameraInput(info.width, info.height, info.rotation) { surface ->
+            runOnUiThread {
+                if (ui.edit !== e || exporter != null) return@runOnUiThread
+                previewPlayer = PreviewPlayer(this, e.uri, surface).also { it.start() }
+            }
+        }
+    }
+
+    private fun stopPreviewPlayer() {
+        previewPlayer?.stop()
+        previewPlayer = null
+    }
+
+    override fun cancelEdit() {
+        exporter?.cancel()
+        stopPreviewPlayer()
+        engine.showStill(null)
+        engine.closeCameraInput()
+        engine.upright = false
+        ui.edit = null
+        ui.editRatio = null
+        ui.dock = Dock.NONE
+        backToCamera()
+    }
+
+    /** Decodes a picture upright (EXIF applied), its long side at most [maxSide]. */
+    private fun decodeUpright(uri: Uri, maxSide: Int): Bitmap? = try {
+        ImageDecoder.decodeBitmap(ImageDecoder.createSource(contentResolver, uri)) { decoder, info, _ ->
+            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+            val long = max(info.size.width, info.size.height)
+            if (long > maxSide) {
+                val k = maxSide.toFloat() / long
+                decoder.setTargetSize(max(1, (info.size.width * k).toInt()), max(1, (info.size.height * k).toInt()))
+            }
+        }
+    } catch (e: Throwable) {
+        Log.e("FilmCam", "decodeUpright", e)
+        null
+    }
+
+    /** The shutter while editing: develop the full picture, or the whole clip, with the look. */
+    private fun saveEdit() {
+        val e = ui.edit ?: return
+        if (ui.progress >= 0f || ui.developing > 0) return
+        val look = ui.look
+        if (!e.video) {
+            ui.developing++
+            ui.flashPulse++
+            val fx = engine.liveFx()
+            io.execute {
+                val bmp = decodeUpright(e.uri, engine.maxStillSide())
+                if (bmp == null) { runOnUiThread { ui.developing--; ui.message = "Couldn't read the picture" }; return@execute }
+                engine.developStill(bmp, 0, false, look, 0, StillCrop(aspect = ui.editRatio?.value), fx) { out ->
+                    if (out == null) runOnUiThread { ui.developing--; ui.message = "Couldn't develop the picture" }
+                    else io.execute {
+                        savePhoto(out, alreadyOnIo = true)
+                        runOnUiThread { ui.developing--; ui.message = "Saved with ${ui.camera.name}" }
+                    }
+                }
+            }
+            return
+        }
+        val info = MediaLibrary.videoInfo(this, e.uri) ?: run { ui.message = "Couldn't read the clip"; return }
+        stopPreviewPlayer()
+        engine.closeCameraInput()
+        engine.videoMode = true
+        engine.maxWorkSide = min(3840, max(info.uprightW, info.uprightH))
+        ui.progress = 0f
+        ui.progressLabel = "Developing"
+        exporter = VideoExporter(this, e.uri, info, engine,
+            onProgress = { f -> runOnUiThread { ui.progress = f } },
+            onDone = { out ->
+                runOnUiThread {
+                    exporter = null
+                    ui.progress = -1f
+                    engine.maxWorkSide = 1920
+                    if (out != null) {
+                        ui.message = "Saved with ${ui.camera.name}"
+                        ui.lastUri = out
+                        ui.lastIsVideo = true
+                        loadThumb(MediaItem(out, true, 0L))
+                    } else {
+                        ui.message = "Couldn't develop the clip"
+                    }
+                    if (ui.edit === e && resumed) startPreviewPlayer(e)
+                }
+            },
+        ).also { it.start() }
     }
 
     override fun tapToFocus(x: Float, y: Float, w: Float, h: Float) {
@@ -439,7 +893,9 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        if ((keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP) && ui.hasCamera) {
+        if ((keyCode == KeyEvent.KEYCODE_VOLUME_DOWN || keyCode == KeyEvent.KEYCODE_VOLUME_UP) && ui.hasCamera &&
+            ui.screen == Screen.CAMERA && ui.progress < 0f
+        ) {
             if (event?.repeatCount == 0) shutter()
             return true
         }
@@ -464,6 +920,13 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         if (ui.developing >= 2) return // don't pile up full-res frames
         val turns = ui.quarterTurns
         val shotLook = if (look.multiShot == MultiShot.HALF_FRAME) look.copy(frame = FrameStyle.NONE) else look
+        // Original, unframed, in the sensor's own shape: keep the camera's JPEG as it is.
+        val untouched = look.copy(exposureEv = 0f) == FilmCameras.ORIGINAL.look && ui.textLayers.isEmpty() &&
+            ui.photoRatio == AspectRatio.R3_4
+        // The saved frame has the viewfinder's shape, turned with the phone.
+        val ratio = ui.photoRatio.value
+        val aspect = if (turns % 2 == 1) 1f / ratio else ratio
+        val fx = engine.liveFx()
         ui.developing++
         ui.flashPulse++
         sound.play(MediaActionSound.SHUTTER_CLICK)
@@ -473,17 +936,32 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
                 runOnUiThread { ui.developing--; ui.message = "Couldn't take the picture" }
                 return@takePicture
             }
-            io.execute { developJpeg(jpeg, shotLook, turns, look.multiShot == MultiShot.HALF_FRAME) }
+            io.execute {
+                if (untouched && !jpeg.mirror && jpeg.zoomCrop <= 1.001f) saveUntouched(jpeg)
+                else developJpeg(jpeg, shotLook, turns, look.multiShot == MultiShot.HALF_FRAME, StillCrop(aspect, jpeg.zoomCrop), fx)
+            }
         }
     }
 
-    private fun developJpeg(jpeg: StillJpeg, look: FilmLook, turns: Int, halfFrame: Boolean) {
+    private fun saveUntouched(jpeg: StillJpeg) {
+        val uri = MediaSaver.saveJpeg(this, jpeg.bytes, jpeg.rotationCw)
+        val thumb = uri?.let { runCatching { contentResolver.loadThumbnail(it, Size(240, 240), null) }.getOrNull() }
+        runOnUiThread {
+            ui.developing--
+            if (uri == null) { ui.message = "Couldn't save the picture"; return@runOnUiThread }
+            ui.lastUri = uri
+            ui.lastIsVideo = false
+            if (thumb != null) ui.thumbnail = thumb
+        }
+    }
+
+    private fun developJpeg(jpeg: StillJpeg, look: FilmLook, turns: Int, halfFrame: Boolean, crop: StillCrop, fx: app.filmcam.film.FrameFx) {
         val still = decode(jpeg.bytes, engine.maxStillSide())
         if (still == null) {
             runOnUiThread { ui.developing--; ui.message = "Couldn't read the picture" }
             return
         }
-        engine.developStill(still, jpeg.rotationCw, jpeg.mirror, look, turns) { developed ->
+        engine.developStill(still, jpeg.rotationCw, jpeg.mirror, look, turns, crop, fx) { developed ->
             if (developed == null) {
                 runOnUiThread { ui.developing--; ui.message = "Couldn't develop the picture" }
                 return@developStill
@@ -549,13 +1027,13 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         val size = engine.outputSize ?: return
         val turns = ui.quarterTurns
         // The encoder runs landscape; the file carries a rotation for players.
-        val choice = VideoRecorder.choose(size.height, size.width, ui.fps)
+        val choice = VideoRecorder.choose(size.height, size.width, ui.fps, log = ui.logActive)
         val target = MediaSaver.createVideo(this) ?: run { ui.message = "Couldn't create the video file"; return }
         val (uri, pfd) = target
         val recorder = try {
             VideoRecorder(
                 choice, (turns * 90 + 90) % 360, pfd,
-                withAudio = hasPermission(Manifest.permission.RECORD_AUDIO),
+                audio = if (hasPermission(Manifest.permission.RECORD_AUDIO)) AudioPump.create() else null,
             ) { ok -> onVideoFinished(uri, ok) }
         } catch (e: Exception) {
             Log.e("FilmCam", "recorder", e)
@@ -564,7 +1042,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
             ui.message = "Video encoder unavailable"
             return
         }
-        ui.encoderInfo = "${choice.width}×${choice.height} ${choice.codecName} ${choice.fps}p"
+        ui.encoderInfo = "${choice.width}×${choice.height} ${choice.codecName} ${choice.fps}p" + if (ui.logActive) " · Log" else ""
         sound.play(MediaActionSound.START_VIDEO_RECORDING)
         engine.startRecording(recorder)
         ui.recording = true

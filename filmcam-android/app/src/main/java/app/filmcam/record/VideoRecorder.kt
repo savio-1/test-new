@@ -31,7 +31,8 @@ class VideoRecorder(
     private val choice: EncoderChoice,
     orientationHint: Int,
     private val output: ParcelFileDescriptor,
-    withAudio: Boolean,
+    /** The microphone ([AudioPump]), an imported clip's own sound ([AudioCopy]), or none. */
+    private val audio: AudioFeed?,
     private val onFinished: (success: Boolean) -> Unit,
 ) {
     val width = choice.width
@@ -41,7 +42,6 @@ class VideoRecorder(
     val inputSurface: Surface
     private val muxer = MediaMuxer(output.fileDescriptor, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
     private val sink: MuxerSink
-    private val audio: AudioPump?
 
     private val videoDone = AtomicBoolean(false)
     private val finished = AtomicBoolean(false)
@@ -92,7 +92,6 @@ class VideoRecorder(
         videoCodec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
         inputSurface = videoCodec.createInputSurface()
 
-        audio = if (withAudio) AudioPump.create() else null
         sink = MuxerSink(muxer, if (audio != null) 2 else 1)
         audio?.sink = sink
         audio?.onDone = { maybeFinish() }
@@ -152,8 +151,9 @@ class VideoRecorder(
          * and often the only 8K encoder), H.264 below; whichever can actually take the size.
          * Steps the size down if neither can. Bitrate is generous: grain eats bits.
          */
-        fun choose(w: Int, h: Int, fps: Int): EncoderChoice {
-            val big = w.toLong() * h > 2_500_000L
+        fun choose(w: Int, h: Int, fps: Int, log: Boolean = false): EncoderChoice {
+            // Log footage gets HEVC and a third more bits: flat pictures band easily.
+            val big = log || w.toLong() * h > 2_500_000L
             val order = if (big) listOf(MediaFormat.MIMETYPE_VIDEO_HEVC, MediaFormat.MIMETYPE_VIDEO_AVC)
                 else listOf(MediaFormat.MIMETYPE_VIDEO_AVC, MediaFormat.MIMETYPE_VIDEO_HEVC)
             var cw = w
@@ -161,7 +161,7 @@ class VideoRecorder(
             while (cw >= 320) {
                 for (mime in order) {
                     if (canEncode(mime, cw, ch, fps)) {
-                        val perPixel = if (mime == MediaFormat.MIMETYPE_VIDEO_HEVC) 0.2 else 0.3
+                        val perPixel = (if (mime == MediaFormat.MIMETYPE_VIDEO_HEVC) 0.2 else 0.3) * (if (log) 1.35 else 1.0)
                         var rate = (cw.toLong() * ch * fps * perPixel).toLong().coerceIn(6_000_000L, 240_000_000L)
                         videoCaps(mime).firstOrNull { it.isSizeSupported(cw, ch) }?.bitrateRange?.let {
                             rate = rate.coerceIn(it.lower.toLong(), it.upper.toLong())
@@ -182,7 +182,8 @@ class MuxerSink(private val muxer: MediaMuxer, private val expectedTracks: Int) 
     private class Pending(val track: Int, val data: ByteArray, val info: MediaCodec.BufferInfo)
     private val pending = ArrayList<Pending>()
     private var added = 0
-    private var started = false
+    @Volatile var started = false
+        private set
     private var samples = 0
 
     @Synchronized
@@ -229,24 +230,86 @@ class MuxerSink(private val muxer: MediaMuxer, private val expectedTracks: Int) 
     }
 }
 
+/** A source of the audio track. */
+interface AudioFeed {
+    var sink: MuxerSink?
+    var onDone: (() -> Unit)?
+    val done: Boolean
+    fun start()
+    /** The video has ended. */
+    fun stop()
+    fun forceDone()
+}
+
+/**
+ * Copies the sound of an imported clip as it is (no re-encode), between [startUs] and [endUs]
+ * of the source, with the source's own timestamps so it lines up with the exported frames.
+ */
+class AudioCopy(private val open: () -> android.media.MediaExtractor, private val track: Int,
+                private val format: MediaFormat, private val startUs: Long, private val endUs: Long) : AudioFeed {
+    override var sink: MuxerSink? = null
+    override var onDone: (() -> Unit)? = null
+    @Volatile override var done = false
+        private set
+    @Volatile private var cancelled = false
+
+    override fun start() {
+        Thread({
+            val ex = runCatching { open() }.getOrNull()
+            try {
+                val s = sink!!
+                val out = s.addTrack(format)
+                ex?.selectTrack(track)
+                ex?.seekTo(startUs, android.media.MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
+                // Wait for the video track so the muxer is running; buffering a whole clip's
+                // audio in memory is not an option.
+                val t0 = System.currentTimeMillis()
+                while (!s.started && !cancelled && System.currentTimeMillis() - t0 < 20_000) Thread.sleep(10)
+                val buf = ByteBuffer.allocateDirect(format.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 256 * 1024))
+                val info = MediaCodec.BufferInfo()
+                while (ex != null && !cancelled && s.started) {
+                    val size = ex.readSampleData(buf, 0)
+                    if (size < 0) break
+                    val t = ex.sampleTime
+                    if (t > endUs) break
+                    if (t >= startUs - 50_000) {
+                        info.set(0, size, t, if (ex.sampleFlags and android.media.MediaExtractor.SAMPLE_FLAG_SYNC != 0) MediaCodec.BUFFER_FLAG_KEY_FRAME else 0)
+                        s.write(out, buf, info)
+                    }
+                    ex.advance()
+                }
+            } catch (e: Exception) {
+                Log.e("AudioCopy", "copy", e)
+            } finally {
+                runCatching { ex?.release() }
+                done = true
+                onDone?.invoke()
+            }
+        }, "AudioCopy").start()
+    }
+
+    override fun stop() = Unit
+    override fun forceDone() { cancelled = true; done = true }
+}
+
 /** Microphone -> AAC on a dedicated thread. */
-class AudioPump private constructor(private val record: AudioRecord, private val codec: MediaCodec) {
-    var sink: MuxerSink? = null
-    var onDone: (() -> Unit)? = null
-    @Volatile var done = false
+class AudioPump private constructor(private val record: AudioRecord, private val codec: MediaCodec) : AudioFeed {
+    override var sink: MuxerSink? = null
+    override var onDone: (() -> Unit)? = null
+    @Volatile override var done = false
         private set
     @Volatile private var running = false
     private var thread: Thread? = null
     private var track = -1
 
-    fun start() {
+    override fun start() {
         running = true
         thread = Thread({ loop() }, "AudioEncoder").apply { start() }
     }
 
-    fun stop() { running = false }
+    override fun stop() { running = false }
 
-    fun forceDone() { running = false; done = true }
+    override fun forceDone() { running = false; done = true }
 
     private fun loop() {
         try {
