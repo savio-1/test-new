@@ -36,6 +36,8 @@ data class Lens(
     /** 35mm-equivalent focal length. */
     val eqMm: Int,
     val label: String,
+    /** Magnification relative to the main camera (0.5 for an ultra-wide, 3 for a 3x tele). */
+    val ratio: Float = 1f,
 ) {
     val key get() = "$cameraId@$zoom"
 }
@@ -141,7 +143,7 @@ class LensCatalog(manager: CameraManager) {
             val range = main.zoomRange
             val candidates = ArrayList<Pair<Float, Lens>>() // eq -> lens
             fun add(cameraId: String, zoom: Float, eq: Float) {
-                candidates += eq to Lens(cameraId, zoom, false, eq.roundToInt(), ratioLabel(eq / mainEq))
+                candidates += eq to Lens(cameraId, zoom, false, eq.roundToInt(), ratioLabel(eq / mainEq), eq / mainEq)
             }
             add(main.id, 1f, mainEq)
             // Lenses behind the main logical camera, reached through the zoom ratio.
@@ -173,6 +175,36 @@ class LensCatalog(manager: CameraManager) {
         }
         all.values.filter { it.front }.forEachIndexed { i, c ->
             out += Lens(c.id, 1f, true, c.eqMm.roundToInt(), if (i == 0) "Selfie" else "Selfie ${i + 1}")
+        }
+        return out
+    }
+
+    /** Most magnification any lens facing this way can reach, relative to the main camera. */
+    fun maxZoom(front: Boolean): Float = lenses.filter { it.front == front }.maxOfOrNull { lens ->
+        val c = caps[lens.cameraId] ?: return@maxOfOrNull lens.ratio
+        val cameraMax = c.zoomRange?.upper ?: c.maxDigitalZoom
+        lens.ratio / lens.zoom * cameraMax
+    } ?: 1f
+
+    fun minZoom(front: Boolean): Float = lenses.filter { it.front == front }.minOfOrNull { it.ratio } ?: 1f
+
+    /**
+     * The zoom buttons: every real lens, plus the usual 2x, 5x, 10x... steps the camera can
+     * reach, without two buttons nearly the same.
+     */
+    fun zoomStops(front: Boolean): List<Float> {
+        val max = maxZoom(front)
+        val out = ArrayList<Float>()
+        lenses.filter { it.front == front }.forEach { out += it.ratio }
+        for (z in floatArrayOf(1f, 2f, 3f, 5f, 10f, 20f, 30f, 50f, 100f)) {
+            if (z <= max * 1.01f && out.none { abs(it - z) / z < 0.15f }) out += z
+        }
+        out.sort()
+        // Keep the row short: lenses always, then the round numbers.
+        while (out.size > 7) {
+            val lensRatios = lenses.filter { it.front == front }.map { it.ratio }
+            val drop = out.filter { r -> lensRatios.none { abs(it - r) < 0.01f } && r != 10f }.maxOrNull() ?: break
+            out.remove(drop)
         }
         return out
     }

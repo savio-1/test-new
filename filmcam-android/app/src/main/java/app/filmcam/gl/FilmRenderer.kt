@@ -30,14 +30,16 @@ class Glow(imageW: Int, imageH: Int, format: Int) {
     val wide = GlUtil.createTexture(w, h, format)
     val tmp = GlUtil.createTexture(w, h, format)
     val streak = GlUtil.createTexture(w, h, format)
+    val diffuse = GlUtil.createTexture(w, h, format)
     val tightFbo = GlUtil.createFramebuffer(tight)
     val wideFbo = GlUtil.createFramebuffer(wide)
     val tmpFbo = GlUtil.createFramebuffer(tmp)
     val streakFbo = GlUtil.createFramebuffer(streak)
+    val diffuseFbo = GlUtil.createFramebuffer(diffuse)
 
     fun release() {
-        GlUtil.deleteFramebuffers(tightFbo, wideFbo, tmpFbo, streakFbo)
-        GlUtil.deleteTextures(tight, wide, tmp, streak)
+        GlUtil.deleteFramebuffers(tightFbo, wideFbo, tmpFbo, streakFbo, diffuseFbo)
+        GlUtil.deleteTextures(tight, wide, tmp, streak, diffuse)
     }
 }
 
@@ -321,6 +323,19 @@ class FilmRenderer {
                 from = if (i % 2 == 0) g.tmp else g.streak
             }
         }
+        if (look.diffusion > 0f) {
+            // Diffusion: the whole picture (threshold below black), blurred wide.
+            bright.use()
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, g.diffuseFbo)
+            bindTex(0, src.image)
+            bright.set1f("uThreshold", -0.31f)
+            draw()
+            blur.use()
+            pass(g.diffuse, g.tmpFbo, sx * 3f, 0f)
+            pass(g.tmp, g.diffuseFbo, 0f, sy * 3f)
+            pass(g.diffuse, g.tmpFbo, sx * 7f, 0f)
+            pass(g.tmp, g.diffuseFbo, 0f, sy * 7f)
+        }
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
     }
 
@@ -347,6 +362,7 @@ class FilmRenderer {
             bindTex(5, stampTex); set1i("uStamp", 5)
             bindTex(6, if (osdTex != 0) osdTex else stampTex); set1i("uOsd", 6)
             bindTex(7, edgeTex); set1i("uEdge", 7)
+            bindTex(8, src.glow.diffuse); set1i("uDiffuseTex", 8)
             setMat4("uTexMatrix", identity)
             setMat4("uImageMatrix", src.imageMatrix)
 
@@ -396,6 +412,12 @@ class FilmRenderer {
             set1f("uVhs", look.vhs)
             set1f("uInterlace", if (src.previous != src.image) look.interlace else 0f)
             set1f("uLowRes", look.lowRes)
+            set1f("uDiffusion", look.diffusion)
+            set1i("uBlurMode", look.blurMode.shaderId)
+            set1f("uBlur", look.blur)
+            val a = Math.toRadians(look.blurAngle.toDouble())
+            set2f("uBlurDir", kotlin.math.cos(a).toFloat(), kotlin.math.sin(a).toFloat())
+            set1f("uBlurFocus", look.blurFocus)
             set3f("uGain", fx.gain[0], fx.gain[1], fx.gain[2])
             set1i("uBorder", look.frame.shaderId)
             set1i("uStampStyle", look.stamp.shaderId)

@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.sp
 import app.filmcam.camera.CaptureMode
 import app.filmcam.camera.PhotoResolution
 import app.filmcam.camera.VideoResolution
+import app.filmcam.film.BlurMode
 import app.filmcam.film.FilmFrameRate
 import app.filmcam.film.FilmLook
 import app.filmcam.film.FrameStyle
@@ -102,6 +103,19 @@ fun DevelopPanel(ui: UiState, actions: CameraActions) {
         ValueSlider("Prism flare", look.prism) { set(look.copy(prism = it)) }
         ValueSlider("Flash", look.flash) { set(look.copy(flash = it)) }
 
+        SectionLabel("Blur & motion")
+        ChoiceRow("Blur", BlurMode.entries, look.blurMode, { it.label }) { set(look.copy(blurMode = it)) }
+        if (look.blurMode != BlurMode.NONE) {
+            ValueSlider("Blur amount", look.blur) { set(look.copy(blur = it)) }
+            ValueSlider("Sharp centre", look.blurFocus) { set(look.copy(blurFocus = it)) }
+            if (look.blurMode == BlurMode.MOTION) {
+                ValueSlider("Direction", look.blurAngle, 0f, 180f, "%.0f°") { set(look.copy(blurAngle = it)) }
+            }
+        }
+        ValueSlider("Diffusion (mist filter)", look.diffusion) { set(look.copy(diffusion = it)) }
+        ChoiceRow("Stop motion / frame rate (video)", FilmFrameRate.entries, look.frameRate,
+            { if (it == FilmFrameRate.NATIVE) "Native" else "${it.label} fps" }) { set(look.copy(frameRate = it)) }
+
         SectionLabel("Emulsion")
         ValueSlider("Grain", look.grain) { set(look.copy(grain = it)) }
         ValueSlider("Grain size", look.grainSize, 0.6f, 3f, "%.1f") { set(look.copy(grainSize = it)) }
@@ -123,9 +137,6 @@ fun DevelopPanel(ui: UiState, actions: CameraActions) {
         ValueSlider("Flicker", look.flicker) { set(look.copy(flicker = it)) }
         ValueSlider("Colour flicker", look.colorFlicker) { set(look.copy(colorFlicker = it)) }
         ValueSlider("Dust & scratches", look.dust) { set(look.copy(dust = it)) }
-        ChoiceRow("Frame rate (video)", FilmFrameRate.entries, look.frameRate, { if (it == FilmFrameRate.NATIVE) "Native" else "${it.label} fps" }) {
-            set(look.copy(frameRate = it))
-        }
         ChoiceRow("Roll burn on record", listOf(false, true), look.rollBurn, { if (it) "On" else "Off" }) { set(look.copy(rollBurn = it)) }
 
         SectionLabel("Tape")

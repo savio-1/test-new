@@ -135,6 +135,7 @@ uniform sampler2D uStreakTex;
 uniform sampler2D uStamp;
 uniform sampler2D uOsd;
 uniform sampler2D uEdge;
+uniform sampler2D uDiffuseTex;
 uniform mat4 uImageMatrix;  // screen uv -> image texture uv (rotation of unrotated stills)
 
 uniform vec2 uTargetSize;   // pixels of the whole output (all tiles)
@@ -184,6 +185,11 @@ uniform float uFlash;
 uniform float uVhs;
 uniform float uInterlace;
 uniform float uLowRes;
+uniform float uDiffusion;
+uniform int uBlurMode;      // 0 off, 1 soft (gaussian), 2 zoom, 3 spin, 4 motion
+uniform float uBlur;
+uniform vec2 uBlurDir;      // motion direction in the upright frame
+uniform float uBlurFocus;   // radius of the sharp centre
 uniform vec3 uGain;
 uniform int uBorder;
 uniform int uStampStyle;
@@ -544,6 +550,40 @@ void main() {
     else c = c + (c - blur) * (-uSoftness) * 1.5;
     c = clamp(c, 0.0, 1.0);
 
+    // ---- camera-movement blurs: soft, zoom, spin, motion. The centre can stay sharp.
+    if (uBlurMode > 0 && uBlur > 0.0) {
+        vec2 ua = vec2(aspect, 1.0);
+        vec2 d = (u - 0.5) * ua;
+        float r = length(d) / (0.5 * length(ua));                       // 0 centre, 1 corner
+        float w = uBlurFocus > 0.0 ? smoothstep(uBlurFocus * 0.7, uBlurFocus * 0.7 + 0.45, r) : 1.0;
+        if (w > 0.001) {
+            float jitter = rnd(uvec3(uvec2(gl_FragCoord.xy + uTileOffset), uSeed + 61u));
+            float span = uBlur * w * (uBlurMode == 1 ? 0.06 : uBlurMode == 4 ? 0.15 : 0.12 * max(r, 0.2));
+            // Sample from a mip level matching the tap spacing, so the streaks stay smooth.
+            float imagePx = 1.0 / min(uImageTexel.x, uImageTexel.y);
+            float blurLod = max(0.0, log2(span * imagePx / 12.0) - 0.5);
+            vec3 acc = vec3(0.0);
+            for (int i = 0; i < 12; i++) {
+                float t = (float(i) + jitter) / 12.0 - 0.5;
+                vec2 p;
+                if (uBlurMode == 2) {
+                    p = 0.5 + (u - 0.5) * (1.0 + t * uBlur * 0.32 * w);
+                } else if (uBlurMode == 3) {
+                    float a = t * uBlur * 0.55 * w;
+                    p = 0.5 + vec2(d.x * cos(a) - d.y * sin(a), d.x * sin(a) + d.y * cos(a)) / ua;
+                } else if (uBlurMode == 4) {
+                    p = u + uBlurDir / ua * t * uBlur * 0.15 * w;
+                } else {
+                    float ang = float(i) * 2.39996 + jitter * 6.2832;
+                    float rad = sqrt((float(i) + 0.5) / 12.0) * uBlur * 0.03 * w;
+                    p = u + vec2(cos(ang), sin(ang)) * rad / ua;
+                }
+                acc += sampleAt(p, lod + blurLod);
+            }
+            c = acc / 12.0;
+        }
+    }
+
     // ---- interlace: odd lines still show the previous field
     if (uInterlace > 0.0) {
         float field = floor(f.y * framePx.y / max(1.0, framePx.y / 540.0));
@@ -606,6 +646,14 @@ void main() {
     }
     vec3 bloomCol = mix(gW, vec3(dot(gW, LUMA)), uMono);
     lin = 1.0 - (1.0 - clamp(lin, 0.0, 1.0)) * (1.0 - clamp(bloomCol * uBloom * 0.7, 0.0, 1.0));
+    if (uDiffusion > 0.0) {
+        // Mist filter: a soft copy of the whole picture laid over it. Highlights spread,
+        // shadows lift and contrast drops, like shooting through a diffusion glass.
+        vec3 dif = texture(uDiffuseTex, s).rgb;
+        dif = mix(dif, vec3(dot(dif, LUMA)), uMono);
+        lin = mix(lin, dif, uDiffusion * 0.18);
+        lin = 1.0 - (1.0 - clamp(lin, 0.0, 1.0)) * (1.0 - clamp(dif * dif * 1.1 * uDiffusion, 0.0, 1.0));
+    }
     c = sqrt(max(lin, 0.0));
 
     // ---- on-camera flash: hot centre, fast fall-off
@@ -632,11 +680,13 @@ void main() {
         c = screenBlend(c, leak * uLeak);
     }
 
-    // ---- prism rainbow band
+    // ---- prism rainbow: an arc bending across the frame
     if (uPrism > 0.0) {
-        float d = dot(cp - uPrismBand.xy, uPrismBand.zw);
-        vec3 rainbow = spectrum(d * 2.5 + 0.1) * exp(-d * d / 0.022);
-        c = screenBlend(c, rainbow * 0.9 * uPrism);
+        vec2 arcCentre = uPrismBand.xy - uPrismBand.zw * 0.85;
+        float d = (length((cp - arcCentre) * asp) - 0.85) / max(rectAspect, 1.0);
+        // A pale band of light with the spectrum split along its edges.
+        vec3 rainbow = mix(vec3(1.0, 0.96, 0.9), spectrum(d * 5.0 + 0.1), 0.55) * exp(-d * d / 0.006);
+        c = screenBlend(c, rainbow * 0.75 * uPrism);
     }
 
     // ---- vignette

@@ -279,6 +279,12 @@ private fun Viewfinder(ui: UiState, actions: CameraActions) {
             Box(Modifier.fillMaxSize().background(Color.White.copy(alpha = flash.value)))
         }
         if (ui.recording) RecordingBadge(ui, Modifier.align(Alignment.TopCenter).padding(top = 12.dp))
+        if (ui.zooming) {
+            Text(
+                zoomLabel(ui.zoom, true), color = Ink, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.align(Alignment.Center).background(Cream.copy(alpha = 0.9f), CircleShape).padding(horizontal = 14.dp, vertical = 8.dp),
+            )
+        }
         val status = when {
             ui.sampling -> "Sampling 4 frames"
             ui.savingVideo -> "Saving"
@@ -421,35 +427,43 @@ private fun CameraChip(cam: FilmCamera, selected: Boolean, enabled: Boolean, onC
 
 @Composable
 private fun LensRow(ui: UiState, actions: CameraActions, iconRotation: Float) {
-    val front = ui.lens?.front == true
-    val lenses = ui.lenses.filter { it.front == front }
-    if (lenses.size < 2) return
+    val stops = ui.zoomStops
+    if (stops.size < 2) return
+    // The stop that is "on": the nearest one at or below the current zoom.
+    val active = stops.filter { it <= ui.zoom * 1.001f }.maxOrNull() ?: stops.first()
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
         Row(
             Modifier
                 .clip(RoundedCornerShape(22.dp))
                 .background(Color.White.copy(alpha = 0.07f))
                 .padding(4.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            for (l in lenses) {
-                val sel = l.key == ui.lens?.key
+            for (z in stops) {
+                val sel = z == active
+                // The active button shows the exact zoom, like the system camera does.
+                val shown = if (sel && kotlin.math.abs(ui.zoom - z) > 0.05f) ui.zoom else z
                 Column(
                     Modifier
                         .size(42.dp)
                         .clip(CircleShape)
                         .background(if (sel) Cream else Color.Transparent)
-                        .clickable(enabled = !ui.recording || l.cameraId == ui.lens?.cameraId) { actions.selectLens(l) }
+                        .clickable { actions.setZoom(z) }
                         .rotate(iconRotation),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {
-                    Text(l.label, color = if (sel) Ink else Cream, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    Text("${l.eqMm}mm", color = if (sel) Ink.copy(alpha = 0.6f) else Muted, fontSize = 8.sp)
+                    Text(zoomLabel(shown, sel), color = if (sel) Ink else Cream, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text("${(ui.mainEqMm * shown).roundToInt()}mm", color = if (sel) Ink.copy(alpha = 0.6f) else Muted, fontSize = 8.sp)
                 }
             }
         }
     }
+}
+
+private fun zoomLabel(z: Float, selected: Boolean): String {
+    val text = if (z >= 10f || kotlin.math.abs(z - z.roundToInt()) < 0.05f) "${z.roundToInt()}" else "%.1f".format(z).trimStart('0')
+    return if (selected) "$text×" else text
 }
 
 @Composable

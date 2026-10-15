@@ -4,13 +4,13 @@ A camera app that shoots photos and video through a live film emulsion, at the p
 resolution: 4K or 8K video where the hardware allows, full-sensor stills, and every lens on the
 phone. What you see in the viewfinder is what gets saved, borders included.
 
-![The forty cameras, rendered by the app's own shaders](docs/looks.jpg)
+![The 48 cameras, rendered by the app's own shaders](docs/looks.jpg)
 
-*All forty cameras, rendered through the app's real shaders by `tools/look-preview`.*
+*All 48 cameras, rendered through the app's real shaders by `tools/look-preview`.*
 
 ## Cameras
 
-Forty presets in six groups. Each one pairs a film stock with a format and the effects that go
+Forty-eight presets in seven groups. Each one pairs a film stock with a format and the effects that go
 with it, and every setting can be changed live afterwards. The names describe looks; none of them
 is a real product or brand.
 
@@ -21,6 +21,7 @@ is a real product or brand.
 | **Instant** | Instant, Instant SQ, Instant Mini, Peel-Apart |
 | **B&W** | Noir, Silver, Medium Format, Sepia, Silent Film (orthochromatic, 16 fps) |
 | **Toy & Fun** | Toy Lens, Pinhole, 4-Lens Sampler, Fisheye, Stereo 3D, Prism, Flash Party |
+| **Motion & Dream** | Golden Hour (mist filter), Summer Reel (Super 8 holiday, deep teal), Step Print, Panning, Spin (with a rainbow arc), Zoom Burst, Dreamy Soft, Stop Motion (6 fps) |
 | **Retro video** | Camcorder '98 (VHS), Mini DV, CCD 2005 |
 
 These cover the kind of effects that retro camera apps such as Dazz are known for: half-frame
@@ -77,6 +78,13 @@ camcorder display (REC or PLAY plus the date and time).
 - Interlace combing on motion.
 - Lower resolution.
 
+**Blur and motion**
+- Soft (gaussian), zoom, spin (radial) and motion (directional, any angle) blur.
+- A "sharp centre" setting keeps the middle of the frame crisp while the edges move.
+- Diffusion: a mist-filter glow over the whole picture.
+- Frame holds down to 8 and 6 fps for stop motion. With a slow shutter this becomes a
+  step-printed smear.
+
 **Shutter speed**: 1/4000 to 1/2, in one of two ways:
 - *Simulated*: motion trails blended across frames. Stills carry the trail from the live view.
 - *Real*: the sensor exposes for that time and the ISO follows. This needs Camera2 manual-sensor
@@ -84,10 +92,10 @@ camcorder display (REC or PLAY plus the date and time).
 
 ## Capture
 
-- **Every lens.** The lens row is built from the phone's cameras: ultra-wide, main, telephoto and
-  selfie, labelled `.5×`, `1×`, `3×` with their 35mm-equivalent focal lengths. On multi-lens
-  phones it switches through the zoom ratio, the way the system camera does. Pinch to zoom
-  between lenses.
+- **Every lens, with zoom stops.** The zoom row offers `.5×  1×  2×  3×  5×  10×…` up to the
+  most the phone can reach, with each stop's 35mm-equivalent focal length. Every stop uses the
+  longest real lens that doesn't overshoot, then zooms digitally the rest of the way, the way the
+  system camera does. Pinch to zoom anywhere in between; the exact zoom shows while you pinch.
 - **Video**: 1080p, 4K or 8K at 24, 25, 30 or 60 fps. The app only offers what this lens, the GPU
   and the hardware encoder can all do; anything else is greyed out. 4K and up records HEVC, below
   that H.264, at high bitrates so the grain survives (about 50 Mb/s at 4K24, more at 8K). Audio is
@@ -124,8 +132,8 @@ Camera2 stream (up to 8K) ──► SurfaceTexture (OES) ─┐
                                                     ▼
                   1 DEVELOP  crop to aspect, gate weave, slow-shutter blend with the last frame
                   2 BRIGHT   highlights from the frame's mip chain, ~480 px
-                  3 BLUR     tight glow (halation), wide glow (bloom), one-way streaks
-                  4 FINAL    lens, tape, stock colour, light, leaks, grain, dust, slips,
+                  3 BLUR     tight glow (halation), wide glow (bloom), one-way streaks, diffusion
+                  4 FINAL    lens, blur, tape, stock colour, light, diffusion, leaks, grain, dust, slips,
                              burns, stamps, border
                                                     │
                 ┌───────────────────────────────────┼──────────────────────────────┐
@@ -141,8 +149,8 @@ Camera2 stream (up to 8K) ──► SurfaceTexture (OES) ─┐
 | `gl/Shaders.kt` | All the GLSL |
 | `gl/FilmRenderer.kt` | Runs the passes and holds the overlay textures |
 | `gl/FilmEngine.kt` | The render thread: live frames, recording, tiled stills, the sampler |
-| `film/FilmStock.kt` | 24 emulsions |
-| `film/FilmLook.kt` | Every adjustable parameter, the borders and the 40 cameras |
+| `film/FilmStock.kt` | 26 emulsions |
+| `film/FilmLook.kt` | Every adjustable parameter, the borders and the 48 cameras |
 | `film/FrameFx.kt` | Per-frame randomness: weave, slips, flicker, leaks, prism, tape tracking, scratches |
 | `record/VideoRecorder.kt` | Codec choice, MP4 muxing and audio |
 
@@ -165,7 +173,7 @@ It fails loudly on shader compile errors, which makes it a quick check before bu
 Checked so far:
 - The app builds cleanly (debug and minified release) and Android lint reports no errors.
 - Every shader compiles and renders without GL errors in the WebGL2 harness.
-- In the harness, all 40 cameras and 17 borders render as intended. Tiled output is seamless,
+- In the harness, all 48 cameras and 17 borders render as intended. Tiled output is seamless,
   stills in sensor orientation come out upright, and the landscape encoder path is correct.
 
 Still to check on a real phone (it has **not been run on one yet**):

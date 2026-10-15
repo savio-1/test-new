@@ -92,8 +92,8 @@ async function runFilm(DATA, imgUrl, camId, opts) {
   // Glow, as FilmRenderer.glow.
   const scale = Math.min(480 / Math.max(W, H), 0.5);
   const gw = Math.max(8, Math.round(W * scale)), gh = Math.max(8, Math.round(H * scale));
-  const gT = tex(gw, gh, glowFmt), gW = tex(gw, gh, glowFmt), gX = tex(gw, gh, glowFmt), gS = tex(gw, gh, glowFmt);
-  const gTF = fbo(gT), gWF = fbo(gW), gXF = fbo(gX), gSF = fbo(gS);
+  const gT = tex(gw, gh, glowFmt), gW = tex(gw, gh, glowFmt), gX = tex(gw, gh, glowFmt), gS = tex(gw, gh, glowFmt), gD = tex(gw, gh, glowFmt);
+  const gTF = fbo(gT), gWF = fbo(gW), gXF = fbo(gX), gSF = fbo(gS), gDF = fbo(gD);
   const thr = 0.62 - 0.2 * look.halation;
   gl.viewport(0, 0, gw, gh); gl.bindFramebuffer(gl.FRAMEBUFFER, gTF); gl.useProgram(P.bright);
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, srcTex); gl.uniform1i(U(P.bright, 'uSrc'), 0);
@@ -111,6 +111,11 @@ async function runFilm(DATA, imgUrl, camId, opts) {
     gl.uniform1f(U(P.bright, 'uThreshold'), 0.8); draw(); gl.useProgram(P.blur);
     let from = gS; [2, 6, 16, 40].forEach((step, i) => {
       pass(from, i % 2 === 0 ? gXF : gSF, sx * step, 0); from = i % 2 === 0 ? gX : gS; });
+  }
+  if (look.diffusion > 0) {
+    gl.useProgram(P.bright); gl.bindFramebuffer(gl.FRAMEBUFFER, gDF); gl.bindTexture(gl.TEXTURE_2D, srcTex);
+    gl.uniform1f(U(P.bright, 'uThreshold'), -0.31); draw(); gl.useProgram(P.blur);
+    pass(gD, gXF, sx * 3, 0); pass(gX, gDF, 0, sy * 3); pass(gD, gXF, sx * 7, 0); pass(gX, gDF, 0, sy * 7);
   }
 
   // Overlay textures (ports of DateStamp, CamcorderOsd, EdgePrint).
@@ -151,7 +156,7 @@ async function runFilm(DATA, imgUrl, camId, opts) {
   const f = P.fin; gl.useProgram(f);
   const bind = (u, t, n) => { gl.activeTexture(gl.TEXTURE0 + u); gl.bindTexture(gl.TEXTURE_2D, t); gl.uniform1i(U(f, n), u); };
   bind(0, srcTex, 'uImage'); bind(1, srcTex, 'uPrevImage'); bind(2, gT, 'uGlowTight'); bind(3, gW, 'uGlowWide');
-  bind(4, gS, 'uStreakTex'); bind(5, stampTex, 'uStamp'); bind(6, osdTex, 'uOsd'); bind(7, edgeTex, 'uEdge');
+  bind(4, gS, 'uStreakTex'); bind(8, gD, 'uDiffuseTex'); bind(5, stampTex, 'uStamp'); bind(6, osdTex, 'uOsd'); bind(7, edgeTex, 'uEdge');
   gl.uniformMatrix4fv(U(f, 'uTexMatrix'), false, ident); gl.uniformMatrix4fv(U(f, 'uImageMatrix'), false, imageMatrix);
   gl.uniform2f(U(f, 'uTargetSize'), tw, th);
   gl.uniform1i(U(f, 'uTargetRot'), targetRot); gl.uniform1i(U(f, 'uFrameRot'), frameRot);
@@ -171,7 +176,10 @@ async function runFilm(DATA, imgUrl, camId, opts) {
   f1('uPrism', look.prism); f1('uVignette', look.vignette); f1('uDust', look.dust); f1('uAberration', look.aberration);
   f1('uSoftness', look.softness); f1('uCornerBlur', look.cornerBlur); f1('uDistortion', look.distortion);
   f1('uCircle', look.circleMask ? 1 : 0); f1('uAnaglyph', look.anaglyph); f1('uFlash', look.flash); f1('uVhs', look.vhs);
-  f1('uInterlace', 0); f1('uLowRes', look.lowRes);
+  f1('uInterlace', 0); f1('uLowRes', look.lowRes); f1('uDiffusion', look.diffusion);
+  const BLUR = { NONE: 0, GAUSSIAN: 1, ZOOM: 2, SPIN: 3, MOTION: 4 };
+  gl.uniform1i(U(f, 'uBlurMode'), BLUR[look.blurMode] || 0); f1('uBlur', look.blur); f1('uBlurFocus', look.blurFocus);
+  const ba = look.blurAngle * Math.PI / 180; gl.uniform2f(U(f, 'uBlurDir'), Math.cos(ba), Math.sin(ba));
   gl.uniform3fv(U(f, 'uGain'), fx.gain); gl.uniform1i(U(f, 'uBorder'), look.frame); gl.uniform1i(U(f, 'uStampStyle'), look.stamp);
   f1('uStampAspect', 512 / 112);
   gl.uniform1ui(U(f, 'uSeed'), fx.seed); f1('uTime', fx.time); f1('uSlip', fx.slip);

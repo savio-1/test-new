@@ -107,6 +107,14 @@ object FilmStocks {
         halationColor = Rgb(1f, 0.25f, 0.05f), colorGrain = 0.45f, swatch = 0xFFD0461C,
     )
 
+    val GOLDEN = FilmStock(
+        id = "golden", name = "Golden 400",
+        temperature = 0.42f, tint = 0.04f, saturation = 1.05f, contrast = 0.92f, fade = 0.1f, highlightRolloff = 0.1f,
+        gamma = Rgb(0.95f, 0.98f, 1.1f), hueShift = Rgb(0.3f, -0.6f, -0.2f), satHighlights = 0.7f,
+        shadowTint = Rgb(0.015f, 0.02f, 0.0f), highlightTint = Rgb(0.07f, 0.045f, -0.03f),
+        halationColor = Rgb(1f, 0.55f, 0.2f), colorGrain = 0.35f, swatch = 0xFFF0B84A,
+    )
+
     // ---------------------------------------------------------------- cinema
     val CINE_800T = FilmStock(
         id = "cine800t", name = "Cine 800T",
@@ -154,6 +162,14 @@ object FilmStocks {
         shadowTint = Rgb(0.0f, 0.005f, 0.03f), highlightTint = Rgb(0.05f, 0.03f, -0.03f),
         mixer = floatArrayOf(1.08f, -0.04f, -0.04f, -0.03f, 1.06f, -0.03f, -0.02f, -0.03f, 1.05f),
         colorGrain = 0.5f, swatch = 0xFFE07B39,
+    )
+    val SUMMER_REEL = FilmStock(
+        id = "summer", name = "Reversal 40",
+        temperature = 0.08f, saturation = 1.32f, contrast = 1.42f, fade = 0.01f, satShadows = 1f, satHighlights = 0.85f,
+        gamma = Rgb(0.96f, 1f, 0.98f), hueShift = Rgb(0.15f, 0.25f, -0.4f),
+        shadowTint = Rgb(-0.03f, 0.015f, 0.045f), highlightTint = Rgb(0.04f, 0.025f, -0.02f),
+        mixer = floatArrayOf(1.1f, -0.06f, -0.04f, -0.05f, 1.06f, -0.01f, -0.06f, 0.0f, 1.12f),
+        halationColor = Rgb(1f, 0.35f, 0.12f), colorGrain = 0.45f, swatch = 0xFF1F7A8C,
     )
     val K64 = FilmStock(
         id = "k64", name = "K-64",
@@ -247,8 +263,8 @@ object FilmStocks {
     )
 
     val ALL = listOf(
-        GOLD_200, PORTRAIT_400, VERDE_400, VIVID_100, EXPIRED, CROSS_PRO, REDSCALE,
-        CINE_800T, CINE_250D, BLEACH, TWO_STRIP, THREE_STRIP, SUPER8_REVERSAL, K64,
+        GOLD_200, PORTRAIT_400, VERDE_400, VIVID_100, GOLDEN, EXPIRED, CROSS_PRO, REDSCALE,
+        CINE_800T, CINE_250D, BLEACH, TWO_STRIP, THREE_STRIP, SUPER8_REVERSAL, SUMMER_REEL, K64,
         CHROME_100, INSTANT, PEEL_APART,
         MONO_400, SILVER_100, SEPIA, ORTHO,
         VHS_TAPE, MINI_DV, DIGICAM,

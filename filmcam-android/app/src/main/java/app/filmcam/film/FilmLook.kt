@@ -43,6 +43,17 @@ enum class FilmFrameRate(val label: String, val fps: Int) {
     FPS_18("18", 18),
     FPS_16("16", 16),
     FPS_12("12", 12),
+    FPS_8("8", 8),
+    FPS_6("6", 6),
+}
+
+/** Camera-movement and lens blurs. */
+enum class BlurMode(val label: String, val shaderId: Int) {
+    NONE("Off", 0),
+    GAUSSIAN("Soft", 1),
+    ZOOM("Zoom", 2),
+    SPIN("Spin", 3),
+    MOTION("Motion", 4),
 }
 
 /** Shutter speeds. Simulated as motion trails, or set on the sensor with "real shutter". */
@@ -92,8 +103,10 @@ data class FilmLook(
     val warmth: Float = 0f,
     // light leaks
     val lightLeak: Float = 0f,
-    /** Rainbow prism flare plus a ghost image. */
+    /** Rainbow prism flare (a curved arc) plus a ghost image. */
     val prism: Float = 0f,
+    /** Diffusion filter: the whole picture glows, highlights bloom, shadows lift. */
+    val diffusion: Float = 0f,
     // lens
     val vignette: Float = 0.3f,
     val aberration: Float = 0.1f,
@@ -109,6 +122,13 @@ data class FilmLook(
     val anaglyph: Float = 0f,
     /** Direct on-camera flash: hot centre, fast fall-off. */
     val flash: Float = 0f,
+    // blur
+    val blurMode: BlurMode = BlurMode.NONE,
+    val blur: Float = 0.5f,
+    /** Direction of motion blur in degrees (0 = horizontal in the upright frame). */
+    val blurAngle: Float = 0f,
+    /** Size of the sharp centre that zoom, spin and motion blur leave alone (0 = none). */
+    val blurFocus: Float = 0.3f,
     // projection
     val gateWeave: Float = 0f,
     /** Occasional vertical slip showing the frame line. */
@@ -143,6 +163,7 @@ enum class CameraCategory(val label: String) {
     INSTANT("Instant"),
     MONO("B&W"),
     TOY("Toy & Fun"),
+    MOTION("Motion & Dream"),
     VIDEO("Retro video"),
 }
 
@@ -297,6 +318,37 @@ object FilmCameras {
         cam("party", "Flash Party", "Direct flash · night out", CameraCategory.TOY,
             FilmLook(stock = FilmStocks.VIVID_100, halation = 0.3f, bloom = 0.25f, grain = 0.45f, grainSize = 1.5f,
                 vignette = 0.6f, flash = 0.75f, aberration = 0.2f, stamp = StampStyle.DATE)),
+
+        // ------------------------------------------------------------ motion and dream
+        cam("golden", "Golden Hour", "Mist filter · glowing haze", CameraCategory.MOTION,
+            FilmLook(stock = FilmStocks.GOLDEN, halation = 0.55f, halationSize = 0.7f, bloom = 0.55f, diffusion = 0.65f,
+                grain = 0.3f, grainSize = 1.4f, lightLeak = 0.25f, vignette = 0.3f, softness = 0.15f, aberration = 0.1f)),
+        cam("summer", "Summer Reel", "Super 8 holiday · deep teal sea", CameraCategory.MOTION,
+            FilmLook(stock = FilmStocks.SUMMER_REEL, halation = 0.45f, bloom = 0.25f, grain = 0.62f, grainSize = 2.2f,
+                vignette = 0.55f, gateWeave = 0.6f, flicker = 0.3f, colorFlicker = 0.2f, dust = 0.2f, aberration = 0.2f,
+                softness = 0.4f, shutter = ShutterSpeed.S30, frameRate = FilmFrameRate.FPS_18, rollBurn = true)),
+        cam("steprint", "Step Print", "Smeared motion · 8 fps", CameraCategory.MOTION,
+            FilmLook(stock = FilmStocks.PORTRAIT_400, halation = 0.35f, bloom = 0.25f, grain = 0.5f, grainSize = 1.7f,
+                fade = 0.25f, vignette = 0.35f, blurMode = BlurMode.MOTION, blur = 0.35f, blurFocus = 0f,
+                shutter = ShutterSpeed.S4, frameRate = FilmFrameRate.FPS_8)),
+        cam("pan", "Panning", "Horizontal motion blur", CameraCategory.MOTION,
+            FilmLook(stock = FilmStocks.GOLD_200, halation = 0.3f, bloom = 0.2f, grain = 0.45f, grainSize = 1.6f,
+                fade = 0.25f, warmth = 0.15f, vignette = 0.3f, blurMode = BlurMode.MOTION, blur = 0.6f, blurFocus = 0.25f,
+                shutter = ShutterSpeed.S15)),
+        cam("spin", "Spin", "Twirled frame · rainbow arc", CameraCategory.MOTION,
+            FilmLook(stock = FilmStocks.VERDE_400, halation = 0.4f, bloom = 0.35f, grain = 0.45f, grainSize = 1.6f,
+                prism = 0.5f, lightLeak = 0.2f, vignette = 0.4f, blurMode = BlurMode.SPIN, blur = 0.6f, blurFocus = 0.25f,
+                aberration = 0.3f)),
+        cam("zoomburst", "Zoom Burst", "Zoomed during the exposure", CameraCategory.MOTION,
+            FilmLook(stock = FilmStocks.VIVID_100, halation = 0.35f, bloom = 0.3f, grain = 0.4f, grainSize = 1.5f,
+                vignette = 0.35f, blurMode = BlurMode.ZOOM, blur = 0.6f, blurFocus = 0.25f, aberration = 0.25f)),
+        cam("dream", "Dreamy Soft", "Soft focus · pastel", CameraCategory.MOTION,
+            FilmLook(stock = FilmStocks.PORTRAIT_400, halation = 0.4f, bloom = 0.45f, diffusion = 0.5f, grain = 0.25f,
+                grainSize = 1.3f, fade = 0.35f, vignette = 0.25f, blurMode = BlurMode.GAUSSIAN, blur = 0.25f, blurFocus = 0.35f)),
+        cam("stopmotion", "Stop Motion", "6 fps · jittery frames", CameraCategory.MOTION,
+            FilmLook(stock = FilmStocks.K64, halation = 0.35f, bloom = 0.25f, grain = 0.5f, grainSize = 1.8f,
+                vignette = 0.45f, gateWeave = 1f, flicker = 0.55f, colorFlicker = 0.35f, dust = 0.35f, softness = 0.2f,
+                frameRate = FilmFrameRate.FPS_6)),
 
         // ------------------------------------------------------------ retro video
         cam("vhs", "Camcorder '98", "VHS tape · REC overlay", CameraCategory.VIDEO,

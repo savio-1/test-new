@@ -157,6 +157,8 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         if (ui.lenses.isEmpty()) { ui.message = "No camera found"; return }
         val savedKey = prefs.getString("lens", null)
         ui.lens = ui.lenses.firstOrNull { it.key == savedKey } ?: ui.lenses.first { !it.front || ui.lenses.all { l -> l.front } }
+        ui.zoom = ui.lens?.ratio ?: 1f
+        refreshZoomStops()
         ui.hasCamera = true
         if (resumed) openCamera()
     }
@@ -263,11 +265,49 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
     override fun selectLens(lens: Lens) {
         val current = ui.lens
         if (ui.recording && lens.cameraId != current?.cameraId) return
+        val facingChanged = lens.front != current?.front
         ui.lens = lens
+        ui.zoom = lens.ratio
         camera?.userZoom = 1f
+        if (facingChanged) refreshZoomStops()
         prefs.edit { putString("lens", lens.key) }
         openCamera()
     }
+
+    private fun refreshZoomStops() {
+        val catalog = camera?.catalog ?: return
+        val front = ui.lens?.front == true
+        ui.zoomStops = catalog.zoomStops(front)
+        val main = ui.lenses.firstOrNull { it.front == front && it.ratio == 1f } ?: ui.lens
+        ui.mainEqMm = main?.eqMm ?: 26
+    }
+
+    /** The lens to use for a total magnification: the longest one that doesn't overshoot. */
+    private fun lensFor(total: Float, sameCamera: String?): Lens? {
+        val front = ui.lens?.front == true
+        val facing = ui.lenses.filter { it.front == front }
+        val pool = facing.filter { sameCamera == null || it.cameraId == sameCamera }.ifEmpty { facing }
+        return pool.filter { it.ratio <= total * 1.001f }.maxByOrNull { it.ratio } ?: pool.minByOrNull { it.ratio }
+    }
+
+    private fun zoomTo(total: Float, sameCamera: String?) {
+        val c = camera ?: return
+        val front = ui.lens?.front == true
+        val t = total.coerceIn(c.catalog.minZoom(front), c.catalog.maxZoom(front))
+        val lens = lensFor(t, sameCamera) ?: return
+        if (ui.recording && lens.cameraId != ui.lens?.cameraId) return
+        ui.zoom = t
+        c.userZoom = t / lens.ratio
+        if (lens.key != ui.lens?.key) {
+            ui.lens = lens
+            prefs.edit { putString("lens", lens.key) }
+            openCamera()
+        } else {
+            c.applySettings()
+        }
+    }
+
+    override fun setZoom(total: Float) = zoomTo(total, sameCamera = null)
 
     override fun selectCamera(camera: FilmCamera) {
         ui.camera = camera
@@ -353,10 +393,14 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         camera?.focusAt(bx, by)
     }
 
+    private val hideZoom = Runnable { ui.zooming = false }
+
+    /** Pinch: stays on the current camera so the picture never blinks mid-gesture. */
     override fun zoom(scale: Float) {
-        val c = camera ?: return
-        c.userZoom = (c.userZoom * scale).coerceIn(0.1f, 30f)
-        c.applySettings()
+        zoomTo(ui.zoom * scale, sameCamera = ui.lens?.cameraId)
+        ui.zooming = true
+        window.decorView.removeCallbacks(hideZoom)
+        window.decorView.postDelayed(hideZoom, 900)
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {

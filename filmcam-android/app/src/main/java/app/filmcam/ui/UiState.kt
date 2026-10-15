@@ -48,6 +48,11 @@ class UiState {
     // camera hardware
     var lenses by mutableStateOf<List<Lens>>(emptyList())
     var lens by mutableStateOf<Lens?>(null)
+    /** Total magnification relative to the main camera, and the buttons to jump to. */
+    var zoom by mutableFloatStateOf(1f)
+    var zoomStops by mutableStateOf<List<Float>>(listOf(1f))
+    var mainEqMm by mutableIntStateOf(26)
+    var zooming by mutableStateOf(false)
     var flash by mutableStateOf(false)
     var hasFlash by mutableStateOf(false)
     var videoRes by mutableStateOf(VideoResolution.UHD)
@@ -73,6 +78,7 @@ interface CameraActions {
     fun setMode(mode: CaptureMode)
     fun switchFacing()
     fun selectLens(lens: Lens)
+    fun setZoom(total: Float)
     fun selectCamera(camera: FilmCamera)
     fun updateLook(look: FilmLook)
     fun resetLook()
