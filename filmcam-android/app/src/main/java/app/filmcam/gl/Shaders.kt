@@ -123,6 +123,32 @@ void main() {
 """
 
 
+    /**
+     * The picture as the final pass will show it (upright, cropped to the frame), small, for
+     * the subject segmenter. Rows run top-down so glReadPixels gives an upright bitmap.
+     */
+    const val SEG_INPUT = """#version 300 es
+precision highp float;
+uniform sampler2D uImage;
+uniform mat4 uImageMatrix;
+uniform int uFrameRot;
+uniform float uLod;
+in vec2 vUV;
+out vec4 o;
+vec2 rot(int k, vec2 p) {
+    k = k & 3;
+    if (k == 1) return vec2(p.y, 1.0 - p.x);
+    if (k == 2) return 1.0 - p;
+    if (k == 3) return vec2(1.0 - p.y, p.x);
+    return p;
+}
+void main() {
+    vec2 u = vec2(vUV.x, 1.0 - vUV.y);
+    vec2 s = rot(4 - (uFrameRot & 3), u);
+    o = vec4(textureLod(uImage, (uImageMatrix * vec4(s, 0.0, 1.0)).xy, uLod).rgb, 1.0);
+}
+"""
+
     const val FINAL = """#version 300 es
 precision highp float;
 precision highp int;
@@ -150,6 +176,10 @@ uniform sampler2D uEdge;
 uniform sampler2D uDiffuseTex;
 uniform sampler2D uTextTex;  // text overlays, premultiplied, upright frame space
 uniform float uTextOn;
+uniform sampler2D uTextBackTex;  // text set behind the subject, same space as uTextTex
+uniform float uTextBackOn;
+uniform sampler2D uSubject;      // subject matte: upright picture space, row 0 at the top
+uniform float uSubjectOn;
 uniform mat4 uImageMatrix;  // screen uv -> image texture uv (rotation of unrotated stills)
 
 uniform vec2 uTargetSize;   // pixels of the whole output (all tiles)
@@ -960,6 +990,13 @@ void main() {
 
     c *= mask;                      // fisheye circle and the frame line during a slip are black
     c = mix(L.border, c, L.inside);
+
+    // ---- text set behind the subject: the subject's matte cuts it away
+    if (uTextBackOn > 0.5) {
+        vec4 t = texture(uTextBackTex, vec2(f.x, 1.0 - f.y));
+        float m = uSubjectOn > 0.5 ? smoothstep(0.3, 0.7, texture(uSubject, vec2(u.x, 1.0 - u.y)).r) * L.inside : 0.0;
+        c = c * (1.0 - t.a * (1.0 - m)) + t.rgb * (1.0 - m);
+    }
 
     // ---- text overlays, on top of everything (border included)
     if (uTextOn > 0.5) {

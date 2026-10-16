@@ -41,12 +41,14 @@ data class TextLayer(
     val shadow: Boolean = false,
     /** Extra letter spacing in ems. */
     val tracking: Float = 0f,
+    /** Set behind the subject (people, or whatever was picked): it passes in front of the text. */
+    val behind: Boolean = false,
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("id", id).put("text", text).put("font", font).put("size", size.toDouble())
         .put("x", x.toDouble()).put("y", y.toDouble()).put("rotation", rotation.toDouble())
         .put("align", align.name).put("color", color).put("opacity", opacity.toDouble())
-        .put("shadow", shadow).put("tracking", tracking.toDouble())
+        .put("shadow", shadow).put("tracking", tracking.toDouble()).put("behind", behind)
 
     companion object {
         fun fromJson(o: JSONObject) = TextLayer(
@@ -62,6 +64,7 @@ data class TextLayer(
             opacity = o.optDouble("opacity", 1.0).toFloat(),
             shadow = o.optBoolean("shadow", false),
             tracking = o.optDouble("tracking", 0.0).toFloat(),
+            behind = o.optBoolean("behind", false),
         )
 
         fun listToJson(layers: List<TextLayer>): String = JSONArray().apply { layers.forEach { put(it.toJson()) } }.toString()

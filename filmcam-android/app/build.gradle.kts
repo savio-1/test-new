@@ -15,6 +15,8 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
+        // 64-bit phones only: each extra ABI adds ~8 MB of MediaPipe native code.
+        ndk { abiFilters += listOf("arm64-v8a") }
     }
 
     buildTypes {
@@ -35,6 +37,10 @@ android {
     buildFeatures {
         compose = true
     }
+    androidResources {
+        // Segmentation models are memory-mapped by the interpreter: keep them uncompressed.
+        noCompress += "tflite"
+    }
 }
 
 kotlin {
@@ -52,6 +58,9 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
+
+    // On-device subject segmentation for text set behind the subject.
+    implementation("com.google.mediapipe:tasks-vision:0.10.35")
 
     testImplementation("junit:junit:4.13.2")
 }

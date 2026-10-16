@@ -126,6 +126,7 @@ class FilmRenderer {
     private val bright = Program(Shaders.VERTEX, Shaders.BRIGHT)
     private val blur = Program(Shaders.VERTEX, Shaders.BLUR)
     private val final = Program(Shaders.VERTEX, Shaders.FINAL)
+    private val segInput = Program(Shaders.VERTEX, Shaders.SEG_INPUT)
 
     val glowFormat: Int =
         if (GlUtil.hasExtension("GL_EXT_color_buffer_half_float") || GlUtil.hasExtension("GL_EXT_color_buffer_float"))
@@ -138,10 +139,16 @@ class FilmRenderer {
     private var osdTex = 0
     private var osdKey = ""
     private val edgeTex: Int
-    private var textTex = 0
-    private var textW = 0
-    private var textH = 0
-    private var hasText = false
+    private val textFront = TextTexture()
+    private val textBack = TextTexture()
+    private var subjectTex = 0
+    private var subjectW = 0
+    private var subjectH = 0
+    private var hasSubject = false
+    private var segTex = 0
+    private var segFbo = 0
+    private var segW = 0
+    private var segH = 0
     val identity = FloatArray(16).also { android.opengl.Matrix.setIdentityM(it, 0) }
     /** 2^stops of underexposure that log footage gives back. */
     var logGain = 1f
@@ -229,20 +236,91 @@ class FilmRenderer {
         return tex
     }
 
-    /** Text overlays as a premultiplied bitmap in frame orientation; null clears them. */
-    fun setText(bmp: Bitmap?) {
-        if (bmp == null) { hasText = false; return }
-        if (textTex == 0) textTex = IntArray(1).also { GLES30.glGenTextures(1, it, 0) }[0]
-        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, textTex)
+    /** A text overlay texture, re-uploaded in place while its size stays the same. */
+    private class TextTexture {
+        var tex = 0
+        var w = 0
+        var h = 0
+        var on = false
+
+        fun set(bmp: Bitmap?) {
+            if (bmp == null) { on = false; return }
+            if (tex == 0) tex = IntArray(1).also { GLES30.glGenTextures(1, it, 0) }[0]
+            GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, tex)
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MIN_FILTER, GLES30.GL_LINEAR)
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MAG_FILTER, GLES30.GL_LINEAR)
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_S, GLES30.GL_CLAMP_TO_EDGE)
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_T, GLES30.GL_CLAMP_TO_EDGE)
+            if (bmp.width == w && bmp.height == h) GLUtils.texSubImage2D(GLES30.GL_TEXTURE_2D, 0, 0, 0, bmp)
+            else GLUtils.texImage2D(GLES30.GL_TEXTURE_2D, 0, bmp, 0)
+            w = bmp.width
+            h = bmp.height
+            on = true
+        }
+    }
+
+    /**
+     * Text overlays as premultiplied bitmaps in frame orientation: [front] over everything,
+     * [back] behind the subject (cut away by the subject matte). Null clears either.
+     */
+    fun setText(front: Bitmap?, back: Bitmap?) {
+        textFront.set(front)
+        textBack.set(back)
+    }
+
+    /**
+     * The subject matte: [w]x[h] bytes (0 background .. 255 subject), upright picture space,
+     * first row at the top. Null switches it off (text behind shows everywhere).
+     */
+    fun setSubjectMask(mask: ByteBuffer?, w: Int, h: Int) {
+        if (mask == null) { hasSubject = false; return }
+        if (subjectTex == 0) subjectTex = IntArray(1).also { GLES30.glGenTextures(1, it, 0) }[0]
+        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, subjectTex)
         GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MIN_FILTER, GLES30.GL_LINEAR)
         GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MAG_FILTER, GLES30.GL_LINEAR)
         GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_S, GLES30.GL_CLAMP_TO_EDGE)
         GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_T, GLES30.GL_CLAMP_TO_EDGE)
-        if (bmp.width == textW && bmp.height == textH) GLUtils.texSubImage2D(GLES30.GL_TEXTURE_2D, 0, 0, 0, bmp)
-        else GLUtils.texImage2D(GLES30.GL_TEXTURE_2D, 0, bmp, 0)
-        textW = bmp.width
-        textH = bmp.height
-        hasText = true
+        GLES30.glPixelStorei(GLES30.GL_UNPACK_ALIGNMENT, 1)
+        mask.position(0)
+        if (w == subjectW && h == subjectH) {
+            GLES30.glTexSubImage2D(GLES30.GL_TEXTURE_2D, 0, 0, 0, w, h, GLES30.GL_RED, GLES30.GL_UNSIGNED_BYTE, mask)
+        } else {
+            GLES30.glTexImage2D(GLES30.GL_TEXTURE_2D, 0, GLES30.GL_R8, w, h, 0, GLES30.GL_RED, GLES30.GL_UNSIGNED_BYTE, mask)
+        }
+        GLES30.glPixelStorei(GLES30.GL_UNPACK_ALIGNMENT, 4)
+        subjectW = w
+        subjectH = h
+        hasSubject = true
+    }
+
+    /**
+     * The picture as the final pass shows it, upright and [w]x[h], read back as RGBA into
+     * [out] (first row at the top): what the subject segmenter looks at.
+     */
+    fun readSegInput(src: FinalSource, frameRot: Int, w: Int, h: Int, out: ByteBuffer) {
+        if (w != segW || h != segH) {
+            if (segFbo != 0) { GlUtil.deleteFramebuffers(segFbo); GlUtil.deleteTextures(segTex) }
+            segTex = GlUtil.createTexture(w, h, GLES30.GL_RGBA8)
+            segFbo = GlUtil.createFramebuffer(segTex)
+            segW = w
+            segH = h
+        }
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, segFbo)
+        GLES30.glViewport(0, 0, w, h)
+        with(segInput) {
+            use()
+            bindTex(0, src.image); set1i("uImage", 0)
+            setMat4("uTexMatrix", identity)
+            setMat4("uImageMatrix", src.imageMatrix)
+            set1i("uFrameRot", frameRot)
+            set1f("uLod", max(0f, log2(max(src.width, src.height).toFloat() / max(w, h))))
+        }
+        draw()
+        out.clear()
+        GLES30.glPixelStorei(GLES30.GL_PACK_ALIGNMENT, 1)
+        GLES30.glReadPixels(0, 0, w, h, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, out)
+        GLES30.glPixelStorei(GLES30.GL_PACK_ALIGNMENT, 4)
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
     }
 
     /** Keeps the date stamp and the camcorder display current (date, clock, REC light). */
@@ -442,8 +520,12 @@ class FilmRenderer {
             bindTex(6, if (osdTex != 0) osdTex else stampTex); set1i("uOsd", 6)
             bindTex(7, edgeTex); set1i("uEdge", 7)
             bindTex(8, src.glow.diffuse); set1i("uDiffuseTex", 8)
-            bindTex(9, if (textTex != 0) textTex else edgeTex); set1i("uTextTex", 9)
-            set1f("uTextOn", if (withText && hasText && textTex != 0) 1f else 0f)
+            bindTex(9, if (textFront.tex != 0) textFront.tex else edgeTex); set1i("uTextTex", 9)
+            set1f("uTextOn", if (withText && textFront.on) 1f else 0f)
+            bindTex(11, if (textBack.tex != 0) textBack.tex else edgeTex); set1i("uTextBackTex", 11)
+            set1f("uTextBackOn", if (withText && textBack.on) 1f else 0f)
+            bindTex(12, if (subjectTex != 0) subjectTex else edgeTex); set1i("uSubject", 12)
+            set1f("uSubjectOn", if (hasSubject) 1f else 0f)
             setMat4("uTexMatrix", identity)
             setMat4("uImageMatrix", src.imageMatrix)
 
@@ -566,9 +648,10 @@ class FilmRenderer {
     fun halationThreshold(look: FilmLook) = 0.62f - 0.2f * look.halation
 
     fun release() {
-        listOf(developOes, develop2d, trail, bright, blur, final).forEach { it.release() }
+        listOf(developOes, develop2d, trail, bright, blur, final, segInput).forEach { it.release() }
+        if (segFbo != 0) GlUtil.deleteFramebuffers(segFbo)
         GLES30.glDeleteBuffers(1, intArrayOf(vbo), 0)
         GLES30.glDeleteVertexArrays(1, intArrayOf(vao), 0)
-        GlUtil.deleteTextures(*listOf(stampTex, osdTex, edgeTex, textTex).filter { it != 0 }.toIntArray())
+        GlUtil.deleteTextures(*listOf(stampTex, osdTex, edgeTex, textFront.tex, textBack.tex, subjectTex, segTex).filter { it != 0 }.toIntArray())
     }
 }

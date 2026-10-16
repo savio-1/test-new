@@ -25,6 +25,7 @@ import app.filmcam.film.StampStyle
 import app.filmcam.film.FontLibrary
 import app.filmcam.film.TextLayer
 import app.filmcam.film.TextRenderer
+import app.filmcam.seg.SubjectMasker
 import app.filmcam.record.VideoRecorder
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -86,6 +87,7 @@ class FilmEngine {
     @Volatile var lutSource: ((String) -> Bitmap?)? = null
     private var textKey: Any? = null
     private var textBitmap: Bitmap? = null
+    private var textBackBitmap: Bitmap? = null
 
     /** Working-frame size once the camera is running, portrait (w, h). */
     @Volatile var outputSize: Size? = null
@@ -298,6 +300,8 @@ class FilmEngine {
             val persistence = if (simulateShutter) look.shutter.persistence(dt) else 0f
             if (persistence > 0f || look.interlace > 0f) p.keepPrevious()
             develop(look, persistence)
+            // The subject is segmented while the GPU works on the glows.
+            startSubject(liveSource(p), turns)
             renderer.glow(liveSource(p), look, turns)
         }
         fx.rollBurn = rollBurn(rec, now)
@@ -311,6 +315,7 @@ class FilmEngine {
 
         val src = liveSource(p)
         if (turns % 2 == 0) updateText(p.width, p.height, 2048) else updateText(p.height, p.width, 2048)
+        finishSubject(waitMs = 12L)
         if (disp != null && displayW > 0) {
             GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
             renderer.drawFinal(src, look, fx, displayW, displayH, 0, turns, logMode = logDisplay)
@@ -379,25 +384,72 @@ class FilmEngine {
         return if (cropFracW <= 1f) cropFracW to 1f else 1f to 1f / cropFracW
     }
 
-    /** Re-renders the text overlay when the layers or the frame shape change. */
+    /** Re-renders the text overlays when the layers or the frame shape change. */
     private fun updateText(frameW: Int, frameH: Int, maxSide: Int) {
         val layers = textLayers
         val key = Triple(layers, frameW, frameH)
         if (key == textKey) return
         textKey = key
         val f = fonts
-        if (layers.isEmpty() || f == null) { renderer.setText(null); return }
+        if (layers.isEmpty() || f == null) { renderer.setText(null, null); return }
         val scale = min(1f, maxSide.toFloat() / max(frameW, frameH))
         val w = max(1, (frameW * scale).roundToInt())
         val h = max(1, (frameH * scale).roundToInt())
-        var bmp = textBitmap
-        if (bmp == null || bmp.width != w || bmp.height != h) {
-            bmp?.recycle()
-            bmp = createBitmap(w, h).also { textBitmap = it }
+        fun draw(part: List<TextLayer>, old: Bitmap?): Bitmap? {
+            if (part.isEmpty()) return old
+            val bmp = if (old != null && old.width == w && old.height == h) old else { old?.recycle(); createBitmap(w, h) }
+            bmp.eraseColor(Color.TRANSPARENT)
+            TextRenderer.draw(Canvas(bmp), part, f, w.toFloat(), h.toFloat())
+            return bmp
         }
-        bmp.eraseColor(Color.TRANSPARENT)
-        TextRenderer.draw(Canvas(bmp), layers, f, w.toFloat(), h.toFloat())
-        renderer.setText(bmp)
+        val front = layers.filter { !it.behind }
+        val back = layers.filter { it.behind }
+        textBitmap = draw(front, textBitmap)
+        textBackBitmap = draw(back, textBackBitmap)
+        renderer.setText(if (front.isEmpty()) null else textBitmap, if (back.isEmpty()) null else textBackBitmap)
+    }
+
+    // ------------------------------------------------------------------ subject matte
+
+    /** Cuts the subject out of each frame for text set behind it; null when unavailable. */
+    @Volatile var subjects: SubjectMasker? = null
+    private var segBuf: ByteBuffer? = null
+    private var subjectSeq = -1L
+
+    private fun subjectWanted() = subjects != null && textLayers.any { it.behind }
+
+    /** Hands what [src] shows (upright for [turns]) to the segmenter, if it is free. */
+    private fun startSubject(src: FinalSource, turns: Int, forStill: Boolean = false) {
+        val m = subjects ?: return
+        if (!subjectWanted()) return
+        val (fw, fh) = if (turns % 2 == 0) src.width to src.height else src.height to src.width
+        val k = SubjectMasker.INPUT_SIDE.toFloat() / max(fw, fh)
+        val w = max(16, (fw * k).roundToInt())
+        val h = max(16, (fh * k).roundToInt())
+        val buf = segBuf ?: ByteBuffer.allocateDirect(SubjectMasker.INPUT_SIDE * SubjectMasker.INPUT_SIDE * 4).also { segBuf = it }
+        if (forStill) m.awaitIdle(3000L)
+        if (!m.idle) return
+        renderer.readSegInput(src, turns, w, h, buf)
+        m.submit(buf, w, h)
+    }
+
+    /**
+     * Gives the renderer the newest matte, after waiting up to [waitMs] for this frame's:
+     * long enough that a moving subject and its cut-out stay together, short enough that the
+     * frame rate holds when the model is slow (the matte then lands a frame later).
+     */
+    private fun finishSubject(waitMs: Long) {
+        val m = subjects
+        if (m == null || !subjectWanted()) {
+            if (subjectSeq != -1L) { renderer.setSubjectMask(null, 0, 0); subjectSeq = -1L }
+            return
+        }
+        m.await(waitMs)
+        val matte = m.latest ?: return
+        if (matte.seq != subjectSeq) {
+            subjectSeq = matte.seq
+            if (matte.empty) renderer.setSubjectMask(null, 0, 0) else renderer.setSubjectMask(matte.pixels, matte.w, matte.h)
+        }
     }
 
     private fun liveSource(p: Pipeline) = FinalSource(p.current, p.previous, p.width, p.height, renderer.identity, p.glow)
@@ -663,6 +715,8 @@ class FilmEngine {
                 }
                 renderer.glow(source, look, 0)
                 updateText(w, h, 4096)
+                startSubject(source, 0, forStill = true)
+                finishSubject(waitMs = 3000L)
                 result = renderTiled(source, look, frameFx ?: stillFx(look), w, h, targetRot = 0, frameRot = 0)
                 textKey = null   // the live view re-renders its own size next frame
             } catch (e: Throwable) {

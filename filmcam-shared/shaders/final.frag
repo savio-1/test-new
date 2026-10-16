@@ -25,6 +25,10 @@ uniform sampler2D uEdge;
 uniform sampler2D uDiffuseTex;
 uniform sampler2D uTextTex;  // text overlays, premultiplied, upright frame space
 uniform float uTextOn;
+uniform sampler2D uTextBackTex;  // text set behind the subject, same space as uTextTex
+uniform float uTextBackOn;
+uniform sampler2D uSubject;      // subject matte: upright picture space, row 0 at the top
+uniform float uSubjectOn;
 uniform mat4 uImageMatrix;  // screen uv -> image texture uv (rotation of unrotated stills)
 
 uniform vec2 uTargetSize;   // pixels of the whole output (all tiles)
@@ -835,6 +839,13 @@ void main() {
 
     c *= mask;                      // fisheye circle and the frame line during a slip are black
     c = mix(L.border, c, L.inside);
+
+    // ---- text set behind the subject: the subject's matte cuts it away
+    if (uTextBackOn > 0.5) {
+        vec4 t = texture(uTextBackTex, vec2(f.x, 1.0 - f.y));
+        float m = uSubjectOn > 0.5 ? smoothstep(0.3, 0.7, texture(uSubject, vec2(u.x, 1.0 - u.y)).r) * L.inside : 0.0;
+        c = c * (1.0 - t.a * (1.0 - m)) + t.rgb * (1.0 - m);
+    }
 
     // ---- text overlays, on top of everything (border included)
     if (uTextOn > 0.5) {

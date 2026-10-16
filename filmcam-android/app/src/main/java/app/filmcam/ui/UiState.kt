@@ -59,7 +59,7 @@ class EditSession(val uri: android.net.Uri, val video: Boolean, val width: Int, 
 }
 
 /** What the ruler in the text tray changes. */
-enum class TextTool(val label: String) { FONT("Font"), SIZE("Size"), ROTATE("Rotate"), OPACITY("Opacity"), SPACING("Spacing"), COLOR("Colour"), PLACE("Place") }
+enum class TextTool(val label: String) { FONT("Font"), SIZE("Size"), ROTATE("Rotate"), OPACITY("Opacity"), SPACING("Spacing"), COLOR("Colour"), PLACE("Place"), DEPTH("Depth") }
 
 /** Everything the screen shows. Owned by the activity, mutated on the main thread. */
 class UiState {
@@ -91,6 +91,10 @@ class UiState {
     var textLayers by mutableStateOf<List<TextLayer>>(emptyList())
     var selectedText by mutableStateOf<Long?>(null)
     var textTool by mutableStateOf(TextTool.FONT)
+    /** What text set behind the subject goes behind: "People", or the picked subject ("Horse"). */
+    var subjectLabel by mutableStateOf("People")
+    /** Where the last subject pick was tapped, frame space (0..1, y down), for a moment. */
+    var subjectTap by mutableStateOf<Pair<Float, Float>?>(null)
     var editingText by mutableStateOf(false)
     var guideX by mutableStateOf(false)
     var guideY by mutableStateOf(false)
@@ -233,6 +237,10 @@ interface CameraActions {
     fun setStabilization(on: Boolean)
     fun setTheme(mode: ThemeMode)
     fun setTextLayers(layers: List<TextLayer>)
+    /** Picks the subject that text set behind goes behind: frame space, 0..1, y down. */
+    fun pickSubject(x: Float, y: Float)
+    /** Back to every person in the frame. */
+    fun resetSubject()
     fun importFont()
     fun openLast()
     fun tapToFocus(x: Float, y: Float, w: Float, h: Float)

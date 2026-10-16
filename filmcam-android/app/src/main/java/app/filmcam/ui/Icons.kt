@@ -89,6 +89,8 @@ object Ico {
     val Rotate = icon("rotate", "M20 12a8 8 0 1 1-2.3-5.6", "M20 4.5V9h-4.5")
     val Opacity = icon("opacity", c(12f, 12f, 8.5f), fills = listOf("M12 3.5a8.5 8.5 0 0 1 0 17z"))
     val Shadow = icon("shadow", "M5 5h10v10H5z", "M9 19h10V9")
+    /** A figure in front of a text line: text behind the subject. */
+    val Depth = icon("depth", "M3 9h18", "M3 13h5", "M16 13h5", "M12 7.5a2 2 0 1 0 0.01 0", "M8.5 20c0-3 1.5-5.5 3.5-5.5s3.5 2.5 3.5 5.5")
     val Spacing = icon("spacing", "M4 5v14", "M20 5v14", "M8 12h8", "M10.5 9.5L8 12l2.5 2.5", "M13.5 9.5L16 12l-2.5 2.5")
     val TextSize = icon("textsize", "M4 19l5-14 5 14", "M5.8 14h6.4", "M17.5 9.5l2-2 2 2", "M19.5 7.5v9", "M17.5 14.5l2 2 2-2")
     val Fonts = icon("fonts", "M3.5 18.5l4.5-13 4.5 13", "M5 14.5h6", "M20 18.5v-5.8a2.7 2.7 0 1 0-2.7 2.7H20")

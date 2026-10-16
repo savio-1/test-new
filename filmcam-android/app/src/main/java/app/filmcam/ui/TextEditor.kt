@@ -157,6 +157,13 @@ fun TextEditorLayer(ui: UiState, actions: CameraActions) {
                             return@detectTapGestures
                         }
                         val hit = latestUi.textLayers.lastOrNull { map.hit(it, fonts, pos, 12.dp.toPx()) }
+                        // Depth tool: a tap on the picture picks what the text goes behind.
+                        if (hit == null && latestUi.textTool == TextTool.DEPTH && sel?.behind == true) {
+                            val l = map.toLayer(pos)
+                            actions.pickSubject(l.x, l.y)
+                            latestUi.subjectTap = l.x to l.y
+                            return@detectTapGestures
+                        }
                         // A tap on empty picture: first it deselects, then it closes the tray.
                         if (hit == null && latestUi.selectedText == null) latestUi.dock = Dock.NONE
                         latestUi.selectedText = hit?.id
@@ -220,8 +227,16 @@ fun TextEditorLayer(ui: UiState, actions: CameraActions) {
                 }
             },
     ) {
+        LaunchedEffect(ui.subjectTap) {
+            if (ui.subjectTap != null) { kotlinx.coroutines.delay(700); ui.subjectTap = null }
+        }
         Canvas(Modifier.fillMaxSize()) {
             val map = FrameMap(size.width, size.height, turns)
+            ui.subjectTap?.let { (x, y) ->
+                val c = map.toView(Offset(x, y))
+                drawCircle(Color.White, 26.dp.toPx(), c, style = Stroke(2.dp.toPx()))
+                drawCircle(Color(0xFFFFD27A), 4.dp.toPx(), c)
+            }
             if (ui.guideX) {
                 drawLine(Color(0xFFFFD27A), map.toView(Offset(0.5f, 0f)), map.toView(Offset(0.5f, 1f)), strokeWidth = 1.dp.toPx())
             }
@@ -319,6 +334,7 @@ fun TextTray(ui: UiState, actions: CameraActions, chrome: Float) {
                 item { ToolButton(Ico.Rotate, "Rotate", ui.textTool == TextTool.ROTATE) { ui.textTool = TextTool.ROTATE } }
                 item { ToolButton(Ico.Fade, "Colour", ui.textTool == TextTool.COLOR) { ui.textTool = TextTool.COLOR } }
                 item { ToolButton(Ico.Focus, "Place", ui.textTool == TextTool.PLACE) { ui.textTool = TextTool.PLACE } }
+                item { ToolButton(Ico.Depth, "Depth", ui.textTool == TextTool.DEPTH || layer.behind) { ui.textTool = TextTool.DEPTH } }
                 item { ToolButton(Ico.Opacity, "Opacity", ui.textTool == TextTool.OPACITY) { ui.textTool = TextTool.OPACITY } }
                 item { ToolButton(Ico.Spacing, "Spacing", ui.textTool == TextTool.SPACING) { ui.textTool = TextTool.SPACING } }
                 item {
@@ -357,6 +373,7 @@ fun TextTray(ui: UiState, actions: CameraActions, chrome: Float) {
                     }
                 }
                 TextTool.PLACE -> PlaceGrid(ui, actions, layer)
+                TextTool.DEPTH -> DepthPanel(ui, actions, layer)
             }
         }
     }
@@ -416,6 +433,37 @@ private fun FontTile(label: String, selected: Boolean, outlined: Boolean = false
             label, color = if (selected) p.bg.copy(alpha = 0.75f) else p.muted, fontSize = 9.sp, maxLines = 1,
             overflow = TextOverflow.Ellipsis, style = TextStyle(platformStyle = PlatformTextStyle(includeFontPadding = false)),
         )
+    }
+}
+
+/**
+ * In front of everything, or behind the subject: the subject (every person, or what was
+ * tapped) is cut out of each frame and passes in front of the text, even while it moves.
+ */
+@Composable
+private fun DepthPanel(ui: UiState, actions: CameraActions, layer: TextLayer) {
+    val p = LocalPalette.current
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Pill("In front", filled = !layer.behind) { replace(ui, actions, layer.copy(behind = false)) }
+            Pill("Behind subject", filled = layer.behind) { replace(ui, actions, layer.copy(behind = true)) }
+        }
+        Spacer(Modifier.height(8.dp))
+        if (layer.behind) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Behind: ${ui.subjectLabel}  ·  tap the subject in the picture to pick it",
+                    color = p.muted, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 16.dp).weight(1f, fill = false),
+                )
+                if (ui.subjectLabel != "People") Text(
+                    "All people", color = p.accent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable { actions.resetSubject() }
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                )
+            }
+        } else {
+            Text("Text sits on top of the picture.", color = p.muted, fontSize = 11.sp)
+        }
     }
 }
 

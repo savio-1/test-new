@@ -56,6 +56,7 @@ import app.filmcam.film.MultiShot
 import app.filmcam.film.StampStyle
 import app.filmcam.film.FontLibrary
 import app.filmcam.film.TextLayer
+import app.filmcam.seg.SubjectMasker
 import app.filmcam.ui.ThemeMode
 import app.filmcam.gl.FilmEngine
 import app.filmcam.record.VideoRecorder
@@ -68,6 +69,7 @@ import java.util.concurrent.Executors
 import kotlin.math.max
 
 class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Listener {
+    private var subjects: SubjectMasker? = null
     private val ui = UiState()
     private lateinit var engine: FilmEngine
     private var camera: Camera2Controller? = null
@@ -121,13 +123,20 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         fonts = FontLibrary(this)
         ui.fonts = fonts
         engine.fonts = fonts
+        subjects = SubjectMasker(applicationContext).also { m ->
+            m.onSubject = { label ->
+                if (label == null) ui.message = "Nothing to cut out there: tap a person, pet or object"
+                else ui.subjectLabel = label
+            }
+            engine.subjects = m
+        }
         ui.theme = enumPref("theme", ThemeMode.SYSTEM)
         ui.textLayers = TextLayer.listFromJson(prefs.getString("text", null))
         engine.textLayers = ui.textLayers
 
         val saved = FilmCameras.byId(prefs.getString("camera", null))
         ui.camera = saved
-        ui.category = if (saved.category == app.filmcam.film.CameraCategory.ORIGINAL) app.filmcam.film.CameraCategory.FILM else saved.category
+        ui.category = if (saved.category == app.filmcam.film.CameraCategory.ORIGINAL) app.filmcam.film.CameraCategory.FUJI else saved.category
         ui.look = saved.look
         ui.style = app.filmcam.film.StyleSetting(
             enumPref("style", app.filmcam.film.PhotoStyle.STANDARD), prefs.getFloat("styleTone", 0f),
@@ -234,6 +243,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         stopPreviewPlayer()
         camera?.release()
         engine.release()
+        subjects?.release()
         sound.release()
         io.shutdown()
         super.onDestroy()
@@ -448,6 +458,15 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         ui.textLayers = layers
         pushLook()
         prefs.edit { putString("text", TextLayer.listToJson(layers)) }
+    }
+
+    override fun pickSubject(x: Float, y: Float) {
+        subjects?.pick(x, y)
+    }
+
+    override fun resetSubject() {
+        subjects?.reset()
+        ui.subjectLabel = "People"
     }
 
     override fun importFont() {

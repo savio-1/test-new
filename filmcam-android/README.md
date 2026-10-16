@@ -80,6 +80,18 @@ Burn text into video while you record, and into photos.
   left/centre/right alignment, and a 3×3 placement grid.
 - **Placement:** text is laid out in the upright frame, so it stays put when you turn the phone,
   and it sits above borders (a caption on an instant print works).
+- **Behind the subject (Depth):** set a text *Behind subject* and the subject passes in front of
+  it, live in the viewfinder, in video while you record, and in photos.
+  - **What the subject is:** by default every person in the frame. With the Depth tool open, tap
+    something in the picture to make that the subject: a person, a pet, a horse with its rider,
+    a car, a bike. *All people* goes back to the default.
+  - **How it's cut out:** each frame is segmented on the phone, with no network. DeepLab v3
+    finds people, animals and vehicles; around people, MediaPipe's selfie model adds the soft
+    edge of hair. A picked subject is followed frame to frame by its outline, so it stays the
+    subject as it moves, and someone walking past it is not.
+  - **Timing:** segmentation runs alongside the film passes. The frame waits up to 12 ms for
+    its own cut-out, so a moving subject and its cut-out stay together. If the model is slower
+    on a phone, the cut-out lands one frame later.
 
 ## Fujifilm simulations and recipes
 
