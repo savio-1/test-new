@@ -7,7 +7,7 @@ import app.filmcam.film.FilmLook
 import app.filmcam.film.ShutterSpeed
 import kotlin.math.roundToInt
 
-enum class ToolGroup(val label: String) { LIGHT("Light"), FILM("Film"), LENS("Lens"), MOTION("Motion"), RETRO("Retro") }
+enum class ToolGroup(val label: String) { BASIC("Basic"), LIGHT("Light"), FILM("Film"), LENS("Lens"), MOTION("Motion"), RETRO("Retro") }
 
 /**
  * One adjustment: an icon in the tool row and a ruler. Choices (shutter speed, blur type...)
@@ -32,9 +32,31 @@ object Tools {
     private fun signed(v: Float) = "%+d".format((v * 100).roundToInt())
 
     fun all(evMin: Float, evMax: Float): List<Tool> = listOf(
-        // Light
-        Tool("exposure", "Exposure", Ico.Exposure, ToolGroup.LIGHT, evMin, evMax, format = { "%+.1f".format(it) },
+        // Basic: the everyday corrections, on top of any look (or the Original camera)
+        Tool("exposure", "Exposure", Ico.Exposure, ToolGroup.BASIC, evMin, evMax, format = { "%+.1f".format(it) },
             get = { it.exposureEv }, set = { l, v -> l.copy(exposureEv = (v * 10).roundToInt() / 10f) }),
+        Tool("strength", "Strength", Ico.Film, ToolGroup.BASIC, visible = { it.stock.id != "neutral" },
+            get = { it.intensity }, set = { l, v -> l.copy(intensity = v) }),
+        Tool("warmth", "Temp", Ico.Warmth, ToolGroup.BASIC, -1f, 1f, format = ::signed,
+            get = { it.warmth }, set = { l, v -> l.copy(warmth = v) }),
+        Tool("tint", "Tint", Ico.Tint, ToolGroup.BASIC, -1f, 1f, format = ::signed,
+            get = { it.tint }, set = { l, v -> l.copy(tint = v) }),
+        Tool("contrast", "Contrast", Ico.Contrast, ToolGroup.BASIC, -1f, 1f, format = ::signed,
+            get = { it.contrast }, set = { l, v -> l.copy(contrast = v) }),
+        Tool("highlights", "Highlights", Ico.Highlights, ToolGroup.BASIC, -1f, 1f, format = ::signed,
+            get = { it.highlights }, set = { l, v -> l.copy(highlights = v) }),
+        Tool("shadows", "Shadows", Ico.Shadows, ToolGroup.BASIC, -1f, 1f, format = ::signed,
+            get = { it.shadows }, set = { l, v -> l.copy(shadows = v) }),
+        Tool("saturation", "Saturation", Ico.Saturation, ToolGroup.BASIC, -1f, 1f, format = ::signed,
+            get = { it.saturation }, set = { l, v -> l.copy(saturation = v) }),
+        Tool("vibrance", "Vibrance", Ico.Vibrance, ToolGroup.BASIC, -1f, 1f, format = ::signed,
+            get = { it.vibrance }, set = { l, v -> l.copy(vibrance = v) }),
+        Tool("clarity", "Clarity", Ico.Clarity, ToolGroup.BASIC, -1f, 1f, format = ::signed,
+            get = { it.clarity }, set = { l, v -> l.copy(clarity = v) }),
+        Tool("sharpness", "Sharpness", Ico.Sharpness, ToolGroup.BASIC,
+            get = { it.sharpness }, set = { l, v -> l.copy(sharpness = v) }),
+        Tool("fade", "Fade", Ico.Fade, ToolGroup.BASIC, get = { it.fade }, set = { l, v -> l.copy(fade = v) }),
+        // Light
         Tool("shutter", "Shutter", Ico.Shutter, ToolGroup.LIGHT, 0f, ShutterSpeed.entries.lastIndex.toFloat(),
             options = ShutterSpeed.entries.map { it.label },
             get = { it.shutter.ordinal.toFloat() }, set = { l, v -> l.copy(shutter = ShutterSpeed.entries[v.roundToInt()]) }),
@@ -50,9 +72,6 @@ object Tools {
         Tool("grain", "Grain", Ico.Grain, ToolGroup.FILM, get = { it.grain }, set = { l, v -> l.copy(grain = v) }),
         Tool("grainsize", "Grain size", Ico.GrainSize, ToolGroup.FILM, 0.6f, 3f, format = { "%.1f".format(it) },
             get = { it.grainSize }, set = { l, v -> l.copy(grainSize = v) }),
-        Tool("fade", "Fade", Ico.Fade, ToolGroup.FILM, get = { it.fade }, set = { l, v -> l.copy(fade = v) }),
-        Tool("warmth", "Warmth", Ico.Warmth, ToolGroup.FILM, -1f, 1f, format = ::signed,
-            get = { it.warmth }, set = { l, v -> l.copy(warmth = v) }),
         Tool("vignette", "Vignette", Ico.Vignette, ToolGroup.FILM, get = { it.vignette }, set = { l, v -> l.copy(vignette = v) }),
         Tool("dust", "Dust", Ico.Dust, ToolGroup.FILM, get = { it.dust }, set = { l, v -> l.copy(dust = v) }),
         Tool("burn", "Roll burn", Ico.Burn, ToolGroup.FILM, 0f, 1f, options = onOff,

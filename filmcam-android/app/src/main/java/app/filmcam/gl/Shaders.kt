@@ -126,6 +126,18 @@ void main() {
     const val FINAL = """#version 300 es
 precision highp float;
 precision highp int;
+precision mediump sampler3D;
+
+// Film stock as a 3D LUT baked by tools/film-lab (negative + print model); grade() is the
+// fallback for stocks without one. uIntensity blends the stock with the camera's picture.
+uniform sampler3D uLut;
+uniform float uLutOn;
+uniform float uIntensity;
+uniform float uExposureGain;  // digital exposure, for imported pictures (the camera's is real)
+// Basic adjustments, after the stock: temperature, tint, contrast, saturation (-1..1)
+uniform vec4 uAdjA;
+// highlights, shadows, vibrance, clarity (-1..1)
+uniform vec4 uAdjB;
 
 uniform sampler2D uImage;
 uniform sampler2D uPrevImage;
@@ -338,6 +350,46 @@ vec3 grade(vec3 c) {
     vec3 black = vec3(uFade) * vec3(1.0, 0.97, 1.03);
     vec3 white = vec3(1.0 - uFade * 0.25 - uRolloff * 0.3);
     return black + clamp(c, 0.0, 1.0) * (white - black);
+}
+
+// ---------------------------------------------------------------- film stock LUT and basics
+vec3 applyLut(vec3 c) {
+    // 33 points per side: sample at texel centres.
+    vec3 uvw = clamp(c, 0.0, 1.0) * (32.0 / 33.0) + 0.5 / 33.0;
+    return texture(uLut, uvw).rgb;
+}
+
+vec3 basicAdjust(vec3 c, float localLuma) {
+    float t = uAdjA.x, ti = uAdjA.y;
+    if (t != 0.0 || ti != 0.0) {
+        float l0 = dot(c, LUMA);
+        c *= vec3(1.0 + 0.12 * t + 0.03 * ti, 1.0 + 0.01 * t - 0.08 * ti, 1.0 - 0.16 * t + 0.03 * ti);
+        c *= l0 / max(dot(c, LUMA), 1e-4);
+    }
+    // Highlights and shadows: move only their end of the scale, hue kept.
+    float hi = uAdjB.x, sh = uAdjB.y;
+    if (hi != 0.0 || sh != 0.0) {
+        float l = max(dot(c, LUMA), 1e-4);
+        float l2 = l + sh * 1.4 * l * pow(1.0 - l, 3.0) + hi * 1.4 * l * l * l * (1.0 - l) * (hi < 0.0 ? 1.6 : 1.0);
+        c *= clamp(l2, 0.0, 1.2) / l;
+    }
+    // Clarity: local contrast in the mid-tones, against a wide blur of the picture.
+    if (uAdjB.w != 0.0) {
+        float l = dot(c, LUMA);
+        float mid = 4.0 * l * (1.0 - l);
+        c += (l - localLuma) * uAdjB.w * 0.9 * mid;
+    }
+    if (uAdjA.z != 0.0) {
+        float k = 1.0 + 0.55 * uAdjA.z;
+        c = vec3(sCurve(c.r, k), sCurve(c.g, k), sCurve(c.b, k));
+    }
+    float l = dot(c, LUMA);
+    float s = 1.0 + uAdjA.w;
+    if (uAdjB.z != 0.0) {
+        float chroma = max(max(c.r, c.g), c.b) - min(min(c.r, c.g), c.b);
+        s += uAdjB.z * (1.0 - chroma) * 0.9;
+    }
+    return clamp(mix(vec3(l), c, max(s, 0.0)), 0.0, 1.0);
 }
 
 // ---------------------------------------------------------------- photographic style
@@ -738,8 +790,14 @@ void main() {
     float self = l0 * smoothstep(uHalThreshold, uHalThreshold + 0.3, l0);
 
     // ---- emulsion
-    c = grade(c);
+    if (uExposureGain != 1.0) c = linearToSrgb(srgbToLinear(clamp(c, 0.0, 1.0)) * uExposureGain);
+    vec3 stock = uLutOn > 0.5 ? applyLut(c) : grade(c);
+    c = mix(c, stock, uIntensity);
     if (uStyleOn > 0.5) c = photoStyle(c);
+    if (dot(abs(uAdjA), vec4(1.0)) + dot(abs(uAdjB), vec4(1.0)) > 0.0) {
+        float localLuma = uAdjB.w != 0.0 ? dot(sampleAt(u, 4.5), LUMA) : 0.0;
+        c = basicAdjust(c, localLuma);
+    }
 
     // ---- halation, bloom and streaks, as light (then back to display space)
     vec3 gT = texture(uGlowTight, s).rgb;

@@ -48,6 +48,7 @@ class SpecExportTest {
             "frameRates" to FilmFrameRate.entries.map { linkedMapOf("id" to it.name, "label" to it.label, "fps" to it.fps) },
             "multiShot" to MultiShot.entries.map { linkedMapOf("id" to it.name, "label" to it.label, "shots" to it.shots) },
             "aspectRatios" to AspectRatio.entries.map { linkedMapOf("id" to it.name, "w" to it.w, "h" to it.h) },
+            "lutFormat" to "luts/<stock id>.png: 33^3 RGB, a 1089x33 strip; pixel (x = b*33 + r, y = g) is the output for input (r, g, b)/32. Stocks without one use the parametric grade.",
             "log" to linkedMapOf("curve" to "S-Log3", "primaries" to "Rec.709", "underexposeStops" to LogCurve.UNDER,
                 "hlgGreyScale" to LogCurve.HLG_GREY, "view" to "srgb(1 - exp(-1.6 * linear))"),
         )
@@ -59,6 +60,14 @@ class SpecExportTest {
         )
         var stale = write(specFile, json)
         for ((name, src) in shaders) stale = write(root.resolve("shaders/$name"), src.trimStart() + "\n") || stale
+        // Film stock LUTs (33^3 strips from tools/film-lab), byte for byte.
+        val luts = root.parentFile!!.resolve("filmcam-android/app/src/main/assets/luts")
+        luts.listFiles()?.sortedBy { it.name }?.forEach { f ->
+            val dst = root.resolve("luts/${f.name}")
+            if (!dst.exists() || !dst.readBytes().contentEquals(f.readBytes())) {
+                dst.parentFile!!.mkdirs(); f.copyTo(dst, overwrite = true); stale = true
+            }
+        }
 
         assertEquals(FilmCameras.ALL.size, Regex("\"subtitle\"").findAll(json).count())
         assertTrue("filmcam-shared was out of date and has been rewritten; commit it", !stale || System.getenv("CI") == null)

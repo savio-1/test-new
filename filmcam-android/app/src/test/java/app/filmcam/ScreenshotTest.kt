@@ -93,5 +93,8 @@ class ScreenshotTest {
         availableVideoRes = setOf(app.filmcam.camera.VideoResolution.FHD, app.filmcam.camera.VideoResolution.UHD)
     })
     @Test fun rawChipLight() = shot(state(ThemeMode.LIGHT) { rawSupported = true; raw = true })
+    @Test fun basicAdjustDark() = shot(state(ThemeMode.DARK) {
+        dock = Dock.ADJUST; toolGroup = ToolGroup.BASIC; toolId = "highlights"; look = look.copy(highlights = -0.35f, clarity = 0.2f)
+    })
     @Test fun settingsDark() = shot(state(ThemeMode.DARK) { settingsOpen = true; mode = CaptureMode.VIDEO; availableVideoRes = setOf(app.filmcam.camera.VideoResolution.FHD, app.filmcam.camera.VideoResolution.UHD); availableFps = setOf(24, 25, 30) })
 }

@@ -117,6 +117,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         engine = FilmEngine()
+        engine.lutSource = { id -> runCatching { assets.open("luts/$id.png").use { BitmapFactory.decodeStream(it) } }.getOrNull() }
         fonts = FontLibrary(this)
         ui.fonts = fonts
         engine.fonts = fonts
@@ -140,6 +141,8 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         ui.logViewAssist = prefs.getBoolean("logViewAssist", true)
         ui.logCurve = enumPref("logCurve", app.filmcam.ui.LogCurveChoice.HLG)
         ui.raw = prefs.getBoolean("raw", false)
+        ui.shutterSound = prefs.getBoolean("shutterSound", true)
+        ui.shutterSoundRequired = android.os.Build.VERSION.SDK_INT >= 33 && MediaActionSound.mustPlayShutterSound()
         ui.timerSeconds = prefs.getInt("timer", 0)
         ui.burstCount = prefs.getInt("burstCount", 1)
         ui.burstInterval = prefs.getFloat("burstInterval", 1f)
@@ -283,8 +286,10 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         // Full-resolution sensor modes only work on the main lens, unzoomed by the camera.
         val onMain = ui.lens?.zoom == 1f
         ui.photoSizes = c.photoSizes.filter { onMain || !it.maxRes }.ifEmpty { c.photoSizes }
-        // Default: the biggest size that doesn't need the slow full-sensor mode.
-        val wantMp = prefs.getInt("photoMp", ui.photoSizes.filter { !it.maxRes }.ifEmpty { ui.photoSizes }.maxOf { it.mp })
+        // Default: the sensor's binned size (about 12 MP), as the system camera uses. The 50 MP
+        // and 200 MP modes read every photosite on their own and are noisier except in bright light.
+        val base = ui.photoSizes.firstOrNull { !it.highRes && !it.maxRes } ?: ui.photoSizes.first()
+        val wantMp = prefs.getInt("photoMp", base.mp)
         ui.photoSize = ui.photoSizes.minBy { kotlin.math.abs(it.mp - wantMp) }
         if (!ui.logActive || ui.logPath != app.filmcam.ui.LogPath.GPU) ui.logInIsp = c.contrastCurve
         ui.rawSupported = c.rawSize != null
@@ -469,7 +474,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
             if (ui.countdown <= 0) return
             ui.countdown--
             if (ui.countdown > 0) {
-                sound.play(MediaActionSound.FOCUS_COMPLETE)
+                click(MediaActionSound.FOCUS_COMPLETE)
                 main.postDelayed(this, 1000)
             } else if (ui.mode == CaptureMode.VIDEO) {
                 startRecording()
@@ -494,7 +499,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
     private fun startSeries() {
         if (ui.timerSeconds > 0) {
             ui.countdown = ui.timerSeconds
-            sound.play(MediaActionSound.FOCUS_COMPLETE)
+            click(MediaActionSound.FOCUS_COMPLETE)
             main.postDelayed(countdownTick, 1000)
         } else {
             startBurst()
@@ -561,6 +566,16 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         prefs.edit { putString("logCurve", curve.name) }
         pushLook()
         openCamera()
+    }
+
+    /** Camera sounds, unless turned off (and the law allows it). */
+    private fun click(kind: Int) {
+        if (ui.shutterSound || ui.shutterSoundRequired) sound.play(kind)
+    }
+
+    override fun setShutterSound(on: Boolean) {
+        ui.shutterSound = on
+        prefs.edit { putBoolean("shutterSound", on) }
     }
 
     override fun setRaw(on: Boolean) {
@@ -1014,7 +1029,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         if (look.multiShot == MultiShot.SAMPLER) {
             if (ui.sampling) return
             ui.sampling = true
-            sound.play(MediaActionSound.SHUTTER_CLICK)
+            click(MediaActionSound.SHUTTER_CLICK)
             engine.captureSampler(look) { grid ->
                 runOnUiThread { ui.sampling = false }
                 if (grid == null) runOnUiThread { ui.message = "Couldn't take the frames" } else savePhoto(grid)
@@ -1034,7 +1049,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         val fx = engine.liveFx()
         ui.developing++
         ui.flashPulse++
-        sound.play(MediaActionSound.SHUTTER_CLICK)
+        click(MediaActionSound.SHUTTER_CLICK)
         engine.snapshotTrail()
         cam.takePicture(turns) { jpeg ->
             if (jpeg == null) {
@@ -1149,7 +1164,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
             return
         }
         ui.encoderInfo = "${choice.width}×${choice.height} ${choice.codecName} ${choice.fps}p" + if (ui.logActive) " · Log" else ""
-        sound.play(MediaActionSound.START_VIDEO_RECORDING)
+        click(MediaActionSound.START_VIDEO_RECORDING)
         engine.startRecording(recorder)
         ui.recording = true
         ui.dock = app.filmcam.ui.Dock.NONE
@@ -1180,7 +1195,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         directActive = rec
         cam.setDirectRecording(true)
         ui.encoderInfo = "${rec.width}×${rec.height} HEVC 10-bit HLG ${ui.fps}p"
-        sound.play(MediaActionSound.START_VIDEO_RECORDING)
+        click(MediaActionSound.START_VIDEO_RECORDING)
         ui.recording = true
         ui.dock = app.filmcam.ui.Dock.NONE
         ui.recordStartMs = System.currentTimeMillis()
@@ -1193,13 +1208,13 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
             camera?.setDirectRecording(false)
             // Let the frames already on their way land before closing the stream.
             main.postDelayed({ direct.stop() }, if (immediately) 0L else 150L)
-            sound.play(MediaActionSound.STOP_VIDEO_RECORDING)
+            click(MediaActionSound.STOP_VIDEO_RECORDING)
             ui.recording = false
             ui.savingVideo = true
             return
         }
         engine.stopRecording(immediately)
-        sound.play(MediaActionSound.STOP_VIDEO_RECORDING)
+        click(MediaActionSound.STOP_VIDEO_RECORDING)
         ui.recording = false
         ui.savingVideo = true
     }

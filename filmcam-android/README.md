@@ -12,7 +12,7 @@ The look definitions and shaders are shared with the coming iOS app through
 
 ![The cameras, rendered by the app's own shaders](docs/looks.jpg)
 
-*Original plus all 58 looks, rendered through the app's real shaders by `tools/look-preview`.
+*Original plus all 64 looks, rendered through the app's real shaders by `tools/look-preview`.
 Preview photo: Pietro De Grandi on Unsplash (Unsplash Licence).*
 
 ## The app
@@ -27,10 +27,16 @@ The interface stays out of the picture.
 - **Viewfinder:** rounded, the shape of the saved frame, with glass zoom pills (`.5  1×  2  3  10`).
 - **Dock:** five items above the shutter (*Styles*, *Looks*, *Adjust*, *Frame* and *Text*). Each
   one opens a single tray, never a long panel.
-- **Adjust:** pick a group (Light, Film, Lens, Motion, Retro), then a tool, and drag the ruler.
+- **Adjust:** pick a group, then a tool, and drag the ruler. *Basic* holds the everyday
+  corrections on top of any look or the Original camera: Exposure, Strength (how much of the
+  look's colour), Temp, Tint, Contrast, Highlights, Shadows, Saturation, Vibrance, Clarity,
+  Sharpness and Fade. Then come Light, Film, Lens, Motion and Retro.
   While you drag, everything else fades away so you can judge the picture; only the ruler and
   its value stay. Double-tap the ruler to go back to the camera's own setting. A dot marks the
   tools you've changed.
+- **Closing:** a tap anywhere outside an open tray or panel closes it.
+- **Sounds:** the shutter click and the recording beeps can be turned off in settings, except in
+  countries whose law requires them; the app asks Android.
 - **Themes:** light (on a fine dot grid) and dark, or follow the system.
 - **Grain:** every camera starts with the same light grain; turn it up per shot in *Adjust*.
 
@@ -76,16 +82,16 @@ Burn text into video while you record, and into photos.
 
 ## Cameras
 
-Fifty-eight looks in seven groups, on top of the Original camera. Each look pairs a film stock
+Sixty-four looks in seven groups, on top of the Original camera. Each look pairs a film stock
 with a format and the effects that go with it, and every setting can be changed live
 afterwards. The names describe looks; none of them is a real product or brand.
 
 | Group | Cameras |
 |---|---|
-| **35mm** | Medium 67, Night Classic, Quick Snap, Daily Classic, Classic Ultra, Street Snap, Amber M, Classic 35, Portrait, Verde, Vivid SLR, Disposable '98, Half Frame, Slide, Contact Strip, Cross-Pro, Redscale, Expired |
+| **35mm** | Portrait 400, Gold 200, Pastel 400, Fresh 200, Chrome 50, Medium 67, Night Classic, Quick Snap, Daily Classic, Classic Ultra, Street Snap, Amber M, Classic 35, Portrait, Verde, Vivid SLR, Disposable '98, Half Frame, Slide, Contact Strip, Cross-Pro, Redscale, Expired |
 | **Cine** | Kino (teal and amber), Cine 800T, Cine 250D, Scope (anamorphic 2.39), Bleach Bypass, Super 8, Super 8 Reel, 16mm, K-64 Reel, 1929 Color (two-strip), Technicolour (three-strip) |
 | **Instant** | Instant, Instant SQ, Instant Mini, Peel-Apart |
-| **B&W** | Street Mono, Noir, Silver, Medium Format, Sepia, Silent Film (orthochromatic, 16 fps) |
+| **B&W** | Mono 400, Street Mono, Noir, Silver, Medium Format, Sepia, Silent Film (orthochromatic, 16 fps) |
 | **Toy & Fun** | Fun Vivid, Toy Lens, Pinhole, 4-Lens Sampler, Fisheye, Stereo 3D, Prism, Flash Party |
 | **Motion & Dream** | Golden Hour (mist filter), Summer Reel (Super 8 holiday, deep teal), Step Print, Panning, Spin (with a rainbow arc), Zoom Burst, Dreamy Soft, Stop Motion (6 fps) |
 | **Retro video** | Camcorder '98 (VHS), Mini DV, CCD 2005 |
@@ -115,7 +121,27 @@ camcorder display (REC or PLAY plus the date and time).
 
 ## The film emulation
 
-**Colour science per stock**
+**Film stocks as a darkroom model.** Each colour stock is baked by
+[`tools/film-lab`](tools/film-lab) into a 3D LUT that the GPU applies. The model is a colour
+negative printed on paper:
+- Each dye layer has its own characteristic curve, which gives film's real colour crossovers.
+- Printer lights set the stock's grey.
+- Dye saturation lives in density space: rich mid-tones, quiet highlights.
+- Each stock has its own tone curve, with a lab scan's lifted blacks and soft whites.
+- Then hue shifts (olive or teal greens, warm skin, cyan skies), split toning and soft gamut
+  compression, so strong colours never clip to neon.
+
+The stocks are tuned toward the well-known character of classic Kodak and Fujifilm films:
+- **Negatives:** warm portrait, golden consumer, punchy 400, budget, saturated 100, green 400,
+  cool 200, pastel pro.
+- **Slide:** landscape and neutral.
+- **Cine:** tungsten and daylight.
+- **Also:** instant and peel-apart prints, and black and white.
+
+*Strength* blends any stock with the camera's own picture. Stylised stocks (two-strip, VHS,
+redscale…) keep the parametric colour model below.
+
+**Colour science per stock** (parametric stocks)
 - White balance and dye crosstalk.
 - Per-layer gamma: the crossovers that tint shadows and highlights.
 - Hue shifts (greens toward olive, blues toward cyan, and so on).
@@ -132,7 +158,9 @@ camcorder display (REC or PLAY plus the date and time).
 - A direct-flash look.
 
 **Emulation**
-- Grain that clumps, is strongest in the mid-tones and coarsest in the blue layer, and changes every film frame.
+- Grain that clumps, is strongest in the mid-tones and coarsest in the blue layer, and changes
+  every film frame. Every look starts with fine, light grain, and lenses are a little sharper
+  than before, so pictures keep their clarity.
 - Fade and warmth.
 
 **Lens**
@@ -166,6 +194,18 @@ camcorder display (REC or PLAY plus the date and time).
   support, which most mid-range and flagship phones have.
 
 ## Capture
+
+**Picture quality.** The app asks the camera for what the system camera uses:
+- **Binned 12 MP by default.** The 50 and 200 MP modes read every photosite separately, which
+  is noisier except in bright light. They are still one tap away.
+- **Best noise reduction and sharpening** for photos, in the viewfinder too.
+- **Stream use cases** (Android 13+). The video stream is marked as a recording stream, so the
+  camera gives it its video processing (temporal noise reduction and the like) rather than the
+  lighter preview processing.
+- **JPEG quality 97** for developed photos.
+
+Some of the system camera's processing stays private to it (Samsung's multi-frame HDR and scene
+optimiser), so a phone's own app can still look cleaner in hard light.
 
 - **Frame shapes:** 3:4, 4:5, 1:1, 2:3 and 9:16, separately for photo and video. The frame turns
   with the phone, so 9:16 becomes 16:9 when you hold it sideways. The viewfinder, the saved
@@ -299,6 +339,7 @@ Camera2 stream (up to 8K) ──► SurfaceTexture (OES) ─┐
 | `film/FrameFx.kt` | Per-frame randomness: weave, slips, flicker, leaks, prism, tape tracking, scratches |
 | `camera/LogCurve.kt` | The S-Log3 and HLG curves, the view assist and the .cube LUTs |
 | `film/PhotoStyle.kt` | The photographic styles and their settings |
+| `tools/film-lab` | The negative + print model and `stocks.json`; bakes `assets/luts` |
 | `ui/StylesTray.kt` | The style row, the dotted Tone/Colour pad and the Palette slider |
 | `record/VideoRecorder.kt` | Codec choice, MP4 muxing, microphone or copied audio |
 | `record/VideoExporter.kt` | Imported clips: preview playback, and developing them frame by frame |

@@ -82,6 +82,8 @@ class FilmEngine {
     @Volatile var logGain = 1f
     /** Editing an imported picture: the frame stays upright whichever way the phone is held. */
     @Volatile var upright = false
+    /** Loads a film stock's LUT strip (assets/luts/<id>.png), or null. */
+    @Volatile var lutSource: ((String) -> Bitmap?)? = null
     private var textKey: Any? = null
     private var textBitmap: Bitmap? = null
 
@@ -128,6 +130,7 @@ class FilmEngine {
             pbuffer = egl.createPbufferSurface(1, 1)
             egl.makeCurrent(pbuffer)
             renderer = FilmRenderer()
+            renderer.lutSource = { id -> lutSource?.invoke(id) }
             maxTextureSize = GlUtil.maxTextureSize()
         }
     }
@@ -304,6 +307,7 @@ class FilmEngine {
             renderer.updateOverlays(look.stamp, rec != null)
         }
         renderer.logGain = logGain
+        renderer.digitalExposure = upright
 
         val src = liveSource(p)
         if (turns % 2 == 0) updateText(p.width, p.height, 2048) else updateText(p.height, p.width, 2048)
@@ -624,6 +628,7 @@ class FilmEngine {
             try {
                 egl.makeCurrent(pbuffer)
                 renderer.updateOverlays(look.stamp, false)
+                renderer.digitalExposure = upright
                 val odd = (rotationCw / 90) % 2 == 1
                 val uw = if (odd) still.height else still.width
                 val uh = if (odd) still.width else still.height

@@ -106,7 +106,9 @@ fun CameraScreen(ui: UiState, actions: CameraActions) {
                 TopBar(ui, actions, iconRotation, Modifier.alpha(chrome))
                 QuickBar(ui, actions, Modifier.alpha(chrome))
                 Box(
-                    Modifier.weight(1f).fillMaxWidth().padding(horizontal = 10.dp),
+                    Modifier.weight(1f).fillMaxWidth().padding(horizontal = 10.dp)
+                        // A tap anywhere outside a tray or panel closes it.
+                        .pointerInput(Unit) { detectTapGestures { ui.dock = Dock.NONE; ui.quick = null } },
                     contentAlignment = Alignment.Center,
                 ) {
                     Viewfinder(ui, actions, chrome, iconRotation)
@@ -424,14 +426,18 @@ private fun Viewfinder(ui: UiState, actions: CameraActions, chrome: Float, iconR
         if (ui.dock == Dock.TEXT && !ui.logActive) {
             TextEditorLayer(ui, actions)
         } else if (ui.edit != null) {
-            Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { ui.quick = null } })
+            Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { ui.quick = null; ui.dock = Dock.NONE } })
         } else {
             Box(
                 Modifier
                     .fillMaxSize()
                     .pointerInput(Unit) {
                         detectTapGestures { pos ->
-                            if (ui.quick != null) { ui.quick = null; return@detectTapGestures }
+                            // With a tray or panel open, a tap on the picture closes it rather than focusing.
+                            if (ui.quick != null || ui.dock != Dock.NONE) {
+                                ui.quick = null; ui.dock = Dock.NONE
+                                return@detectTapGestures
+                            }
                             focus = pos
                             focusKey = System.nanoTime()
                             actions.tapToFocus(pos.x, pos.y, size.width.toFloat(), size.height.toFloat())
@@ -712,6 +718,8 @@ fun TrayCard(chrome: Float, content: @Composable BoxScope.() -> Unit) {
             .padding(horizontal = 8.dp)
             .clip(RoundedCornerShape(22.dp))
             .background(p.surface.copy(alpha = 0.95f * chrome))
+            // The card keeps its own taps, so only taps outside it close it.
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
             .padding(vertical = 12.dp),
         content = content,
     )

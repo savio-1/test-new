@@ -7,6 +7,7 @@ what the iOS app will read so that both render identical looks.
 |---|---|
 | `spec/filmcam-spec.json` | Every film stock, camera (look), photographic style, border, stamp, blur mode, shutter speed, frame rate, aspect ratio and the log constants |
 | `shaders/*.vert, *.frag` | The GLSL ES 3.00 source of every render pass |
+| `luts/*.png` | Film stock colour as 33³ LUT strips, baked by `filmcam-android/tools/film-lab` |
 | `PORTING-iOS.md` | How the Android app maps onto iOS, and what to port in what order |
 
 Both are **generated** from the Android sources by

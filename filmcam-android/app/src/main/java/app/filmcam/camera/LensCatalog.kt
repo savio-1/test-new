@@ -151,6 +151,12 @@ class CameraCaps(val id: String, ch: CameraCharacteristics) {
     /** The offered size closest to [mp] megapixels. */
     fun photoSize(mp: Int): PhotoSize = photoSizes.minBy { abs(it.pixels - mp * 1_000_000L) }
 
+    val noiseModes: IntArray = ch.get(CameraCharacteristics.NOISE_REDUCTION_AVAILABLE_NOISE_REDUCTION_MODES) ?: IntArray(0)
+    /** The camera can be told what each stream is for (video record, still), so it processes it as such. */
+    val streamUseCases: LongArray = if (Build.VERSION.SDK_INT >= 33 &&
+        CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_STREAM_USE_CASE in capabilities
+    ) ch.get(CameraCharacteristics.SCALER_AVAILABLE_STREAM_USE_CASES) ?: LongArray(0) else LongArray(0)
+
     /** Kept for the DNG writer. */
     val characteristics: CameraCharacteristics = ch
 

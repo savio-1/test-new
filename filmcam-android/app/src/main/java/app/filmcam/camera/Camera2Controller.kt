@@ -99,6 +99,8 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
     /** The camera ignored our log curve (some phones list it but don't apply it). */
     private var ispCurveRejected = false
     @Volatile private var directOn = false
+    /** The camera refused a session with stream use cases; build them plain from now on. */
+    private var useCasesFailed = false
     private var streamSize = Size(1920, 1080)
 
     private var lastExposureNs = 0L
@@ -181,6 +183,13 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
             if (hlg && Build.VERSION.SDK_INT >= 33) it.dynamicRangeProfile = android.hardware.camera2.params.DynamicRangeProfiles.HLG10
         }
         val outputs = arrayListOf(out(surface))
+        // Tell the camera what the stream is for: a video stream gets the video pipeline's
+        // processing (temporal noise reduction and the like), not the lighter preview one.
+        if (Build.VERSION.SDK_INT >= 33 && !useCasesFailed && cfg.mode == CaptureMode.VIDEO && !hlg &&
+            CameraMetadata.SCALER_AVAILABLE_STREAM_USE_CASES_VIDEO_RECORD.toLong() in c.streamUseCases
+        ) {
+            outputs[0].streamUseCase = CameraMetadata.SCALER_AVAILABLE_STREAM_USE_CASES_VIDEO_RECORD.toLong()
+        }
         if (cfg.mode == CaptureMode.VIDEO) cfg.direct?.let { outputs += out(it) }
         if (cfg.mode == CaptureMode.PHOTO && cfg.raw && !cfg.photo.maxRes) c.rawSize?.let { rs ->
             rawReader = ImageReader.newInstance(rs.width, rs.height, ImageFormat.RAW_SENSOR, 2).also { r ->
@@ -193,6 +202,12 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
             reader = ImageReader.newInstance(js.width, js.height, ImageFormat.JPEG, 2).also { r ->
                 r.setOnImageAvailableListener({ onJpeg(it) }, handler)
                 val out = OutputConfiguration(r.surface)
+                if (Build.VERSION.SDK_INT >= 33 && !useCasesFailed && !js.maxRes &&
+                    CameraMetadata.SCALER_AVAILABLE_STREAM_USE_CASES_STILL_CAPTURE.toLong() in c.streamUseCases
+                ) {
+                    out.streamUseCase = CameraMetadata.SCALER_AVAILABLE_STREAM_USE_CASES_STILL_CAPTURE.toLong()
+                    outputs[0].streamUseCase = CameraMetadata.SCALER_AVAILABLE_STREAM_USE_CASES_PREVIEW.toLong()
+                }
                 if (js.maxRes && Build.VERSION.SDK_INT >= 31) {
                     out.addSensorPixelModeUsed(CameraMetadata.SENSOR_PIXEL_MODE_MAXIMUM_RESOLUTION)
                 }
@@ -214,7 +229,9 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
                     if (gen != generation) return
                     // Fall back: drop high-res stills first, then step the video size down.
                     val smaller = c.photoSizes.filter { it.pixels < cfg.photo.pixels }.maxByOrNull { it.pixels }
+                    val usedUseCases = Build.VERSION.SDK_INT >= 33 && !useCasesFailed && c.streamUseCases.isNotEmpty()
                     val retry = when {
+                        usedUseCases -> { useCasesFailed = true; cfg }
                         // Drop the extras first: 10-bit, then RAW.
                         cfg.hlg || cfg.direct != null -> cfg.copy(hlg = false, direct = null)
                         cfg.raw -> cfg.copy(raw = false)
@@ -403,6 +420,18 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
             b.set(CaptureRequest.TONEMAP_MODE, CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE)
             b.set(CaptureRequest.TONEMAP_CURVE, LogCurve.tonemap(min(c.maxCurvePoints, 64), appliedLogUnder))
             if (CameraMetadata.EDGE_MODE_OFF in c.edgeModes) b.set(CaptureRequest.EDGE_MODE, CameraMetadata.EDGE_MODE_OFF)
+        }
+
+        // Photos: the camera's best noise reduction and sharpening, in the viewfinder too, so it
+        // looks like the system camera. Video keeps the camera's default (fast) modes, which
+        // never cost frame rate.
+        if (!video || still) {
+            if (CameraMetadata.NOISE_REDUCTION_MODE_HIGH_QUALITY in c.noiseModes) {
+                b.set(CaptureRequest.NOISE_REDUCTION_MODE, CameraMetadata.NOISE_REDUCTION_MODE_HIGH_QUALITY)
+            }
+            if (!logInIsp && CameraMetadata.EDGE_MODE_HIGH_QUALITY in c.edgeModes) {
+                b.set(CaptureRequest.EDGE_MODE, CameraMetadata.EDGE_MODE_HIGH_QUALITY)
+            }
         }
 
         if (video && c.stabilization) {

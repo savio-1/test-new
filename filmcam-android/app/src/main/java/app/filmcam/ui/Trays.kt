@@ -393,6 +393,11 @@ fun SettingsSheet(ui: UiState, actions: CameraActions) {
             if (ui.manualSupported) {
                 SettingSwitch("Real shutter speed", "The sensor exposes for the chosen speed", ui.realShutter) { actions.setRealShutter(it) }
             }
+            SettingSwitch(
+                "Shutter and record sounds",
+                if (ui.shutterSoundRequired) "Required by law where you are" else "The click, and the beeps when recording starts and stops",
+                ui.shutterSound || ui.shutterSoundRequired,
+            ) { if (!ui.shutterSoundRequired) actions.setShutterSound(it) }
             Spacer(Modifier.height(4.dp))
         }
     }

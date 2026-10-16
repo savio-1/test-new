@@ -45,10 +45,15 @@ whole picture and `uTileOffset` this tile's place in it.
 ### How a look becomes uniforms
 
 `FilmRenderer.drawFinal()` is the reference. Per frame:
-- Stock → `uTemp` (= temperature + 0.6 × look.warmth), `uTint`, `uSat`, `uSatShadow`,
+- Stock → its LUT (`luts/<id>.png`, a 33³ 3D texture on unit 10: `uLut`, `uLutOn` = 1) when
+  there is one, else the parametric grade: `uTemp` (= stock temperature), `uTint`, `uSat`, `uSatShadow`,
   `uSatHigh`, `uContrast`, `uFade` (= min(stock.fade + 0.18 × look.fade, 0.35)), `uRolloff`,
   `uBleach`, `uGamma`, `uHueShift`, `uShadowTint`, `uHighTint`, `uMixer` (row-major →
   column-major), `uMono`, `uHalColor`, `uColorGrain`.
+- Look strength and basic adjustments → `uIntensity` (stock blended with the camera's picture),
+  `uAdjA` (warmth, tint, contrast, saturation), `uAdjB` (highlights, shadows, vibrance, clarity),
+  `uExposureGain` (2^EV for imported pictures, 1 for the camera, which exposes for real);
+  sharpness folds into `uSoftness` (= softness − 0.8 × sharpness).
 - Look → the effect uniforms of the same names. `uHalThreshold` = 0.62 − 0.2 × halation;
   `uGrainSize` is clamped to 0.5..4; `uBlurDir` = (cos, sin) of blurAngle.
 - Style (Original camera only) → `uStyleOn` (0 when the style is identity), `uStyleA` (warm,

@@ -157,6 +157,19 @@ data class FilmLook(
     val exposureEv: Float = 0f,
     /** Photographic style; only the Original camera sets one. */
     val style: StyleSetting = StyleSetting(),
+    // basic adjustments, after the stock (-1..1 unless noted)
+    /** How much of the film stock's colour: 0 = the camera's own, 1 = all of it. */
+    val intensity: Float = 1f,
+    val tint: Float = 0f,
+    val contrast: Float = 0f,
+    val saturation: Float = 0f,
+    val vibrance: Float = 0f,
+    val highlights: Float = 0f,
+    val shadows: Float = 0f,
+    /** Local contrast in the mid-tones. */
+    val clarity: Float = 0f,
+    /** Unsharp mask, 0..1 (adds to the lens's own sharpening). */
+    val sharpness: Float = 0f,
 )
 
 enum class CameraCategory(val label: String) {
@@ -182,11 +195,19 @@ data class FilmCamera(
 
 object FilmCameras {
     /** Every camera starts with the same light grain: present, never in the way. */
-    const val DEFAULT_GRAIN = 0.2f
-    const val DEFAULT_GRAIN_SIZE = 1.2f
+    const val DEFAULT_GRAIN = 0.14f
+    const val DEFAULT_GRAIN_SIZE = 1.05f
 
+    /**
+     * Every camera gets the same light grain, and a lens that is sharper than it used to be:
+     * softness and fringing at 60% of the written value (lo-fi cameras stay soft, just not mushy).
+     */
     private fun cam(id: String, name: String, sub: String, cat: CameraCategory, look: FilmLook) =
-        FilmCamera(id, name, sub, cat, look.copy(grain = DEFAULT_GRAIN, grainSize = DEFAULT_GRAIN_SIZE))
+        FilmCamera(id, name, sub, cat, look.copy(
+            grain = DEFAULT_GRAIN, grainSize = DEFAULT_GRAIN_SIZE,
+            softness = if (look.softness > 0f) look.softness * 0.6f else look.softness,
+            aberration = look.aberration * 0.6f,
+        ))
 
     /** No filter: the phone's own picture, straight through. Borders, stamps and text still work. */
     val ORIGINAL = FilmCamera(
@@ -196,6 +217,21 @@ object FilmCameras {
 
     val ALL: List<FilmCamera> = listOf(
         ORIGINAL,
+        // ------------------------------------------------------------ classic film stocks, straight
+        cam("portra", "Portrait 400", "Warm portrait negative · creamy skin", CameraCategory.FILM,
+            FilmLook(stock = FilmStocks.PORTRAIT_400, halation = 0.3f, bloom = 0.15f, vignette = 0.18f, aberration = 0.05f)),
+        cam("gold", "Gold 200", "Golden everyday negative", CameraCategory.FILM,
+            FilmLook(stock = FilmStocks.GOLD_200, halation = 0.32f, bloom = 0.15f, vignette = 0.22f, aberration = 0.06f)),
+        cam("pastel", "Pastel 400", "Airy mint-and-cream negative", CameraCategory.FILM,
+            FilmLook(stock = FilmStocks.PASTEL_400, halation = 0.28f, bloom = 0.2f, vignette = 0.15f, aberration = 0.04f)),
+        cam("fresh", "Fresh 200", "Cool, crisp everyday negative", CameraCategory.FILM,
+            FilmLook(stock = FilmStocks.FRESH_200, halation = 0.28f, bloom = 0.12f, vignette = 0.2f, aberration = 0.05f)),
+        cam("chrome50", "Chrome 50", "Landscape slide · vivid greens and blues", CameraCategory.FILM,
+            FilmLook(stock = FilmStocks.CHROME_50, halation = 0.18f, bloom = 0.1f, vignette = 0.25f, aberration = 0.03f,
+                softness = -0.1f)),
+        cam("mono", "Mono 400", "Classic black-and-white · punchy", CameraCategory.MONO,
+            FilmLook(stock = FilmStocks.MONO_400, halation = 0.15f, bloom = 0.1f, vignette = 0.25f, aberration = 0f)),
+
         // ------------------------------------------------------------ after the retro camera apps
         cam("medium67", "Medium 67", "Pro 160 · 6×7 portraits", CameraCategory.FILM,
             FilmLook(stock = FilmStocks.PRO_160, halation = 0.25f, bloom = 0.2f, vignette = 0.25f, aberration = 0.04f,

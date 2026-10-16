@@ -103,6 +103,9 @@ for cid, name, sub, cat, body, uniform_grain in found:
     gs = re.search(r'const val DEFAULT_GRAIN_SIZE = ([\d.]+)f', look_src)
     if uniform_grain and g: look['grain'] = float(g.group(1))
     if uniform_grain and gs: look['grainSize'] = float(gs.group(1))
+    if uniform_grain:   # cam(): a sharper lens than written
+        if look.get('softness', 0) > 0: look['softness'] *= 0.6
+        look['aberration'] = look.get('aberration', 0) * 0.6
     cams.append({'id': cid, 'name': name, 'subtitle': sub, 'category': cat, 'look': look})
 
 # Photographic styles: enum entries NAME("Label", field = value, ...), with nested parentheses.
@@ -123,6 +126,15 @@ for m in re.finditer(r'\n    ([A-Z_]+)\(', style_body):
 for c in cams:
     c['look'].pop('style', None)
 
-json.dump({'shaders': shaders, 'cameras': cams, 'frames': enum_ids['FrameStyle'], 'styles': styles},
+# Film stock LUTs (tools/film-lab), as data URLs for the page.
+import base64
+lut_dir = sys.argv[1] + '/app/src/main/assets/luts/'
+luts = {}
+for c in cams:
+    sid = c['look']['stock'].get('id')
+    if sid and sid not in luts and os.path.exists(lut_dir + sid + '.png'):
+        luts[sid] = 'data:image/png;base64,' + base64.b64encode(open(lut_dir + sid + '.png', 'rb').read()).decode()
+
+json.dump({'shaders': shaders, 'cameras': cams, 'frames': enum_ids['FrameStyle'], 'styles': styles, 'luts': luts},
           open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data.json'), 'w'), indent=1)
 print(len(styles), 'styles,', len(cams), 'cameras,', len(stocks), 'stocks,', len(enum_ids['FrameStyle']), 'borders')

@@ -145,6 +145,39 @@ class FilmRenderer {
     val identity = FloatArray(16).also { android.opengl.Matrix.setIdentityM(it, 0) }
     /** 2^stops of underexposure that log footage gives back. */
     var logGain = 1f
+    /** Exposure applied on the GPU (imported pictures; the camera does it for real otherwise). */
+    var digitalExposure = false
+    /** Film stock LUT strips (33 x 33^2), by stock id; null when a stock has none. */
+    var lutSource: ((String) -> Bitmap?)? = null
+    private val luts = HashMap<String, Int>()
+
+    /** The 3D texture of a stock's LUT, uploaded on first use; 0 when there is none. */
+    private fun lutFor(id: String): Int = luts.getOrPut(id) {
+        val bmp = lutSource?.invoke(id) ?: return@getOrPut 0
+        val n = bmp.height
+        if (bmp.width != n * n) { bmp.recycle(); return@getOrPut 0 }
+        val px = IntArray(bmp.width * n)
+        bmp.getPixels(px, 0, bmp.width, 0, 0, bmp.width, n)
+        bmp.recycle()
+        // Strip x = b * n + r, y = g  ->  3D texture [b][g][r].
+        val buf = ByteBuffer.allocateDirect(n * n * n * 4).order(ByteOrder.nativeOrder())
+        for (b in 0 until n) for (g in 0 until n) for (r in 0 until n) {
+            val p = px[g * n * n + b * n + r]
+            buf.put((p shr 16 and 0xFF).toByte()).put((p shr 8 and 0xFF).toByte()).put((p and 0xFF).toByte()).put(255.toByte())
+        }
+        buf.position(0)
+        val tex = IntArray(1).also { GLES30.glGenTextures(1, it, 0) }[0]
+        GLES30.glBindTexture(GLES30.GL_TEXTURE_3D, tex)
+        for (pname in intArrayOf(GLES30.GL_TEXTURE_MIN_FILTER, GLES30.GL_TEXTURE_MAG_FILTER)) {
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_3D, pname, GLES30.GL_LINEAR)
+        }
+        for (pname in intArrayOf(GLES30.GL_TEXTURE_WRAP_S, GLES30.GL_TEXTURE_WRAP_T, GLES30.GL_TEXTURE_WRAP_R)) {
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_3D, pname, GLES30.GL_CLAMP_TO_EDGE)
+        }
+        GLES30.glTexImage3D(GLES30.GL_TEXTURE_3D, 0, GLES30.GL_RGBA8, n, n, n, 0, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, buf)
+        tex
+    }
+    private var emptyLut = 0
 
     init {
         val quad = floatArrayOf(
@@ -423,7 +456,7 @@ class FilmRenderer {
             set1f("uBaseLod", max(0f, log2(min(src.width, src.height).toFloat() / min(iw, ih))))
             set1f("uRefScale", max(1f, min(iw, ih) / 1080f))
 
-            set1f("uTemp", s.temperature + look.warmth * 0.6f)
+            set1f("uTemp", s.temperature)
             set1f("uTint", s.tint)
             set1f("uSat", s.saturation)
             set1f("uSatShadow", s.satShadows)
@@ -452,7 +485,7 @@ class FilmRenderer {
             set1f("uVignette", look.vignette)
             set1f("uDust", look.dust)
             set1f("uAberration", look.aberration)
-            set1f("uSoftness", look.softness)
+            set1f("uSoftness", (look.softness - 0.8f * look.sharpness).coerceIn(-1f, 1f))
             set1f("uCornerBlur", look.cornerBlur)
             set1f("uDistortion", look.distortion)
             set1f("uCircle", if (look.circleMask) 1f else 0f)
@@ -495,6 +528,20 @@ class FilmRenderer {
             set3f("uStyleShadow", ps.shadowTint.r, ps.shadowTint.g, ps.shadowTint.b)
             set3f("uStyleHigh", ps.highTint.r, ps.highTint.g, ps.highTint.b)
             GLES30.glUniform4f(loc("uStyleUser"), st.tone, st.color, st.palette, ps.skin)
+            // Film stock: its LUT when it has one, the parametric grade otherwise.
+            val lut = lutFor(s.id)
+            if (emptyLut == 0) {
+                emptyLut = IntArray(1).also { GLES30.glGenTextures(1, it, 0) }[0]
+                GLES30.glBindTexture(GLES30.GL_TEXTURE_3D, emptyLut)
+                GLES30.glTexImage3D(GLES30.GL_TEXTURE_3D, 0, GLES30.GL_RGBA8, 1, 1, 1, 0, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE,
+                    ByteBuffer.allocateDirect(4))
+            }
+            bindTex(10, if (lut != 0) lut else emptyLut, GLES30.GL_TEXTURE_3D); set1i("uLut", 10)
+            set1f("uLutOn", if (lut != 0) 1f else 0f)
+            set1f("uIntensity", look.intensity.coerceIn(0f, 1f))
+            set1f("uExposureGain", if (digitalExposure) Math.pow(2.0, look.exposureEv.toDouble()).toFloat() else 1f)
+            GLES30.glUniform4f(loc("uAdjA"), look.warmth, look.tint, look.contrast, look.saturation)
+            GLES30.glUniform4f(loc("uAdjB"), look.highlights, look.shadows, look.vibrance, look.clarity)
             set1i("uLogMode", logMode)
             set1f("uLogGain", logGain)
         }

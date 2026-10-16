@@ -194,9 +194,35 @@ async function runFilm(DATA, imgUrl, camId, opts) {
     gl.uniform3fv(U(f, 'uStyleShadow'), ps.shadowTint); gl.uniform3fv(U(f, 'uStyleHigh'), ps.highTint);
     gl.uniform4f(U(f, 'uStyleUser'), sTone, sColor, sPal, ps.skin);
   }
+  // Film stock LUT (33^3 strip: x = b*33 + r, y = g) as a 3D texture, as FilmRenderer does.
+  const lutUrl = DATA.luts && DATA.luts[look.stock.id];
+  let lutTex = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE10); gl.bindTexture(gl.TEXTURE_3D, lutTex);
+  if (lutUrl && !opts.noLut) {
+    const li = await new Promise(r => { const i = new Image(); i.onload = () => r(i); i.src = lutUrl; });
+    const n = li.height, cv = document.createElement('canvas'); cv.width = li.width; cv.height = n;
+    const cx = cv.getContext('2d'); cx.drawImage(li, 0, 0); const px = cx.getImageData(0, 0, li.width, n).data;
+    const buf = new Uint8Array(n * n * n * 4);
+    for (let b = 0; b < n; b++) for (let g = 0; g < n; g++) for (let r = 0; r < n; r++) {
+      const si = (g * n * n + b * n + r) * 4, di = ((b * n + g) * n + r) * 4;
+      buf[di] = px[si]; buf[di + 1] = px[si + 1]; buf[di + 2] = px[si + 2]; buf[di + 3] = 255;
+    }
+    gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, n, n, n, 0, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+  } else {
+    gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, 1, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+  }
+  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+  gl.useProgram(f);
+  gl.uniform1i(U(f, 'uLut'), 10); gl.uniform1f(U(f, 'uLutOn'), lutUrl && !opts.noLut ? 1 : 0);
+  gl.uniform1f(U(f, 'uIntensity'), look.intensity === undefined ? 1 : look.intensity);
+  gl.uniform1f(U(f, 'uExposureGain'), 1);
+  gl.uniform4f(U(f, 'uAdjA'), look.warmth || 0, look.tint || 0, look.contrast || 0, look.saturation || 0);
+  gl.uniform4f(U(f, 'uAdjB'), look.highlights || 0, look.shadows || 0, look.vibrance || 0, look.clarity || 0);
   const s = look.stock;
   const f1 = (n, v) => gl.uniform1f(U(f, n), v), f3 = (n, v) => gl.uniform3fv(U(f, n), v);
-  f1('uTemp', s.temperature + look.warmth * 0.6); f1('uTint', s.tint); f1('uSat', s.saturation);
+  f1('uTemp', s.temperature); f1('uTint', s.tint); f1('uSat', s.saturation);
   f1('uSatShadow', s.satShadows); f1('uSatHigh', s.satHighlights); f1('uContrast', s.contrast);
   f1('uFade', Math.min(s.fade + look.fade * 0.18, 0.35)); f1('uRolloff', s.highlightRolloff); f1('uBleach', s.bleach);
   f3('uGamma', s.gamma); f3('uHueShift', s.hueShift); f3('uShadowTint', s.shadowTint); f3('uHighTint', s.highlightTint);

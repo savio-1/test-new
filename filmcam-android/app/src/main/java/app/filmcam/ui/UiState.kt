@@ -77,7 +77,7 @@ class UiState {
 
     // chrome
     var dock by mutableStateOf(Dock.NONE)
-    var toolGroup by mutableStateOf(ToolGroup.LIGHT)
+    var toolGroup by mutableStateOf(ToolGroup.BASIC)
     var toolId by mutableStateOf("exposure")
     /** True while a ruler or a text layer is being dragged: everything else steps aside. */
     var adjusting by mutableStateOf(false)
@@ -154,6 +154,9 @@ class UiState {
     /** The camera refused the 10-bit session; S-Log3 takes over. */
     var hlgFailed by mutableStateOf(false)
     var raw by mutableStateOf(false)
+    var shutterSound by mutableStateOf(true)
+    /** Some countries require the shutter sound; then it can't be turned off. */
+    var shutterSoundRequired by mutableStateOf(false)
     var rawSupported by mutableStateOf(false)
     val useHlg get() = logActive && logCurve == LogCurveChoice.HLG && hlgAvailable && !hlgFailed
     val logPath get() = when {
@@ -211,6 +214,7 @@ interface CameraActions {
     fun setLogViewAssist(on: Boolean)
     fun setLogCurve(curve: LogCurveChoice)
     fun setRaw(on: Boolean)
+    fun setShutterSound(on: Boolean)
     fun saveLut()
     fun setTimer(seconds: Int)
     fun setBurst(count: Int, interval: Float)

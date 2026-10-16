@@ -107,6 +107,14 @@ object Ico {
     val Styles = icon("styles", "M6 3.5h12A2.5 2.5 0 0 1 20.5 6v12a2.5 2.5 0 0 1-2.5 2.5H6A2.5 2.5 0 0 1 3.5 18V6A2.5 2.5 0 0 1 6 3.5z",
         fills = listOf(8f, 12f, 16f).flatMap { y -> listOf(8f, 12f, 16f).map { x -> c(x, y, 1.1f) } })
     val None = icon("none", c(12f, 12f, 8f), "M6.4 17.6L17.6 6.4")
+    val Tint = icon("tint", "M12 3.5c3 4 5.5 7 5.5 10a5.5 5.5 0 0 1-11 0c0-3 2.5-6 5.5-10z", "M9 14.5a3 3 0 0 0 3 3")
+    val Contrast = icon("contrast", c(12f, 12f, 8f), fills = listOf("M12 4a8 8 0 0 1 0 16z"))
+    val Highlights = icon("highlights", c(12f, 12f, 3.5f), "M12 3v2", "M12 19v2", "M3 12h2", "M19 12h2", "M5.6 5.6l1.4 1.4", "M17 17l1.4 1.4", "M5.6 18.4L7 17", "M17 7l1.4-1.4")
+    val Shadows = icon("shadows", c(12f, 12f, 8f), "M12 4v16", "M12 8h5.5", "M12 12h8", "M12 16h5.5")
+    val Saturation = icon("saturation", c(9f, 10f, 5f), c(15f, 10f, 5f), c(12f, 15f, 5f))
+    val Vibrance = icon("vibrance", "M12 3.5l2.4 5.6 6.1.6-4.6 4 1.4 6-5.3-3.2-5.3 3.2 1.4-6-4.6-4 6.1-.6z")
+    val Clarity = icon("clarity", "M4 18l5-7 3.5 4.5L15 12l5 6z", c(16.5f, 7f, 1.8f))
+    val Sharpness = icon("sharpness", "M12 3.5l8 15H4z", "M12 9.5v4.5")
     val Play = icon("play", fills = listOf("M8 5.5v13l10.5-6.5z"))
     val Pause = icon("pause", fills = listOf("M7 5h3.5v14H7z", "M13.5 5H17v14h-3.5z"))
 }

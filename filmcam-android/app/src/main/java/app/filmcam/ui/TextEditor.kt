@@ -157,6 +157,8 @@ fun TextEditorLayer(ui: UiState, actions: CameraActions) {
                             return@detectTapGestures
                         }
                         val hit = latestUi.textLayers.lastOrNull { map.hit(it, fonts, pos, 12.dp.toPx()) }
+                        // A tap on empty picture: first it deselects, then it closes the tray.
+                        if (hit == null && latestUi.selectedText == null) latestUi.dock = Dock.NONE
                         latestUi.selectedText = hit?.id
                     },
                     onDoubleTap = { pos ->

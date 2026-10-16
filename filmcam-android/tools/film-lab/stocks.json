@@ -1,0 +1,954 @@
+{
+ "portrait400": {
+  "about": "Warm, pastel portrait negative: soft contrast, creamy highlights, olive greens, kind to skin",
+  "contrast": 0.93,
+  "bright": 1.04,
+  "white": 0.96,
+  "tint": [
+   0.16,
+   0.03
+  ],
+  "neg_gamma": [
+   0.62,
+   0.6,
+   0.57
+  ],
+  "dye_sat": 1.05,
+  "sat": 0.95,
+  "hues": [
+   [
+    140,
+    35,
+    -14,
+    0.82,
+    0
+   ],
+   [
+    35,
+    22,
+    4,
+    1.05,
+    0.01
+   ],
+   [
+    250,
+    30,
+    -8,
+    0.85,
+    0
+   ],
+   [
+    15,
+    20,
+    0,
+    1.05,
+    0
+   ]
+  ],
+  "highlight": [
+   0.004,
+   0.012
+  ],
+  "shadow": [
+   -0.004,
+   -0.004
+  ],
+  "fade": 0.02
+ },
+ "pro160": {
+  "about": "Fine-grain portrait negative: the softest, most neutral of the warm negatives",
+  "contrast": 0.9,
+  "bright": 1.05,
+  "white": 0.96,
+  "tint": [
+   0.07,
+   0.02
+  ],
+  "neg_gamma": [
+   0.61,
+   0.6,
+   0.58
+  ],
+  "sat": 0.85,
+  "hues": [
+   [
+    140,
+    35,
+    -10,
+    0.82,
+    0
+   ],
+   [
+    35,
+    22,
+    3,
+    1.02,
+    0.01
+   ],
+   [
+    250,
+    30,
+    -5,
+    0.88,
+    0
+   ]
+  ],
+  "highlight": [
+   0.002,
+   0.008
+  ],
+  "fade": 0.02
+ },
+ "gold200": {
+  "about": "Everyday consumer negative: golden yellows, warm skin, sunny greens",
+  "contrast": 1.05,
+  "tint": [
+   0.32,
+   0.02
+  ],
+  "neg_gamma": [
+   0.62,
+   0.6,
+   0.56
+  ],
+  "dye_sat": 1.1,
+  "sat": 1.04,
+  "hues": [
+   [
+    140,
+    35,
+    -18,
+    0.9,
+    0
+   ],
+   [
+    95,
+    25,
+    0,
+    1.15,
+    0.01
+   ],
+   [
+    25,
+    20,
+    3,
+    1.08,
+    0
+   ],
+   [
+    255,
+    30,
+    -6,
+    0.9,
+    0
+   ]
+  ],
+  "highlight": [
+   0.006,
+   0.02
+  ],
+  "shadow": [
+   0.0,
+   -0.008
+  ],
+  "fade": 0.02
+ },
+ "ultra400": {
+  "about": "Punchy consumer 400: strong warmth, saturated reds and oranges",
+  "contrast": 1.12,
+  "tint": [
+   0.28,
+   0.04
+  ],
+  "neg_gamma": [
+   0.63,
+   0.6,
+   0.56
+  ],
+  "dye_sat": 1.12,
+  "sat": 1.12,
+  "hues": [
+   [
+    25,
+    20,
+    0,
+    1.15,
+    0
+   ],
+   [
+    140,
+    30,
+    -12,
+    0.95,
+    0
+   ],
+   [
+    255,
+    30,
+    -4,
+    1.0,
+    0
+   ]
+  ],
+  "highlight": [
+   0.004,
+   0.014
+  ],
+  "shadow": [
+   0.002,
+   -0.006
+  ]
+ },
+ "daily200": {
+  "about": "Budget colour negative: yellow-orange cast, muted blues, slightly faded blacks",
+  "contrast": 1.0,
+  "tint": [
+   0.36,
+   0.0
+  ],
+  "neg_gamma": [
+   0.61,
+   0.6,
+   0.55
+  ],
+  "sat": 0.95,
+  "hues": [
+   [
+    140,
+    35,
+    -20,
+    0.85,
+    0
+   ],
+   [
+    250,
+    35,
+    -6,
+    0.8,
+    0
+   ]
+  ],
+  "highlight": [
+   0.004,
+   0.02
+  ],
+  "fade": 0.04,
+  "fade_tint": [
+   0.01,
+   0.02
+  ]
+ },
+ "vivid100": {
+  "about": "The most saturated negative: deep blue skies, strong reds, crisp contrast",
+  "contrast": 1.2,
+  "tint": [
+   0.04,
+   0.0
+  ],
+  "dye_sat": 1.15,
+  "sat": 1.18,
+  "hues": [
+   [
+    255,
+    30,
+    4,
+    1.15,
+    -0.02
+   ],
+   [
+    25,
+    20,
+    -2,
+    1.0,
+    0
+   ],
+   [
+    140,
+    30,
+    -6,
+    1.1,
+    0
+   ]
+  ],
+  "scan_black": 0.012
+ },
+ "verde400": {
+  "about": "Cool green-cast 400: teal greens, cyan skies, magenta-leaning skin, green shadows",
+  "contrast": 1.06,
+  "tint": [
+   -0.08,
+   -0.1
+  ],
+  "neg_gamma": [
+   0.6,
+   0.57,
+   0.62
+  ],
+  "sat": 1.05,
+  "hues": [
+   [
+    140,
+    35,
+    12,
+    1.08,
+    0
+   ],
+   [
+    40,
+    20,
+    -3,
+    0.95,
+    0
+   ],
+   [
+    250,
+    30,
+    -6,
+    1.05,
+    0
+   ]
+  ],
+  "shadow": [
+   -0.01,
+   -0.004
+  ],
+  "highlight": [
+   0.004,
+   0.004
+  ]
+ },
+ "fresh200": {
+  "about": "Cool, crisp everyday 200: fresh greens, clean blues",
+  "contrast": 1.08,
+  "tint": [
+   -0.05,
+   -0.06
+  ],
+  "sat": 1.06,
+  "hues": [
+   [
+    140,
+    35,
+    8,
+    1.1,
+    0
+   ],
+   [
+    240,
+    30,
+    -10,
+    1.05,
+    0
+   ]
+  ],
+  "shadow": [
+   -0.008,
+   -0.006
+  ]
+ },
+ "pastel400": {
+  "about": "Airy pastel 400: mint greens, cyan blues, soft overexposed highlights",
+  "contrast": 0.86,
+  "bright": 1.07,
+  "white": 0.95,
+  "tint": [
+   -0.02,
+   -0.04
+  ],
+  "sat": 0.82,
+  "hues": [
+   [
+    140,
+    35,
+    18,
+    0.85,
+    0
+   ],
+   [
+    255,
+    30,
+    -14,
+    0.85,
+    0
+   ],
+   [
+    35,
+    20,
+    -2,
+    0.95,
+    0
+   ]
+  ],
+  "shadow": [
+   -0.012,
+   -0.006
+  ],
+  "highlight": [
+   0.002,
+   0.006
+  ],
+  "fade": 0.04,
+  "fade_tint": [
+   -0.01,
+   -0.01
+  ]
+ },
+ "snap400": {
+  "about": "Disposable-camera 400: punchy, green-cyan shadows, warm flash highlights",
+  "contrast": 1.15,
+  "tint": [
+   0.02,
+   -0.06
+  ],
+  "sat": 1.1,
+  "hues": [
+   [
+    140,
+    30,
+    8,
+    1.1,
+    0
+   ]
+  ],
+  "shadow": [
+   -0.012,
+   -0.002
+  ],
+  "highlight": [
+   0.006,
+   0.014
+  ]
+ },
+ "night1600": {
+  "about": "Fast night negative: warm light, green-tinged shadows",
+  "contrast": 1.05,
+  "tint": [
+   0.2,
+   -0.05
+  ],
+  "sat": 1.0,
+  "hues": [
+   [
+    140,
+    30,
+    -6,
+    0.95,
+    0
+   ]
+  ],
+  "shadow": [
+   -0.012,
+   0.004
+  ],
+  "highlight": [
+   0.006,
+   0.014
+  ]
+ },
+ "golden": {
+  "about": "Golden-hour negative: amber warmth through everything",
+  "contrast": 0.95,
+  "tint": [
+   0.4,
+   0.04
+  ],
+  "sat": 1.0,
+  "highlight": [
+   0.01,
+   0.03
+  ],
+  "fade": 0.03,
+  "hues": [
+   [
+    140,
+    35,
+    -14,
+    0.9,
+    0
+   ]
+  ]
+ },
+ "amber100": {
+  "about": "Muted amber: warm, low saturation, faded",
+  "contrast": 0.98,
+  "tint": [
+   0.42,
+   0.04
+  ],
+  "sat": 0.8,
+  "highlight": [
+   0.008,
+   0.025
+  ],
+  "fade": 0.06,
+  "fade_tint": [
+   0.01,
+   0.03
+  ]
+ },
+ "fun200": {
+  "about": "Toy-camera colour: saturated, contrasty, blue shadows",
+  "contrast": 1.35,
+  "tint": [
+   0.08,
+   0.08
+  ],
+  "sat": 1.25,
+  "dye_sat": 1.1,
+  "shadow": [
+   -0.01,
+   -0.02
+  ],
+  "highlight": [
+   0.006,
+   0.02
+  ]
+ },
+ "expired": {
+  "about": "Expired film: colour drift, magenta shadows, yellow highlights, washed blues",
+  "contrast": 0.85,
+  "tint": [
+   0.25,
+   0.18
+  ],
+  "sat": 0.8,
+  "fade": 0.08,
+  "fade_tint": [
+   0.02,
+   0.02
+  ],
+  "hues": [
+   [
+    250,
+    40,
+    -25,
+    0.6,
+    0
+   ]
+  ],
+  "shadow": [
+   0.012,
+   0.006
+  ],
+  "highlight": [
+   0.004,
+   0.03
+  ]
+ },
+ "cross": {
+  "about": "Slide film in negative chemistry: cyan shadows, yellow-green highlights, hard contrast",
+  "contrast": 1.35,
+  "sat": 1.25,
+  "tint": [
+   0.0,
+   -0.1
+  ],
+  "shadow": [
+   -0.03,
+   -0.03
+  ],
+  "highlight": [
+   -0.01,
+   0.05
+  ]
+ },
+ "chrome100": {
+  "about": "Neutral slide film: clean, cool, fine contrast",
+  "slide": true,
+  "neg_gamma": [
+   1.6,
+   1.6,
+   1.6
+  ],
+  "contrast": 1.15,
+  "sat": 1.08,
+  "tint": [
+   -0.04,
+   0.0
+  ],
+  "hues": [
+   [
+    250,
+    30,
+    0,
+    1.1,
+    0
+   ],
+   [
+    140,
+    30,
+    -2,
+    1.05,
+    0
+   ]
+  ],
+  "scan_black": 0.012
+ },
+ "chrome50": {
+  "about": "Landscape slide film: intense greens and blues, deep shadows",
+  "slide": true,
+  "neg_gamma": [
+   1.7,
+   1.75,
+   1.7
+  ],
+  "contrast": 1.3,
+  "sat": 1.22,
+  "dye_sat": 1.2,
+  "tint": [
+   0.0,
+   0.06
+  ],
+  "hues": [
+   [
+    140,
+    30,
+    4,
+    1.25,
+    0
+   ],
+   [
+    250,
+    30,
+    4,
+    1.2,
+    -0.02
+   ],
+   [
+    20,
+    20,
+    -4,
+    1.0,
+    0
+   ]
+  ],
+  "shadow": [
+   0.004,
+   -0.006
+  ],
+  "scan_black": 0.012
+ },
+ "street": {
+  "about": "Crisp street positive: cool shadows, hard contrast, restrained colour",
+  "slide": true,
+  "neg_gamma": [
+   1.6,
+   1.6,
+   1.62
+  ],
+  "contrast": 1.25,
+  "sat": 0.95,
+  "tint": [
+   -0.06,
+   0.0
+  ],
+  "shadow": [
+   -0.006,
+   -0.012
+  ],
+  "highlight": [
+   0.002,
+   0.006
+  ],
+  "scan_black": 0.012
+ },
+ "s8rev": {
+  "about": "Home-movie reversal: warm, saturated, contrasty",
+  "slide": true,
+  "neg_gamma": [
+   1.6,
+   1.6,
+   1.58
+  ],
+  "contrast": 1.2,
+  "sat": 1.15,
+  "tint": [
+   0.12,
+   0.0
+  ],
+  "highlight": [
+   0.004,
+   0.015
+  ],
+  "shadow": [
+   -0.004,
+   -0.01
+  ]
+ },
+ "k64": {
+  "about": "Classic reversal: rich reds, deep blues, golden yellows",
+  "slide": true,
+  "neg_gamma": [
+   1.65,
+   1.6,
+   1.6
+  ],
+  "contrast": 1.25,
+  "sat": 1.2,
+  "tint": [
+   0.08,
+   0.02
+  ],
+  "hues": [
+   [
+    25,
+    20,
+    -4,
+    1.25,
+    0
+   ],
+   [
+    255,
+    30,
+    -6,
+    1.1,
+    -0.02
+   ],
+   [
+    95,
+    25,
+    -6,
+    1.1,
+    0
+   ],
+   [
+    140,
+    30,
+    -8,
+    0.95,
+    0
+   ]
+  ],
+  "scan_black": 0.012
+ },
+ "summer": {
+  "about": "Holiday reversal: teal seas, warm skin, sunny highlights",
+  "slide": true,
+  "neg_gamma": [
+   1.6,
+   1.6,
+   1.6
+  ],
+  "contrast": 1.1,
+  "tint": [
+   0.15,
+   0.0
+  ],
+  "sat": 1.05,
+  "hues": [
+   [
+    220,
+    40,
+    -15,
+    1.2,
+    0
+   ],
+   [
+    140,
+    30,
+    10,
+    0.9,
+    0
+   ]
+  ],
+  "highlight": [
+   0.008,
+   0.02
+  ],
+  "shadow": [
+   -0.012,
+   -0.012
+  ]
+ },
+ "cine800t": {
+  "about": "Tungsten cine negative: teal shadows, warm highlights, soft contrast",
+  "contrast": 0.95,
+  "neg_gamma": [
+   0.66,
+   0.6,
+   0.55
+  ],
+  "tint": [
+   -0.15,
+   0.02
+  ],
+  "sat": 0.92,
+  "shadow": [
+   -0.014,
+   -0.016
+  ],
+  "highlight": [
+   0.01,
+   0.018
+  ],
+  "hues": [
+   [
+    40,
+    25,
+    0,
+    1.05,
+    0
+   ],
+   [
+    140,
+    35,
+    15,
+    0.8,
+    0
+   ]
+  ]
+ },
+ "kino500t": {
+  "about": "Cine teal and amber, pushed further",
+  "contrast": 1.0,
+  "neg_gamma": [
+   0.68,
+   0.6,
+   0.53
+  ],
+  "tint": [
+   -0.1,
+   0.02
+  ],
+  "sat": 0.95,
+  "shadow": [
+   -0.02,
+   -0.02
+  ],
+  "highlight": [
+   0.012,
+   0.024
+  ],
+  "hues": [
+   [
+    40,
+    25,
+    0,
+    1.08,
+    0
+   ],
+   [
+    140,
+    35,
+    20,
+    0.75,
+    0
+   ]
+  ]
+ },
+ "cine250d": {
+  "about": "Daylight cine negative: wide latitude, gentle contrast, natural colour",
+  "contrast": 0.95,
+  "sat": 0.95,
+  "tint": [
+   0.05,
+   0.0
+  ],
+  "neg_gamma": [
+   0.62,
+   0.6,
+   0.58
+  ],
+  "highlight": [
+   0.004,
+   0.01
+  ],
+  "shadow": [
+   -0.006,
+   -0.008
+  ]
+ },
+ "instant": {
+  "about": "Instant print: soft, cyan-green shadows, warm creamy highlights, quiet blues",
+  "contrast": 0.85,
+  "bright": 1.04,
+  "white": 0.94,
+  "sat": 0.82,
+  "tint": [
+   0.1,
+   0.04
+  ],
+  "shadow": [
+   -0.015,
+   -0.004
+  ],
+  "highlight": [
+   0.008,
+   0.018
+  ],
+  "fade": 0.06,
+  "fade_tint": [
+   -0.01,
+   0.0
+  ],
+  "hues": [
+   [
+    250,
+    35,
+    -15,
+    0.8,
+    0
+   ]
+  ]
+ },
+ "peel": {
+  "about": "Peel-apart pack film: cool, soft, green-cyan",
+  "contrast": 0.95,
+  "sat": 0.9,
+  "tint": [
+   -0.12,
+   -0.02
+  ],
+  "shadow": [
+   -0.012,
+   -0.012
+  ],
+  "highlight": [
+   0.0,
+   0.006
+  ],
+  "fade": 0.04,
+  "hues": [
+   [
+    140,
+    35,
+    12,
+    0.95,
+    0
+   ]
+  ]
+ },
+ "mono400": {
+  "about": "Classic 400 black and white: punchy, a touch red-sensitive",
+  "mono": [
+   0.32,
+   0.58,
+   0.1
+  ],
+  "contrast": 1.3,
+  "scan_black": 0.015,
+  "scan_white": 0.975
+ },
+ "mono400hard": {
+  "about": "Pushed 400 black and white: hard and contrasty",
+  "mono": [
+   0.34,
+   0.58,
+   0.08
+  ],
+  "contrast": 1.55,
+  "scan_black": 0.015,
+  "scan_white": 0.975
+ },
+ "silver100": {
+  "about": "Fine-grain 100 black and white: smooth tones",
+  "mono": [
+   0.3,
+   0.6,
+   0.1
+  ],
+  "contrast": 1.12,
+  "scan_black": 0.015,
+  "scan_white": 0.975
+ }
+}

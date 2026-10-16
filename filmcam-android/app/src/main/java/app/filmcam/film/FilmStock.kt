@@ -331,8 +331,24 @@ object FilmStocks {
         swatch = 0xFFC58A4A,
     )
 
+    val PASTEL_400 = FilmStock(
+        id = "pastel400", name = "Pastel 400",
+        temperature = -0.03f, tint = -0.04f, saturation = 0.82f, contrast = 0.92f, fade = 0.05f,
+        hueShift = Rgb(0f, 0.4f, -0.3f), shadowTint = Rgb(-0.015f, 0.01f, 0.01f), swatch = 0xFFA9CBB8,
+    )
+    val CHROME_50 = FilmStock(
+        id = "chrome50", name = "Chrome 50",
+        saturation = 1.3f, contrast = 1.3f, satShadows = 1f, highlightRolloff = 0f, hueShift = Rgb(-0.1f, 0.1f, 0.1f),
+        swatch = 0xFF2E7F5E,
+    )
+    val FRESH_200 = FilmStock(
+        id = "fresh200", name = "Fresh 200",
+        temperature = -0.06f, tint = -0.06f, saturation = 1.06f, contrast = 1.12f, hueShift = Rgb(0f, 0.25f, -0.2f),
+        swatch = 0xFF6FA88B,
+    )
+
     val ALL = listOf(
-        NEUTRAL, PRO_160, NIGHT_1600, SNAP_400, DAILY_200, ULTRA_400, KINO_500T, FUN_200, STREET_POSITIVE, AMBER_100,
+        NEUTRAL, PASTEL_400, CHROME_50, FRESH_200, PRO_160, NIGHT_1600, SNAP_400, DAILY_200, ULTRA_400, KINO_500T, FUN_200, STREET_POSITIVE, AMBER_100,
         GOLD_200, PORTRAIT_400, VERDE_400, VIVID_100, GOLDEN, EXPIRED, CROSS_PRO, REDSCALE,
         CINE_800T, CINE_250D, BLEACH, TWO_STRIP, THREE_STRIP, SUPER8_REVERSAL, SUMMER_REEL, K64,
         CHROME_100, INSTANT, PEEL_APART,
