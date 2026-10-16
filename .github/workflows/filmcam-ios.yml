@@ -1,0 +1,56 @@
+# Builds FilmCam for iPhone on a macOS runner and uploads an unsigned .ipa.
+# Sign it on install with Sideloadly (free Apple ID) or build from Xcode - see filmcam-ios/INSTALL.md.
+name: FilmCam iOS
+
+on:
+  push:
+    branches: [claude/brave-allen-0xuvx9]
+    paths: ["filmcam-ios/**", "filmcam-shared/**", "filmcam-android/app/src/main/assets/**", ".github/workflows/filmcam-ios.yml"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show Xcode
+        run: xcodebuild -version
+
+      - name: Build (unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project filmcam-ios/FilmCam.xcodeproj \
+            -target FilmCam \
+            -configuration Release \
+            -sdk iphoneos \
+            SYMROOT="$PWD/build" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build > xcodebuild.log 2>&1 || true
+          grep -E "error:|BUILD (SUCCEEDED|FAILED)" xcodebuild.log | sort -u | head -150 || true
+          test -d build/Release-iphoneos/FilmCam.app
+          ls build/Release-iphoneos/FilmCam.app build/Release-iphoneos/FilmCam.app/spec build/Release-iphoneos/FilmCam.app/luts | head -40
+
+      - name: Package .ipa
+        run: |
+          mkdir -p Payload
+          cp -R build/Release-iphoneos/FilmCam.app Payload/
+          zip -qry FilmCam-unsigned.ipa Payload
+          ls -lh FilmCam-unsigned.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FilmCam-unsigned-ipa
+          path: FilmCam-unsigned.ipa
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: xcodebuild-log
+          path: xcodebuild.log
+          if-no-files-found: ignore
