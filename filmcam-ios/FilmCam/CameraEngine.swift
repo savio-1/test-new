@@ -79,6 +79,7 @@ final class CameraEngine: NSObject {
     func start(front: Bool, video: Bool) {
         sessionQueue.async {
             self.configure(front: front, video: video)
+            self.choosePhotoSize()
             if !self.session.isRunning { self.session.startRunning() }
         }
     }
@@ -156,12 +157,6 @@ final class CameraEngine: NSObject {
             }
         }
 
-        // 12 MP stills: full detail without the noise of the remosaiced 48 MP mode.
-        let dims = dev.activeFormat.supportedMaxPhotoDimensions
-            .filter { Int($0.width) * Int($0.height) <= 12_600_000 }
-            .max { Int($0.width) * Int($0.height) < Int($1.width) * Int($1.height) }
-        if let d = dims { photoOutput.maxPhotoDimensions = d }
-
         do {
             try dev.lockForConfiguration()
             if dev.isFocusModeSupported(.continuousAutoFocus) { dev.focusMode = .continuousAutoFocus }
@@ -193,6 +188,16 @@ final class CameraEngine: NSObject {
             self.videoMode = video
             self.lastFilmFrame = -1
         }
+    }
+
+    /// 12 MP stills: full detail without the noise of the remosaiced 48 MP mode. Runs after
+    /// the configuration is committed, when the new format is active.
+    private func choosePhotoSize() {
+        guard let dev = device else { return }
+        let dims = dev.activeFormat.supportedMaxPhotoDimensions
+            .filter { Int($0.width) * Int($0.height) <= 12_600_000 }
+            .max { Int($0.width) * Int($0.height) < Int($1.width) * Int($1.height) }
+        if let d = dims { photoOutput.maxPhotoDimensions = d }
     }
 
     private func setZoomLocked(_ dev: AVCaptureDevice, _ factor: CGFloat) {

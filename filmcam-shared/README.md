@@ -1,7 +1,7 @@
 # FilmCam shared
 
 The parts of FilmCam that are the same on every platform. Android ships today; this folder is
-what the iOS app will read so that both render identical looks.
+what the iOS app (`../filmcam-ios`) reads so that both render identical looks.
 
 | Path | What it holds |
 |---|---|

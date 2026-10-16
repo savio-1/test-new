@@ -1,6 +1,7 @@
 import Foundation
 import OpenGLES
 import CoreGraphics
+import ImageIO
 
 /// Highlights at ~480 px: tight glow (halation), wide glow (bloom), streaks, diffusion.
 final class Glow {
@@ -74,10 +75,10 @@ struct FinalSource {
 
 /// Runs the passes (see FilmRenderer.kt; the GLSL is shared with Android).
 final class Renderer {
-    private let develop: Program
+    private let developProg: Program
     private let bright: Program
     private let blur: Program
-    private let final: Program
+    private let finalProg: Program
     let glowFormat: Int32
     private var vao: GLuint = 0
     private var vbo: GLuint = 0
@@ -100,10 +101,10 @@ final class Renderer {
 
     init() throws {
         let vertex = Self.shader("vertex.vert")
-        develop = try Program(vertex: vertex, fragment: Self.shader("develop_image.frag"))
+        developProg = try Program(vertex: vertex, fragment: Self.shader("develop_image.frag"))
         bright = try Program(vertex: vertex, fragment: Self.shader("bright.frag"))
         blur = try Program(vertex: vertex, fragment: Self.shader("blur.frag"))
-        final = try Program(vertex: vertex, fragment: Self.shader("final.frag"))
+        finalProg = try Program(vertex: vertex, fragment: Self.shader("final.frag"))
         glowFormat = GLU.hasExtension("GL_EXT_color_buffer_half_float") || GLU.hasExtension("GL_EXT_color_buffer_float")
             ? GL_RGBA16F : GL_RGBA8
 
@@ -191,13 +192,13 @@ final class Renderer {
         p.advance()
         glBindFramebuffer(E(GL_FRAMEBUFFER), p.currentFbo)
         glViewport(0, 0, GLsizei(p.width), GLsizei(p.height))
-        develop.use()
+        developProg.use()
         bind(0, source); bind(1, p.previous); bind(2, p.previous)
-        develop.i("uSource", 0); develop.i("uPrev", 1); develop.i("uTrail", 2)
-        develop.mat4("uTexMatrix", texMatrix)
-        develop.mat4("uTrailMatrix", Mat.identity)
-        develop.f("uPersistence", p.previous != p.current ? persistence : 0)
-        develop.f("uTrailAmount", 0)
+        developProg.i("uSource", 0); developProg.i("uPrev", 1); developProg.i("uTrail", 2)
+        developProg.mat4("uTexMatrix", texMatrix)
+        developProg.mat4("uTrailMatrix", Mat.identity)
+        developProg.f("uPersistence", p.previous != p.current ? persistence : 0)
+        developProg.f("uTrailAmount", 0)
         draw()
         glBindFramebuffer(E(GL_FRAMEBUFFER), 0)
         bind(0, p.current)
@@ -268,7 +269,7 @@ final class Renderer {
         let fw = fullW ?? targetW, fh = fullH ?? targetH
         glViewport(0, 0, GLsizei(targetW), GLsizei(targetH))
         let s = spec.stock(look.stock)
-        let p = final
+        let p = finalProg
         p.use()
         bind(0, src.image); p.i("uImage", 0)
         bind(1, src.previous); p.i("uPrevImage", 1)

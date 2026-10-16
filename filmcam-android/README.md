@@ -7,7 +7,8 @@ video, 12/50/200 MP stills where the sensor offers them, RAW (DNG), and every le
 What you see in the viewfinder is what gets saved, borders included. It also records 10-bit
 log video for grading, and develops photos and clips taken with any other camera.
 
-The look definitions and shaders are shared with the coming iOS app through
+The look definitions and shaders are shared with the iOS app ([`../filmcam-ios`](../filmcam-ios), install it with
+[INSTALL.md](../filmcam-ios/INSTALL.md)) through
 [`../filmcam-shared`](../filmcam-shared) (see [the porting guide](../filmcam-shared/PORTING-iOS.md)).
 
 ![The cameras, rendered by the app's own shaders](docs/looks.jpg)
@@ -350,7 +351,7 @@ Camera2 stream (up to 8K) ──► SurfaceTexture (OES) ─┐
 
 [`../filmcam-shared`](../filmcam-shared) holds every stock, look, style and option as JSON, and
 the GLSL of every pass. `SpecExportTest` regenerates it from the Kotlin on every unit-test run,
-so the iOS app will render exactly the same looks.
+so the iOS app ([`../filmcam-ios`](../filmcam-ios)) renders exactly the same looks.
 [PORTING-iOS.md](../filmcam-shared/PORTING-iOS.md) maps each Android part to its iOS
 counterpart (AVFoundation, Metal, SwiftUI, Apple Log) and sets the order of work.
 
