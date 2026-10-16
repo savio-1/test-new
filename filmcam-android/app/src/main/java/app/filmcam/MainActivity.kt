@@ -983,6 +983,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         i.getStringExtra("test_pick")?.split(',')?.mapNotNull { it.toFloatOrNull() }?.takeIf { it.size == 2 }?.let { (x, y) ->
             main.postDelayed({ pickSubject(x, y) }, 4000)
         }
+        i.getStringExtra("test_shoot")?.toLongOrNull()?.let { ms -> main.postDelayed({ shutter() }, ms) }
     }
 
     override fun onNewIntent(intent: Intent) {
