@@ -93,6 +93,36 @@ Burn text into video while you record, and into photos.
     its own cut-out, so a moving subject and its cut-out stay together. If the model is slower
     on a phone, the cut-out lands one frame later.
 
+## Subtitles
+
+After a clip is shot, open it and tap **Subtitles**.
+- **Generate:** the clip's speech is written out as timed subtitle lines, in English and in
+  Telugu (Telugu script). It handles speech in either language, and Telugu with English words
+  mixed in. The language spoken in most lines decides which one shows first.
+- **Fix anything:** every line is a text field for each language, so you can retype a wrong
+  word.
+  - Tap a line's time to jump there.
+  - *In* / *Out* set when the line starts and ends, at the playhead.
+  - Delete a line, or *+ Add a line* at the playhead.
+  - *Or write them yourself* starts with an empty line, with no transcription at all.
+- **Style:** English, తెలుగు or Both (stacked: Telugu above English). Choose the size, top
+  or bottom, a box or a shadow, a Latin font and a Telugu font. The Telugu fonts are Noto Sans
+  Telugu (regular and bold), Ramabhadra, Mandali, Gurajada and Tenali Ramakrishna, all under the
+  SIL Open Font Licence. The preview over the clip is drawn by the same code that burns them in.
+- **Save:**
+  - *Burn into video* saves a copy of the clip with the subtitles in the picture. The
+    original sound is copied untouched, and the picture goes through the plain Original look,
+    so no grain or grading is added.
+  - *Save .srt* writes a subtitle file to Downloads.
+  - Edits are kept with the clip until you come back.
+- **How it's transcribed:**
+  - The clip's sound (copied as AAC, or converted to 16 kHz WAV) goes to Google's Gemini API
+    with your own key. It is free from aistudio.google.com/apikey; enter it with the key icon.
+  - Gemini returns timed cues in a fixed JSON form. Clips with more than about 13 MB of
+    sound are uploaded through Gemini's Files API.
+  - The model can be changed next to the key (default `gemini-3.8-flash`).
+  - Only the sound is sent, and only when you tap Generate.
+
 ## Fujifilm simulations and recipes
 
 The first two groups develop the picture the way a Fujifilm camera makes a JPEG, from

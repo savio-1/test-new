@@ -43,12 +43,16 @@ data class TextLayer(
     val tracking: Float = 0f,
     /** Set behind the subject (people, or whatever was picked): it passes in front of the text. */
     val behind: Boolean = false,
+    /** Longest line as a fraction of the frame width; longer text wraps (0: only at line breaks). */
+    val wrap: Float = 0f,
+    /** A dark box behind the text, as subtitles have. */
+    val box: Boolean = false,
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("id", id).put("text", text).put("font", font).put("size", size.toDouble())
         .put("x", x.toDouble()).put("y", y.toDouble()).put("rotation", rotation.toDouble())
         .put("align", align.name).put("color", color).put("opacity", opacity.toDouble())
-        .put("shadow", shadow).put("tracking", tracking.toDouble()).put("behind", behind)
+        .put("shadow", shadow).put("tracking", tracking.toDouble()).put("behind", behind).put("wrap", wrap.toDouble()).put("box", box)
 
     companion object {
         fun fromJson(o: JSONObject) = TextLayer(
@@ -65,6 +69,8 @@ data class TextLayer(
             shadow = o.optBoolean("shadow", false),
             tracking = o.optDouble("tracking", 0.0).toFloat(),
             behind = o.optBoolean("behind", false),
+            wrap = o.optDouble("wrap", 0.0).toFloat(),
+            box = o.optBoolean("box", false),
         )
 
         fun listToJson(layers: List<TextLayer>): String = JSONArray().apply { layers.forEach { put(it.toJson()) } }.toString()
@@ -97,6 +103,13 @@ class FontLibrary(private val context: Context) {
         for ((file, label) in BUNDLED) {
             runCatching { Typeface.createFromAsset(context.assets, "fonts/$file") }
                 .onSuccess { out += FontEntry("asset:$file", label, it) }
+        }
+        // Variable fonts at a chosen weight: "file#weight".
+        for ((spec, label) in WEIGHTED) {
+            val (file, weight) = spec.split('#')
+            runCatching {
+                Typeface.Builder(context.assets, "fonts/$file").setFontVariationSettings("'wght' $weight").build()
+            }.onSuccess { out += FontEntry("asset:$spec", label, it) }
         }
         dir.listFiles()?.sortedBy { it.name }?.forEach { f ->
             runCatching { Typeface.createFromFile(f) }.onSuccess {
@@ -139,7 +152,19 @@ class FontLibrary(private val context: Context) {
             "CourierPrime.ttf" to "Typewriter",
             "VT323.ttf" to "VHS",
             "Caveat.ttf" to "Handwritten",
+            // Telugu
+            "NotoSansTelugu.ttf" to "తెలుగు Sans",
+            "Ramabhadra.ttf" to "రామభద్ర",
+            "Mandali.ttf" to "మండలి",
+            "Gurajada.ttf" to "గురజాడ",
+            "TenaliRamakrishna.ttf" to "తెనాలి",
         )
+        val WEIGHTED = listOf(
+            "NotoSansTelugu.ttf#700" to "తెలుగు Bold",
+        )
+        /** Subtitle defaults: a bold sans for Latin, a bold Telugu face. */
+        const val SUBTITLE_LATIN = "asset:InterBold.ttf"
+        const val SUBTITLE_TELUGU = "asset:NotoSansTelugu.ttf#700"
     }
 }
 
@@ -154,32 +179,52 @@ object TextRenderer {
         if (layer.shadow) setShadowLayer(textSize * 0.09f, 0f, textSize * 0.035f, Color.argb((150 * layer.opacity).toInt(), 0, 0, 0))
     }
 
-    private fun layout(layer: TextLayer, p: TextPaint): StaticLayout {
+    private fun layout(layer: TextLayer, p: TextPaint, frameW: Float): StaticLayout {
         val text = layer.text.ifEmpty { " " }
-        val width = ceil(text.lines().maxOf { StaticLayout.getDesiredWidth(it, p) }).toInt().coerceAtLeast(1) + 2
+        val desired = ceil(text.lines().maxOf { StaticLayout.getDesiredWidth(it, p) }).toInt().coerceAtLeast(1) + 2
+        val width = if (layer.wrap > 0f) min(desired, max(1, (layer.wrap * frameW).toInt())) else desired
         val align = when (layer.align) {
             TextAlign.LEFT -> Layout.Alignment.ALIGN_NORMAL
             TextAlign.CENTER -> Layout.Alignment.ALIGN_CENTER
             TextAlign.RIGHT -> Layout.Alignment.ALIGN_OPPOSITE
         }
-        return StaticLayout.Builder.obtain(text, 0, text.length, p, width).setAlignment(align).setIncludePad(false).build()
+        return StaticLayout.Builder.obtain(text, 0, text.length, p, width).setAlignment(align).setIncludePad(false)
+            .setBreakStrategy(android.graphics.text.LineBreaker.BREAK_STRATEGY_BALANCED).build()
     }
 
-    /** Size in pixels of a layer's text block in a [w]x[h] frame. */
+    /** Padding of the subtitle box around the text, in pixels. */
+    private fun boxPad(p: TextPaint) = p.textSize * 0.35f to p.textSize * 0.16f
+
+    /** Size in pixels of a layer's text block in a [w]x[h] frame (box included). */
     fun blockSize(layer: TextLayer, fonts: FontLibrary, w: Float, h: Float): Pair<Float, Float> {
-        val l = layout(layer, paint(layer, fonts, min(w, h)))
-        return l.width.toFloat() to l.height.toFloat()
+        val p = paint(layer, fonts, min(w, h))
+        val l = layout(layer, p, w)
+        if (!layer.box) return l.width.toFloat() to l.height.toFloat()
+        val (px, py) = boxPad(p)
+        return l.width + 2 * px to l.height + 2 * py
     }
 
     /** Draws all layers onto [canvas] covering a [w]x[h] frame. */
     fun draw(canvas: Canvas, layers: List<TextLayer>, fonts: FontLibrary, w: Float, h: Float) {
         for (layer in layers) {
             if (layer.text.isBlank()) continue
-            val l = layout(layer, paint(layer, fonts, min(w, h)))
+            val p = paint(layer, fonts, min(w, h))
+            val l = layout(layer, p, w)
             canvas.save()
             canvas.translate(layer.x * w, layer.y * h)
             canvas.rotate(layer.rotation)
             canvas.translate(-l.width / 2f, -l.height / 2f)
+            if (layer.box) {
+                val (px, py) = boxPad(p)
+                // The box hugs the lines actually used, not the full wrap width.
+                var left = Float.MAX_VALUE
+                var right = 0f
+                for (i in 0 until l.lineCount) { left = min(left, l.getLineLeft(i)); right = max(right, l.getLineRight(i)) }
+                val bg = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.argb((150 * layer.opacity.coerceIn(0f, 1f)).toInt(), 0, 0, 0)
+                }
+                canvas.drawRoundRect(left - px, -py, right + px, l.height + py, p.textSize * 0.22f, p.textSize * 0.22f, bg)
+            }
             l.draw(canvas)
             canvas.restore()
         }

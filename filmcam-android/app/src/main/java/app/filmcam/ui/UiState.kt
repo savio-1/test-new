@@ -1,5 +1,8 @@
 package app.filmcam.ui
 
+import app.filmcam.sub.GeminiTranscriber
+import app.filmcam.sub.SubtitleTrack
+
 import android.graphics.Bitmap
 import android.net.Uri
 import androidx.compose.runtime.getValue
@@ -43,7 +46,7 @@ enum class LogCurveChoice(val label: String) { HLG("HLG 10-bit"), SLOG3("S-Log3"
 enum class Quick { RATIO, SIZE, VIDEO, TIMER, BURST, LOG }
 
 /** Full-screen places other than the camera. */
-enum class Screen { CAMERA, GALLERY, VIEWER }
+enum class Screen { CAMERA, GALLERY, VIEWER, SUBTITLES }
 
 /** Shots in an interval burst (0 = until stopped) and the gap between them, in seconds. */
 val BurstCounts = listOf(1, 3, 5, 10, 20, 0)
@@ -60,6 +63,15 @@ class EditSession(val uri: android.net.Uri, val video: Boolean, val width: Int, 
 
 /** What the ruler in the text tray changes. */
 enum class TextTool(val label: String) { FONT("Font"), SIZE("Size"), ROTATE("Rotate"), OPACITY("Opacity"), SPACING("Spacing"), COLOR("Colour"), PLACE("Place"), DEPTH("Depth") }
+
+/** The subtitle editor's clip: its subtitles once made, and what is happening. */
+class SubtitleSession(val item: MediaItem, val aspect: Float, val durationMs: Long) {
+    var track by mutableStateOf<SubtitleTrack?>(null)
+    /** "Listening" etc. while transcribing; null when idle. */
+    var status by mutableStateOf<String?>(null)
+    var error by mutableStateOf<String?>(null)
+    var positionMs by mutableLongStateOf(0L)
+}
 
 /** Everything the screen shows. Owned by the activity, mutated on the main thread. */
 class UiState {
@@ -130,6 +142,11 @@ class UiState {
     /** Edit mode: null keeps the imported picture's own shape. */
     var editRatio by mutableStateOf<AspectRatio?>(null)
     /** 0..1 while exporting or trimming, -1 otherwise. */
+    /** The subtitle editor's clip and its subtitles, while it is open. */
+    var subtitles by mutableStateOf<SubtitleSession?>(null)
+    /** Gemini API key and model for subtitles (the person's own). */
+    var geminiKey by mutableStateOf("")
+    var geminiModel by mutableStateOf(GeminiTranscriber.DEFAULT_MODEL)
     var progress by mutableFloatStateOf(-1f)
     var progressLabel by mutableStateOf("")
 
@@ -241,6 +258,16 @@ interface CameraActions {
     fun pickSubject(x: Float, y: Float)
     /** Back to every person in the frame. */
     fun resetSubject()
+    fun openSubtitles(item: MediaItem)
+    fun closeSubtitles()
+    /** Transcribes the open clip's speech into subtitles. */
+    fun generateSubtitles()
+    /** Edited subtitles (kept with the clip). */
+    fun updateSubtitles(track: SubtitleTrack)
+    /** Saves a copy of the clip with the subtitles burnt in. */
+    fun burnSubtitles()
+    fun saveSrt()
+    fun setGemini(key: String, model: String)
     fun importFont()
     fun openLast()
     fun tapToFocus(x: Float, y: Float, w: Float, h: Float)

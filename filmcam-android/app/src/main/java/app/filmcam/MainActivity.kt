@@ -57,6 +57,13 @@ import app.filmcam.film.StampStyle
 import app.filmcam.film.FontLibrary
 import app.filmcam.film.TextLayer
 import app.filmcam.seg.SubjectMasker
+import app.filmcam.sub.AudioExtract
+import app.filmcam.sub.GeminiTranscriber
+import app.filmcam.sub.SubtitleLanguage
+import app.filmcam.sub.SubtitleStyle
+import app.filmcam.sub.SubtitleTrack
+import app.filmcam.sub.TranscribeException
+import app.filmcam.ui.SubtitleSession
 import app.filmcam.ui.ThemeMode
 import app.filmcam.gl.FilmEngine
 import app.filmcam.record.VideoRecorder
@@ -67,6 +74,9 @@ import app.filmcam.util.HalfFrame
 import app.filmcam.util.MediaSaver
 import java.util.concurrent.Executors
 import kotlin.math.max
+import java.util.Locale
+import java.util.Date
+import java.text.SimpleDateFormat
 
 class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Listener {
     private var subjects: SubjectMasker? = null
@@ -131,6 +141,8 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
             engine.subjects = m
         }
         ui.theme = enumPref("theme", ThemeMode.SYSTEM)
+        ui.geminiKey = prefs.getString("geminiKey", "") ?: ""
+        ui.geminiModel = prefs.getString("geminiModel", null) ?: GeminiTranscriber.DEFAULT_MODEL
         ui.textLayers = TextLayer.listFromJson(prefs.getString("text", null))
         engine.textLayers = ui.textLayers
 
@@ -164,6 +176,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
             override fun handleOnBackPressed() {
                 when {
                     ui.progress >= 0f -> Unit
+                    ui.screen == Screen.SUBTITLES -> closeSubtitles()
                     ui.screen == Screen.VIEWER -> closeViewer()
                     ui.screen == Screen.GALLERY -> closeGallery()
                     ui.editingText -> ui.editingText = false
@@ -871,6 +884,149 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
                 items.firstOrNull { it.uri == out }?.let { loadThumb(it) }
             }
         }
+    }
+
+    // ------------------------------------------------------------------ subtitles
+
+    private fun subtitleFile(uri: Uri): java.io.File {
+        val id = java.security.MessageDigest.getInstance("SHA-1").digest(uri.toString().toByteArray())
+            .joinToString("") { "%02x".format(it) }
+        return java.io.File(java.io.File(filesDir, "subtitles").apply { mkdirs() }, "$id.json")
+    }
+
+    override fun openSubtitles(item: MediaItem) {
+        if (!item.video) return
+        io.execute {
+            val info = MediaLibrary.videoInfo(this, item.uri)
+            val saved = runCatching { SubtitleTrack.fromJson(org.json.JSONObject(subtitleFile(item.uri).readText())) }.getOrNull()
+            runOnUiThread {
+                if (info == null) { ui.message = "Couldn't read the clip"; return@runOnUiThread }
+                val session = SubtitleSession(item, info.uprightW.toFloat() / max(1, info.uprightH), info.durationMs)
+                session.track = saved
+                ui.subtitles = session
+                ui.screen = Screen.SUBTITLES
+            }
+        }
+    }
+
+    override fun closeSubtitles() {
+        ui.subtitles = null
+        ui.screen = Screen.VIEWER
+    }
+
+    override fun setGemini(key: String, model: String) {
+        ui.geminiKey = key.trim()
+        ui.geminiModel = model.trim().ifEmpty { GeminiTranscriber.DEFAULT_MODEL }
+        prefs.edit { putString("geminiKey", ui.geminiKey); putString("geminiModel", ui.geminiModel) }
+    }
+
+    override fun generateSubtitles() {
+        val s = ui.subtitles ?: return
+        if (s.status != null) return
+        val key = ui.geminiKey
+        if (key.isBlank()) { s.error = "Add your Gemini API key first"; return }
+        val model = ui.geminiModel
+        s.error = null
+        s.status = "Reading the sound"
+        Thread({
+            try {
+                val audio = AudioExtract.extract(this, s.item.uri) ?: throw TranscribeException("This clip has no sound")
+                val cues = GeminiTranscriber(key, model).transcribe(audio, s.durationMs) { st -> runOnUiThread { s.status = st } }
+                runOnUiThread {
+                    s.status = null
+                    if (cues.isEmpty()) { s.error = "No speech found in this clip"; return@runOnUiThread }
+                    // A clip spoken in Telugu opens on Telugu subtitles; otherwise English.
+                    val teluguMostly = cues.count { it.language.startsWith("te") } * 2 > cues.size
+                    val style = (s.track?.style ?: SubtitleStyle()).let {
+                        if (s.track == null && teluguMostly) it.copy(language = SubtitleLanguage.TELUGU) else it
+                    }
+                    updateSubtitles(SubtitleTrack(cues, style))
+                }
+            } catch (e: TranscribeException) {
+                runOnUiThread { s.status = null; s.error = e.message }
+            } catch (e: Exception) {
+                Log.e("FilmCam", "subtitles", e)
+                runOnUiThread { s.status = null; s.error = "Couldn't make subtitles (${e.javaClass.simpleName})" }
+            }
+        }, "Subtitles").start()
+    }
+
+    override fun updateSubtitles(track: SubtitleTrack) {
+        val s = ui.subtitles ?: return
+        s.track = track
+        val file = subtitleFile(s.item.uri)
+        val json = track.toJson().toString()
+        io.execute { runCatching { file.writeText(json) } }
+    }
+
+    override fun saveSrt() {
+        val s = ui.subtitles ?: return
+        val track = s.track ?: return
+        val lang = track.style.language
+        val suffix = when (lang) { SubtitleLanguage.ENGLISH -> "en"; SubtitleLanguage.TELUGU -> "te"; SubtitleLanguage.BOTH -> "te-en" }
+        io.execute {
+            val name = "FilmCam_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())}.$suffix.srt"
+            val uri = MediaSaver.saveDownload(this, name, "application/x-subrip", track.toSrt(lang))
+            runOnUiThread { ui.message = if (uri != null) "Saved $name to Downloads" else "Couldn't save the .srt" }
+        }
+    }
+
+    /**
+     * Burns the subtitles into a copy of the clip: every frame goes through the engine with
+     * the plain Original look (no grain, no grade) and the cue showing at its time as text.
+     */
+    override fun burnSubtitles() {
+        val s = ui.subtitles ?: return
+        val track = s.track ?: return
+        if (ui.progress >= 0f || exporter != null) return
+        val info = MediaLibrary.videoInfo(this, s.item.uri) ?: run { ui.message = "Couldn't read the clip"; return }
+        stopPreviewPlayer()
+        engine.closeCameraInput()
+        val saved = listOf(engine.look, engine.textLayers, engine.upright, engine.videoMode, engine.maxWorkSide,
+            engine.outputAspect, engine.simulateShutter, engine.logEncode)
+        val aspect = info.uprightW.toFloat() / max(1, info.uprightH)
+        engine.look = FilmCameras.ORIGINAL.look
+        engine.textLayers = emptyList()
+        engine.upright = true
+        engine.videoMode = true
+        engine.simulateShutter = false
+        engine.logEncode = 0
+        engine.outputAspect = aspect
+        engine.maxWorkSide = min(3840, max(info.uprightW, info.uprightH))
+        ui.progress = 0f
+        ui.progressLabel = "Adding subtitles"
+        exporter = VideoExporter(this, s.item.uri, info, engine,
+            onProgress = { f -> runOnUiThread { ui.progress = f } },
+            onFrameTime = { us -> engine.textLayers = track.layersAt(us / 1000, aspect, fonts) },
+            onDone = { out ->
+                @Suppress("UNCHECKED_CAST")
+                runOnUiThread {
+                    exporter = null
+                    ui.progress = -1f
+                    engine.look = saved[0] as FilmLook
+                    engine.textLayers = saved[1] as List<TextLayer>
+                    engine.upright = saved[2] as Boolean
+                    engine.videoMode = saved[3] as Boolean
+                    engine.maxWorkSide = saved[4] as Int
+                    engine.outputAspect = saved[5] as Float
+                    engine.simulateShutter = saved[6] as Boolean
+                    engine.logEncode = saved[7] as Int
+                    if (out == null) { ui.message = "Couldn't add the subtitles"; return@runOnUiThread }
+                    ui.message = "Saved a copy with subtitles"
+                    ui.lastUri = out
+                    ui.lastIsVideo = true
+                    io.execute {
+                        val items = MediaLibrary.list(this)
+                        runOnUiThread {
+                            ui.gallery = items
+                            items.firstOrNull { it.uri == out }?.let { loadThumb(it); ui.viewing = it }
+                            ui.subtitles = null
+                            ui.screen = Screen.VIEWER
+                        }
+                    }
+                }
+            },
+        ).also { it.start() }
     }
 
     // ------------------------------------------------------------------ importing

@@ -111,6 +111,8 @@ class VideoExporter(
     private val engine: FilmEngine,
     private val onProgress: (Float) -> Unit,
     private val onDone: (Uri?) -> Unit,
+    /** Called with each frame's time (µs) just before the engine draws it (subtitles follow it). */
+    private val onFrameTime: ((Long) -> Unit)? = null,
 ) {
     @Volatile private var cancelled = false
 
@@ -184,6 +186,7 @@ class VideoExporter(
                 if (o >= 0) {
                     outputDone = bi.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
                     val render = bi.size > 0
+                    if (render) onFrameTime?.invoke(bi.presentationTimeUs)
                     d.releaseOutputBuffer(o, render)
                     if (render) {
                         // One frame in, one frame out: wait for the engine before the next.

@@ -104,6 +104,8 @@ object Ico {
     val Gallery = icon("gallery", "M4.5 4.5h6v6h-6z", "M13.5 4.5h6v6h-6z", "M4.5 13.5h6v6h-6z", "M13.5 13.5h6v6h-6z")
     val Share = icon("share", "M12 15V4", "M8 7.5L12 3.5l4 4", "M6.5 11.5H5v8h14v-8h-1.5")
     val Scissors = icon("scissors", c(6.5f, 6.5f, 2.5f), c(6.5f, 17.5f, 2.5f), "M8.6 8L19.5 18", "M8.6 16L19.5 6")
+    val Subtitles = icon("subtitles", "M3.5 5.5h17v13h-17z", "M7 14.5h4.5", "M13.5 14.5h3.5", "M7 11h7.5", "M16.5 11h0.5")
+    val Key = icon("key", "M14.5 9.5a3.5 3.5 0 1 0 0.01 0", "M12 12l-8 8", "M7 17l2 2", "M5.5 18.5l1.5 1.5")
     val Wand = icon("wand", "M4 20L15 9", "M13.5 7.5l3 3", "M18 3.5v3", "M16.5 5h3", "M20 9.5v2", "M19 10.5h2", "M9.5 3.5v2", "M8.5 4.5h2")
     val Back = icon("back", "M15 5l-7 7 7 7")
     val Styles = icon("styles", "M6 3.5h12A2.5 2.5 0 0 1 20.5 6v12a2.5 2.5 0 0 1-2.5 2.5H6A2.5 2.5 0 0 1 3.5 18V6A2.5 2.5 0 0 1 6 3.5z",

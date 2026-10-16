@@ -32,7 +32,14 @@ class ScreenshotTest {
 
     private val actions = Proxy.newProxyInstance(
         CameraActions::class.java.classLoader, arrayOf(CameraActions::class.java),
-    ) { _, _, _ -> null } as CameraActions
+    ) { proxy, method, args ->
+        when (method.name) {
+            "equals" -> proxy === args?.get(0)
+            "hashCode" -> System.identityHashCode(proxy)
+            "toString" -> "CameraActions"
+            else -> null
+        }
+    } as CameraActions
 
     private fun state(theme: ThemeMode, setup: UiState.() -> Unit = {}) = UiState().apply {
         hasCamera = true
@@ -97,4 +104,24 @@ class ScreenshotTest {
         dock = Dock.ADJUST; toolGroup = ToolGroup.BASIC; toolId = "highlights"; look = look.copy(highlights = -0.35f, clarity = 0.2f)
     })
     @Test fun settingsDark() = shot(state(ThemeMode.DARK) { settingsOpen = true; mode = CaptureMode.VIDEO; availableVideoRes = setOf(app.filmcam.camera.VideoResolution.FHD, app.filmcam.camera.VideoResolution.UHD); availableFps = setOf(24, 25, 30) })
+    @Test fun subtitlesEditor() = shot(state(ThemeMode.DARK) {
+        screen = Screen.SUBTITLES
+        subtitles = app.filmcam.ui.SubtitleSession(app.filmcam.util.MediaItem(android.net.Uri.EMPTY, true, 0L, 12_000L), 9f / 16f, 12_000L).apply {
+            positionMs = 1200
+            track = app.filmcam.sub.SubtitleTrack(
+                listOf(
+                    app.filmcam.sub.Cue(400, 2900, "te", "How are you, everyone?", "అందరూ ఎలా ఉన్నారు?"),
+                    app.filmcam.sub.Cue(3100, 5600, "te", "Today we are going to the beach", "ఈరోజు మనం బీచ్‌కి వెళ్తున్నాం"),
+                    app.filmcam.sub.Cue(5800, 8000, "en", "It's so sunny!", "ఎంత ఎండగా ఉంది!"),
+                ),
+                app.filmcam.sub.SubtitleStyle(language = app.filmcam.sub.SubtitleLanguage.BOTH),
+            )
+        }
+        geminiKey = "set"
+    })
+    @Test fun subtitlesStart() = shot(state(ThemeMode.DARK) {
+        screen = Screen.SUBTITLES
+        subtitles = app.filmcam.ui.SubtitleSession(app.filmcam.util.MediaItem(android.net.Uri.EMPTY, true, 0L, 12_000L), 9f / 16f, 12_000L)
+        geminiKey = "set"
+    })
 }

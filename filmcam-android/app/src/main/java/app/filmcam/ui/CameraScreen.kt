@@ -95,6 +95,7 @@ fun CameraScreen(ui: UiState, actions: CameraActions) {
             when (ui.screen) {
                 Screen.GALLERY -> { GalleryScreen(ui, actions); return@Box }
                 Screen.VIEWER -> { ViewerScreen(ui, actions); return@Box }
+                Screen.SUBTITLES -> { SubtitleScreen(ui, actions); return@Box }
                 Screen.CAMERA -> Unit
             }
             val iconRotation by animateFloatAsState(

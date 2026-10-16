@@ -314,7 +314,9 @@ class FilmEngine {
         renderer.digitalExposure = upright
 
         val src = liveSource(p)
-        if (turns % 2 == 0) updateText(p.width, p.height, 2048) else updateText(p.height, p.width, 2048)
+        // Exports (subtitles on a 4K clip) get text as sharp as the frame; live view stays at 2K.
+        val textSide = if (rec?.offline == true) min(4096, max(p.width, p.height)) else 2048
+        if (turns % 2 == 0) updateText(p.width, p.height, textSide) else updateText(p.height, p.width, textSide)
         finishSubject(waitMs = 12L)
         if (disp != null && displayW > 0) {
             GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)

@@ -63,4 +63,6 @@ dependencies {
     implementation("com.google.mediapipe:tasks-vision:0.10.35")
 
     testImplementation("junit:junit:4.13.2")
+    // The real org.json for unit tests (android.jar only has stubs).
+    testImplementation("org.json:json:20240303")
 }

@@ -181,6 +181,7 @@ fun ViewerScreen(ui: UiState, actions: CameraActions) {
                     ViewerAction(Ico.Share, "Share") { actions.shareItem(item) }
                     ViewerAction(Ico.Wand, "Develop") { actions.editItem(item) }
                     if (item.video) ViewerAction(Ico.Scissors, "Trim") { trimming = true }
+                    if (item.video) ViewerAction(Ico.Subtitles, "Subtitles") { actions.openSubtitles(item) }
                     ViewerAction(Ico.Trash, if (confirmDelete) "Sure?" else "Delete", danger = confirmDelete) {
                         if (confirmDelete) actions.deleteItem(item) else confirmDelete = true
                     }
