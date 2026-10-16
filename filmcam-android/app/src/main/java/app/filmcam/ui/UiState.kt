@@ -71,6 +71,9 @@ class SubtitleSession(val item: MediaItem, val aspect: Float, val durationMs: Lo
     var status by mutableStateOf<String?>(null)
     var error by mutableStateOf<String?>(null)
     var positionMs by mutableLongStateOf(0L)
+    /** When transcription started (elapsed time on screen) and lines received so far. */
+    var startedAt by mutableLongStateOf(0L)
+    var linesSoFar by mutableIntStateOf(0)
 }
 
 /** Everything the screen shows. Owned by the activity, mutated on the main thread. */
@@ -105,6 +108,8 @@ class UiState {
     var textTool by mutableStateOf(TextTool.FONT)
     /** What text set behind the subject goes behind: "People", or the picked subject ("Horse"). */
     var subjectLabel by mutableStateOf("People")
+    /** What the subject cut-out is doing ("Cutting out people", "No person in view", an error). */
+    var subjectStatus by mutableStateOf("")
     /** Where the last subject pick was tapped, frame space (0..1, y down), for a moment. */
     var subjectTap by mutableStateOf<Pair<Float, Float>?>(null)
     var editingText by mutableStateOf(false)
@@ -144,6 +149,9 @@ class UiState {
     /** 0..1 while exporting or trimming, -1 otherwise. */
     /** The subtitle editor's clip and its subtitles, while it is open. */
     var subtitles by mutableStateOf<SubtitleSession?>(null)
+    /** Live subtitles while recording video, and their language ("en" or "te"). */
+    var liveCaptions by mutableStateOf(false)
+    var captionLanguage by mutableStateOf("en")
     /** Gemini API key and model for subtitles (the person's own). */
     var geminiKey by mutableStateOf("")
     var geminiModel by mutableStateOf(GeminiTranscriber.DEFAULT_MODEL)
@@ -262,6 +270,10 @@ interface CameraActions {
     fun closeSubtitles()
     /** Transcribes the open clip's speech into subtitles. */
     fun generateSubtitles()
+    fun cancelSubtitles()
+    /** Live subtitles on/off; works mid-recording. */
+    fun setLiveCaptions(on: Boolean)
+    fun setCaptionLanguage(lang: String)
     /** Edited subtitles (kept with the clip). */
     fun updateSubtitles(track: SubtitleTrack)
     /** Saves a copy of the clip with the subtitles burnt in. */

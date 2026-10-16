@@ -145,9 +145,20 @@ class TranscribeException(message: String) : Exception(message)
  * same transcript serves either language. Uses the person's own API key.
  */
 class GeminiTranscriber(private val apiKey: String, private val model: String) {
+    @Volatile private var cancelled = false
+    @Volatile private var open: HttpURLConnection? = null
 
-    /** Transcribes [audio] of a [durationMs] clip. Blocks; call off the main thread. */
-    fun transcribe(audio: ClipAudio, durationMs: Long, onStatus: (String) -> Unit): List<Cue> {
+    /** Stops a transcription in progress (from any thread). */
+    fun cancel() {
+        cancelled = true
+        open?.disconnect()
+    }
+
+    /**
+     * Transcribes [audio] of a [durationMs] clip. Blocks; call off the main thread.
+     * [onText] gets the reply so far as it streams in (for showing progress).
+     */
+    fun transcribe(audio: ClipAudio, durationMs: Long, onStatus: (String) -> Unit, onText: (String) -> Unit = {}): List<Cue> {
         val part = if (audio.bytes.size > INLINE_LIMIT) {
             onStatus("Uploading sound")
             JSONObject().put("fileData", JSONObject().put("mimeType", audio.mime).put("fileUri", upload(audio)))
@@ -156,36 +167,80 @@ class GeminiTranscriber(private val apiKey: String, private val model: String) {
                 .put("data", Base64.encodeToString(audio.bytes, Base64.NO_WRAP)))
         }
         onStatus("Listening")
-        val text = try {
-            generate(part, durationMs, withSchema = true)
-        } catch (e: HttpError) {
-            // Older or newer endpoints may refuse the schema form: ask for the same JSON in words.
-            if (e.code == 400) generate(part, durationMs, withSchema = false) else throw e.readable(model)
+        // Ask for little "thinking" (transcription doesn't need it, and it can take minutes),
+        // with the JSON schema; step back from either if this model or endpoint refuses it.
+        val attempts = listOf(true to true, false to true, false to false)
+        var last: HttpError? = null
+        for ((thinkingLow, schema) in attempts) {
+            if (cancelled) throw TranscribeException("Cancelled")
+            try {
+                val text = generate(part, durationMs, schema, thinkingLow, onText)
+                return SubtitleTrack.clean(parseCues(text), durationMs)
+            } catch (e: HttpError) {
+                last = e
+                if (e.code != 400 || e.body.contains("API key", true)) throw e.readable(model)
+            }
         }
-        return SubtitleTrack.clean(parseCues(text), durationMs)
+        throw last!!.readable(model)
     }
 
-    private fun generate(audioPart: JSONObject, durationMs: Long, withSchema: Boolean): String {
+    /** Streams the reply (server-sent events) and returns its whole text. */
+    private fun generate(audioPart: JSONObject, durationMs: Long, withSchema: Boolean, thinkingLow: Boolean, onText: (String) -> Unit): String {
         val config = JSONObject().put("temperature", 0.2).put("responseMimeType", "application/json")
         if (withSchema) config.put("responseSchema", SCHEMA)
+        if (thinkingLow) config.put("thinkingConfig", JSONObject().put("thinkingLevel", "low"))
         val body = JSONObject()
             .put("contents", JSONArray().put(JSONObject().put("role", "user").put("parts",
                 JSONArray().put(audioPart).put(JSONObject().put("text", prompt(durationMs, withSchema))))))
             .put("generationConfig", config)
-        val res = try {
-            post("$BASE/v1beta/models/$model:generateContent", body.toString().toByteArray(), "application/json")
-        } catch (e: HttpError) {
-            if (withSchema) throw e else throw e.readable(model)
-        }
-        val json = JSONObject(res.body)
-        val parts = json.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")
-            ?: throw TranscribeException(json.optJSONObject("promptFeedback")?.let { "Gemini declined: ${it.optString("blockReason")}" }
-                ?: "Gemini sent no transcript")
-        return buildString {
+        val text = StringBuilder()
+        var blocked: String? = null
+        stream("$BASE/v1beta/models/$model:streamGenerateContent?alt=sse", body.toString().toByteArray()) { event ->
+            val json = runCatching { JSONObject(event) }.getOrNull() ?: return@stream
+            json.optJSONObject("promptFeedback")?.optString("blockReason")?.takeIf { it.isNotEmpty() }?.let { blocked = it }
+            val parts = json.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts") ?: return@stream
             for (i in 0 until parts.length()) {
                 val p = parts.getJSONObject(i)
-                if (!p.optBoolean("thought", false)) append(p.optString("text"))
+                if (!p.optBoolean("thought", false)) text.append(p.optString("text"))
             }
+            onText(text.toString())
+        }
+        if (text.isEmpty()) throw TranscribeException(blocked?.let { "Gemini declined: $it" } ?: "Gemini sent no transcript")
+        return text.toString()
+    }
+
+    /** POSTs [body] and hands each server-sent event's data to [onEvent] as it arrives. */
+    private fun stream(url: String, body: ByteArray, onEvent: (String) -> Unit) {
+        val c = URL(url).openConnection() as HttpURLConnection
+        open = c
+        try {
+            c.requestMethod = "POST"
+            c.connectTimeout = 30_000
+            c.readTimeout = 180_000
+            c.setRequestProperty("x-goog-api-key", apiKey)
+            c.setRequestProperty("Content-Type", "application/json")
+            c.doOutput = true
+            c.setFixedLengthStreamingMode(body.size)
+            c.outputStream.use { it.write(body) }
+            val code = c.responseCode
+            if (code !in 200..299) throw HttpError(code, c.errorStream?.use { it.readBytes().decodeToString() } ?: "")
+            c.inputStream.bufferedReader().use { r ->
+                val data = StringBuilder()
+                while (true) {
+                    val line = r.readLine() ?: break
+                    if (line.startsWith("data:")) data.append(line.removePrefix("data:").trim())
+                    else if (line.isEmpty() && data.isNotEmpty()) { onEvent(data.toString()); data.setLength(0) }
+                }
+                if (data.isNotEmpty()) onEvent(data.toString())
+            }
+        } catch (e: HttpError) {
+            throw e
+        } catch (e: IOException) {
+            if (cancelled) throw TranscribeException("Cancelled")
+            throw TranscribeException("Lost the connection to Gemini (${e.message ?: "network error"})")
+        } finally {
+            open = null
+            c.disconnect()
         }
     }
 
@@ -227,10 +282,9 @@ class GeminiTranscriber(private val apiKey: String, private val model: String) {
         }
     }
 
-    private fun post(url: String, body: ByteArray, type: String) = request(url, "POST", body, type, emptyMap())
-
     private fun request(url: String, method: String, body: ByteArray?, type: String?, headers: Map<String, String>): Response {
         val c = URL(url).openConnection() as HttpURLConnection
+        open = c
         try {
             c.requestMethod = method
             c.connectTimeout = 30_000
@@ -251,14 +305,18 @@ class GeminiTranscriber(private val apiKey: String, private val model: String) {
         } catch (e: HttpError) {
             throw e
         } catch (e: IOException) {
+            if (cancelled) throw TranscribeException("Cancelled")
             throw TranscribeException("No connection to Gemini (${e.message ?: "network error"})")
         } finally {
+            open = null
             c.disconnect()
         }
     }
 
     companion object {
         const val DEFAULT_MODEL = "gemini-3.8-flash"
+        /** Quicker and cheaper; a little less exact on Telugu. */
+        const val FAST_MODEL = "gemini-3.5-flash-lite"
         private const val BASE = "https://generativelanguage.googleapis.com"
         /** Inline audio above this goes through the Files API (the request limit is 20 MB, base64 adds a third). */
         private const val INLINE_LIMIT = 13 * 1024 * 1024

@@ -22,14 +22,16 @@ import kotlin.math.min
 /**
  * Cuts the subject out of each frame so text can sit behind it.
  *
- * DeepLab v3 (MediaPipe, on-device) says what every pixel is: person, horse, dog, car, bike...
- * By default every person is the subject. A tap picks one subject instead: the connected
- * foreground region under the finger (a rider and their horse are one region), followed
- * from frame to frame as it moves, so two people side by side stay apart. Where the subject
- * is a person, the fast selfie model adds the soft edge of hair and clothing.
+ * Two on-device models (MediaPipe): DeepLab v3 says what every pixel is (person, horse, dog,
+ * car, bike...) and the selfie model draws people precisely, hair included. By default every
+ * person is the subject: the selfie model runs on every frame, kept to where DeepLab (run every
+ * few frames) sees people, so a landscape is never mistaken for a face. A tap picks one subject
+ * instead: the connected region under the finger (a rider and their horse are one region),
+ * followed from frame to frame as it moves; animals and objects use DeepLab on every frame.
  *
  * The models run on one worker thread; the render thread hands over small upright frames
- * (see FilmRenderer.readSegInput) and takes the newest matte.
+ * (see FilmRenderer.readSegInput) and takes the newest matte. [onStatus] says what is going
+ * on, so a failure is visible instead of silent.
  */
 class SubjectMasker(private val context: Context) {
 
@@ -40,17 +42,28 @@ class SubjectMasker(private val context: Context) {
         /** Every person in the frame (nothing picked yet). */
         data object AllPeople : Target()
         /** One subject, followed by its connected foreground region. */
-        class One(val tracker: SubjectTracker) : Target()
+        class One(val tracker: SubjectTracker, var person: Boolean) : Target()
     }
 
     private val thread = HandlerThread("subject").apply { start() }
     private val handler = Handler(thread.looper)
+    private val main = Handler(context.mainLooper)
     private var people: ImageSegmenter? = null
     private var objects: ImageSegmenter? = null
+    private var objectsOnGpu = false
     private var failed = false
-    private var timestamp = 0L
+    private var peopleTs = 0L
+    private var objectsTs = 0L
     private var seq = 0L
+    private var frame = 0L
     private var target: Target = Target.AllPeople
+    /** DeepLab's last class map, and the subject region in it (kept between DeepLab runs). */
+    private var classes: ByteArray? = null
+    private var classesSize = 0 to 0
+    private var region: BooleanArray? = null
+    private var lastStatus = ""
+    /** The subject fills enough of the frame for the selfie model alone to draw it. */
+    private var bigSubject = false
 
     @Volatile private var busy = false
     @Volatile private var inFlight: CountDownLatch? = null
@@ -63,6 +76,8 @@ class SubjectMasker(private val context: Context) {
 
     /** What the subject is now ("People", "Horse"...), or null when a tap found nothing. Main thread. */
     var onSubject: ((String?) -> Unit)? = null
+    /** What the cut-out is doing ("Person found", "No person in view", an error). Main thread. */
+    var onStatus: ((String) -> Unit)? = null
 
     val idle get() = !busy
 
@@ -95,6 +110,15 @@ class SubjectMasker(private val context: Context) {
                 process(bmp)
             } catch (e: Throwable) {
                 Log.e(TAG, "segment", e)
+                // A GPU model that fails at run time: the CPU takes over from the next frame.
+                if (objectsOnGpu) {
+                    runCatching { objects?.close() }
+                    objects = null
+                    objectsOnGpu = false
+                    forceCpu = true
+                } else {
+                    status("Cut-out error: ${e.message ?: e.javaClass.simpleName}")
+                }
             } finally {
                 bmp.recycle()
                 busy = false
@@ -118,6 +142,8 @@ class SubjectMasker(private val context: Context) {
 
     // ------------------------------------------------------------------ worker
 
+    private var forceCpu = false
+
     private fun segmenter(asset: String, category: Boolean, delegate: Delegate): ImageSegmenter? = try {
         ImageSegmenter.createFromOptions(
             context,
@@ -130,19 +156,47 @@ class SubjectMasker(private val context: Context) {
         )
     } catch (e: Throwable) {
         Log.w(TAG, "load $asset on $delegate", e)
+        lastError = "${e.javaClass.simpleName}: ${e.message}"
         null
     }
 
+    private var lastError = ""
+
     private fun peopleModel() = people ?: segmenter(PEOPLE_MODEL, category = false, Delegate.CPU).also { people = it }
 
-    /** DeepLab on the GPU where it runs (several times faster), else on the CPU. */
-    private fun objectModel() = objects
-        ?: (segmenter(OBJECT_MODEL, category = true, Delegate.GPU) ?: segmenter(OBJECT_MODEL, category = true, Delegate.CPU))
-            .also { objects = it }
+    /**
+     * DeepLab on the GPU where it really works (checked once on a test frame: some GPUs hand
+     * back masks the CPU can't read), else on the CPU.
+     */
+    private fun objectModel(): ImageSegmenter? {
+        objects?.let { return it }
+        if (!forceCpu) {
+            val gpu = segmenter(OBJECT_MODEL, category = true, Delegate.GPU)
+            if (gpu != null) {
+                val ok = try {
+                    val probe = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888)
+                    val r = gpu.segmentForVideo(BitmapImageBuilder(probe).build(), ++objectsTs)
+                    val m = r.categoryMask().get()
+                    ByteBufferExtractor.extract(m).get(ByteArray(m.width * m.height))
+                    m.close()
+                    probe.recycle()
+                    true
+                } catch (e: Throwable) {
+                    Log.w(TAG, "GPU segmenter unusable", e)
+                    false
+                }
+                if (ok) { objects = gpu; objectsOnGpu = true; return gpu }
+                runCatching { gpu.close() }
+            }
+        }
+        objectsOnGpu = false
+        objects = segmenter(OBJECT_MODEL, category = true, Delegate.CPU)
+        return objects
+    }
 
     /** Person confidence, 0..1 per pixel. */
     private fun personConfidence(img: MPImage): FloatArray? {
-        val r = peopleModel()?.segmentForVideo(img, ++timestamp) ?: return null
+        val r = peopleModel()?.segmentForVideo(img, ++peopleTs) ?: return null
         val masks = r.confidenceMasks().orElse(null) ?: return null
         // One channel (person), or background + person.
         val m = masks[if (masks.size > 1) 1 else 0]
@@ -154,7 +208,7 @@ class SubjectMasker(private val context: Context) {
 
     /** Object class per pixel (DeepLab v3 / PASCAL VOC: 0 background, 15 person...). */
     private fun objectClasses(img: MPImage): ByteArray? {
-        val r = objectModel()?.segmentForVideo(img, ++timestamp) ?: return null
+        val r = objectModel()?.segmentForVideo(img, ++objectsTs) ?: return null
         val m = r.categoryMask().orElse(null) ?: return null
         val out = ByteArray(m.width * m.height)
         ByteBufferExtractor.extract(m).get(out)
@@ -165,42 +219,68 @@ class SubjectMasker(private val context: Context) {
     private fun process(bmp: Bitmap) {
         val w = bmp.width
         val h = bmp.height
+        val n = w * h
         val img = BitmapImageBuilder(bmp).build()
         if (pendingReset) {
             pendingReset = false
             target = Target.AllPeople
+            region = null
             post("People")
         }
-        val cls = objectClasses(img) ?: return fail()
-        pendingPick?.let { p ->
-            pendingPick = null
-            choose(cls, w, h, p[0], p[1])
-        }
-
-        val region: BooleanArray? = when (val t = target) {
-            is Target.AllPeople -> BooleanArray(w * h) { (cls[it].toInt() and 0xFF) == PERSON }
-            is Target.One -> t.tracker.follow(BooleanArray(w * h) { isForeground(cls[it]) }, w, h)
-        }
-        val out = ByteBuffer.allocateDirect(w * h)
-        var any = false
-        if (region != null) {
-            var persons = 0
-            for (i in region.indices) if (region[i]) {
-                out.put(i, 255.toByte())
-                any = true
-                if ((cls[i].toInt() and 0xFF) == PERSON) persons++
+        val t = target
+        val pick = pendingPick
+        // DeepLab: every frame for an animal or object, every third for people (they move
+        // less between runs than the selfie model's precise edge needs), and for any tap.
+        val needClasses = pick != null || classes == null || classesSize != w to h ||
+            (t is Target.One && !t.person) || !bigSubject || frame % 3 == 0L
+        frame++
+        if (needClasses) {
+            val cls = objectClasses(img) ?: return fail()
+            classes = cls
+            classesSize = w to h
+            if (pick != null) {
+                pendingPick = null
+                choose(cls, w, h, pick[0], pick[1])
             }
-            // People: the selfie model's soft edge (hair, sleeves) around what DeepLab found.
-            if (persons > 0) personConfidence(img)?.let { conf ->
-                val near = Regions.dilate(BooleanArray(w * h) { region[it] && (cls[it].toInt() and 0xFF) == PERSON }, w, h, max(2, w / 40))
-                for (i in conf.indices) if (near[i] && !region[i]) {
-                    out.put(i, (conf[i] * 255f + 0.5f).toInt().coerceIn(0, 255).toByte())
+            region = when (val tt = target) {
+                is Target.AllPeople -> BooleanArray(n) { (cls[it].toInt() and 0xFF) == PERSON }.takeIf { r -> r.any { it } }
+                is Target.One -> tt.tracker.follow(BooleanArray(n) { isForeground(cls[it]) }, w, h)
+            }
+            bigSubject = (region?.count { it } ?: 0) > n * 0.06f
+        }
+        val cls = classes!!
+        val reg = region
+        val out = ByteBuffer.allocateDirect(n)
+        var any = false
+        if (reg != null) {
+            val tt = target
+            val personSubject = tt is Target.AllPeople || (tt is Target.One && tt.person)
+            if (personSubject) {
+                // Close up, the selfie model draws people precisely (hair, fingers): its
+                // confidence, kept to near where DeepLab saw them. Small or far people (where
+                // it is weak) also take DeepLab's own outline, which is fresh every frame then.
+                val conf = personConfidence(img)
+                val near = Regions.dilate(reg, w, h, max(3, w / 14))
+                for (i in 0 until n) {
+                    var m = if (near[i] && conf != null) (conf[i] * 255f + 0.5f).toInt().coerceIn(0, 255) else 0
+                    if ((!bigSubject || conf == null) && reg[i]) m = 255
+                    if (m > 0) { out.put(i, m.toByte()); if (m > 127) any = true }
                 }
+            } else {
+                for (i in 0 until n) if (reg[i]) { out.put(i, 255.toByte()); any = true }
             }
         }
         out.position(0)
         latest = Matte(out, w, h, ++seq, empty = !any)
+        status(when {
+            any && tt() is Target.AllPeople -> "Cutting out people" + if (objectsOnGpu) " · GPU" else ""
+            any -> "Cutting out the subject" + if (objectsOnGpu) " · GPU" else ""
+            tt() is Target.AllPeople -> "No person in view"
+            else -> "Subject out of view"
+        })
     }
+
+    private fun tt() = target
 
     private fun isForeground(c: Byte): Boolean {
         val v = c.toInt() and 0xFF
@@ -210,6 +290,7 @@ class SubjectMasker(private val context: Context) {
     private fun fail() {
         failed = objects == null
         latest = null
+        if (failed) status("Couldn't start the cut-out: $lastError")
     }
 
     /** Picks the foreground region under the finger; says what it is. */
@@ -217,7 +298,7 @@ class SubjectMasker(private val context: Context) {
         val px = (x * w).toInt().coerceIn(0, w - 1)
         val py = (y * h).toInt().coerceIn(0, h - 1)
         // The nearest foreground pixel within a small radius of the finger.
-        val r = max(3, min(w, h) / 25)
+        val r = max(4, min(w, h) / 12)
         var best = -1
         var bestD = Int.MAX_VALUE
         for (dy in -r..r) for (dx in -r..r) {
@@ -229,18 +310,24 @@ class SubjectMasker(private val context: Context) {
             if (isForeground(cls[i]) && d < bestD) { bestD = d; best = i }
         }
         if (best < 0) { post(null); return }
-        val t = SubjectTracker((best % w + 0.5f) / w, (best / w + 0.5f) / h)
-        val region = t.follow(BooleanArray(w * h) { isForeground(cls[it]) }, w, h) ?: run { post(null); return }
-        target = Target.One(t)
+        val tr = SubjectTracker((best % w + 0.5f) / w, (best / w + 0.5f) / h)
+        val reg = tr.follow(BooleanArray(w * h) { isForeground(cls[it]) }, w, h) ?: run { post(null); return }
         // Name it after what most of it is ("Horse" for a rider on a horse too).
         val counts = IntArray(256)
-        for (i in region.indices) if (region[i]) counts[cls[i].toInt() and 0xFF]++
-        val main = counts.indices.maxBy { counts[it] }
-        post(LABELS.getOrElse(main) { "Subject" })
+        for (i in reg.indices) if (reg[i]) counts[cls[i].toInt() and 0xFF]++
+        val mainClass = counts.indices.maxBy { counts[it] }
+        target = Target.One(tr, person = mainClass == PERSON)
+        post(LABELS.getOrElse(mainClass) { "Subject" })
     }
 
     private fun post(label: String?) {
-        Handler(context.mainLooper).post { onSubject?.invoke(label) }
+        main.post { onSubject?.invoke(label) }
+    }
+
+    private fun status(s: String) {
+        if (s == lastStatus) return
+        lastStatus = s
+        main.post { onStatus?.invoke(s) }
     }
 
     companion object {

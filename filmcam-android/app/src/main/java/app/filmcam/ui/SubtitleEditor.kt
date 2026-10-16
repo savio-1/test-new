@@ -138,7 +138,7 @@ fun SubtitleScreen(ui: UiState, actions: CameraActions) {
             if (showKey) SubKeyPanel(ui, actions) { showKey = false }
 
             when {
-                s.status != null -> SubWorking(s.status!!)
+                s.status != null -> SubWorking(s, actions)
                 track == null -> SubStart(ui, actions, s)
                 else -> SubEditor(ui, actions, s, track, fonts) { ms -> view?.seekTo(ms.toInt()) }
             }
@@ -200,6 +200,10 @@ private fun SubKeyPanel(ui: UiState, actions: CameraActions, onDone: () -> Unit)
         SubField(key, "Paste your key") { key = it }
         Spacer(Modifier.height(8.dp))
         Text("Model", color = Muted, fontSize = 11.sp)
+        Row(Modifier.padding(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SubChip("Best (3.8 Flash)", model == app.filmcam.sub.GeminiTranscriber.DEFAULT_MODEL) { model = app.filmcam.sub.GeminiTranscriber.DEFAULT_MODEL }
+            SubChip("Fast (3.5 Flash-Lite)", model == app.filmcam.sub.GeminiTranscriber.FAST_MODEL) { model = app.filmcam.sub.GeminiTranscriber.FAST_MODEL }
+        }
         SubField(model, "gemini-3.8-flash") { model = it }
         Spacer(Modifier.height(10.dp))
         SubPrimary("Save", Modifier.align(Alignment.End)) { actions.setGemini(key, model); onDone() }
@@ -219,12 +223,20 @@ private fun SubField(value: String, hint: String, font: FontFamily? = null, size
 }
 
 @Composable
-private fun SubWorking(status: String) {
-    Column(Modifier.fillMaxWidth().padding(top = 40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+private fun SubWorking(s: SubtitleSession, actions: CameraActions) {
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) { while (true) { now = System.currentTimeMillis(); delay(500) } }
+    val secs = ((now - s.startedAt) / 1000).coerceAtLeast(0)
+    Column(Modifier.fillMaxWidth().padding(top = 32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         CircularProgressIndicator(color = Accent, strokeWidth = 2.5.dp, modifier = Modifier.size(34.dp))
         Spacer(Modifier.height(14.dp))
-        Text("$status…", color = Color.White, fontSize = 14.sp)
-        Text("A minute of speech takes about 10–30 seconds", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+        Text("${s.status}…  ${secs}s", color = Color.White, fontSize = 14.sp)
+        Text(
+            if (s.linesSoFar > 0) "${s.linesSoFar} lines so far" else "A minute of speech usually takes 10–40 seconds",
+            color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp),
+        )
+        Spacer(Modifier.height(14.dp))
+        SubSecondary("Cancel") { actions.cancelSubtitles() }
     }
 }
 

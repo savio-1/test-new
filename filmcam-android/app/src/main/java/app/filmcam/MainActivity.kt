@@ -58,6 +58,7 @@ import app.filmcam.film.FontLibrary
 import app.filmcam.film.TextLayer
 import app.filmcam.seg.SubjectMasker
 import app.filmcam.sub.AudioExtract
+import app.filmcam.sub.LiveCaptioner
 import app.filmcam.sub.GeminiTranscriber
 import app.filmcam.sub.SubtitleLanguage
 import app.filmcam.sub.SubtitleStyle
@@ -134,6 +135,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         ui.fonts = fonts
         engine.fonts = fonts
         subjects = SubjectMasker(applicationContext).also { m ->
+            m.onStatus = { st -> ui.subjectStatus = st }
             m.onSubject = { label ->
                 if (label == null) ui.message = "Nothing to cut out there: tap a person, pet or object"
                 else ui.subjectLabel = label
@@ -142,6 +144,8 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         }
         ui.theme = enumPref("theme", ThemeMode.SYSTEM)
         ui.geminiKey = prefs.getString("geminiKey", "") ?: ""
+        ui.liveCaptions = prefs.getBoolean("liveCaptions", false) && LiveCaptioner.supported(this)
+        ui.captionLanguage = prefs.getString("captionLanguage", "en") ?: "en"
         ui.geminiModel = prefs.getString("geminiModel", null) ?: GeminiTranscriber.DEFAULT_MODEL
         ui.textLayers = TextLayer.listFromJson(prefs.getString("text", null))
         engine.textLayers = ui.textLayers
@@ -205,6 +209,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         }
 
         setContent { CameraScreen(ui, this) }
+        debugIntent(intent)
 
         if (hasPermission(Manifest.permission.CAMERA)) onPermissionsChanged() else requestPermissions()
     }
@@ -920,18 +925,29 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         prefs.edit { putString("geminiKey", ui.geminiKey); putString("geminiModel", ui.geminiModel) }
     }
 
+    private var transcriber: GeminiTranscriber? = null
+
     override fun generateSubtitles() {
         val s = ui.subtitles ?: return
         if (s.status != null) return
         val key = ui.geminiKey
         if (key.isBlank()) { s.error = "Add your Gemini API key first"; return }
-        val model = ui.geminiModel
+        val t = GeminiTranscriber(key, ui.geminiModel)
+        transcriber = t
         s.error = null
         s.status = "Reading the sound"
+        s.startedAt = System.currentTimeMillis()
+        s.linesSoFar = 0
         Thread({
             try {
                 val audio = AudioExtract.extract(this, s.item.uri) ?: throw TranscribeException("This clip has no sound")
-                val cues = GeminiTranscriber(key, model).transcribe(audio, s.durationMs) { st -> runOnUiThread { s.status = st } }
+                val cues = t.transcribe(audio, s.durationMs,
+                    onStatus = { st -> runOnUiThread { s.status = st } },
+                    onText = { text ->
+                        // Each finished line carries an "end": count them as they stream in.
+                        val n = Regex("\"end\"").findAll(text).count()
+                        runOnUiThread { if (s.status != null) { s.status = "Writing"; s.linesSoFar = n } }
+                    })
                 runOnUiThread {
                     s.status = null
                     if (cues.isEmpty()) { s.error = "No speech found in this clip"; return@runOnUiThread }
@@ -946,9 +962,83 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
                 runOnUiThread { s.status = null; s.error = e.message }
             } catch (e: Exception) {
                 Log.e("FilmCam", "subtitles", e)
-                runOnUiThread { s.status = null; s.error = "Couldn't make subtitles (${e.javaClass.simpleName})" }
+                runOnUiThread { s.status = null; s.error = "Couldn't make subtitles (${e.javaClass.simpleName}: ${e.message})" }
+            } finally {
+                if (transcriber === t) transcriber = null
             }
         }, "Subtitles").start()
+    }
+
+    /**
+     * Test hook, debuggable builds only: `am start -n app.filmcam/.MainActivity --es test_edit <uri>
+     * --es test_text "TEXT" --es test_pick "x,y"` opens a picture to develop, adds a text set behind
+     * the subject and picks the subject at (x, y). Lets the cut-out be checked on an emulator.
+     */
+    private fun debugIntent(i: Intent?) {
+        if (i == null || applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE == 0) return
+        i.getStringExtra("test_edit")?.let { startEdit(Uri.parse(it), false) }
+        i.getStringExtra("test_text")?.let { t ->
+            setTextLayers(listOf(TextLayer(id = 1L, text = t, font = FontLibrary.SUBTITLE_LATIN, size = 0.16f, y = 0.4f, behind = true)))
+        }
+        i.getStringExtra("test_pick")?.split(',')?.mapNotNull { it.toFloatOrNull() }?.takeIf { it.size == 2 }?.let { (x, y) ->
+            main.postDelayed({ pickSubject(x, y) }, 4000)
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        debugIntent(intent)
+    }
+
+    // ------------------------------------------------------------------ live subtitles
+
+    private var captioner: LiveCaptioner? = null
+
+    private fun captionLayers(text: String?): List<TextLayer> {
+        if (text.isNullOrBlank()) return emptyList()
+        val te = ui.captionLanguage == "te"
+        return listOf(TextLayer(id = 9_000_001L, text = text, font = if (te) FontLibrary.SUBTITLE_TELUGU else FontLibrary.SUBTITLE_LATIN,
+            size = 0.045f, x = 0.5f, y = 0.86f, box = true, wrap = 0.86f))
+    }
+
+    /** Starts listening to the recording's own sound (GPU-path recordings: the 10-bit direct path can't take text). */
+    private fun startCaptions() {
+        if (!ui.recording || directActive != null) return
+        val c = captioner ?: LiveCaptioner(this).also { cap ->
+            captioner = cap
+            cap.onCaption = { t -> engine.captionLayers = captionLayers(t) }
+            cap.onProblem = { msg -> ui.message = msg }
+        }
+        AudioPump.tap = { b, o, l -> c.feed(b, o, l) }
+        c.start(if (ui.captionLanguage == "te") "te-IN" else "en-IN", AudioPump.SAMPLE_RATE)
+    }
+
+    private fun stopCaptions() {
+        AudioPump.tap = null
+        captioner?.stop()
+        engine.captionLayers = emptyList()
+    }
+
+    override fun setLiveCaptions(on: Boolean) {
+        if (on && !LiveCaptioner.supported(this)) {
+            ui.message = if (android.os.Build.VERSION.SDK_INT < 33) "Live subtitles need Android 13 or newer" else "No speech recognition on this phone"
+            return
+        }
+        ui.liveCaptions = on
+        prefs.edit { putBoolean("liveCaptions", on) }
+        if (on) startCaptions() else stopCaptions()
+    }
+
+    override fun setCaptionLanguage(lang: String) {
+        ui.captionLanguage = lang
+        prefs.edit { putString("captionLanguage", lang) }
+        if (ui.liveCaptions && ui.recording) startCaptions()
+    }
+
+    override fun cancelSubtitles() {
+        transcriber?.cancel()
+        transcriber = null
+        ui.subtitles?.let { it.status = null; it.error = "Cancelled" }
     }
 
     override fun updateSubtitles(track: SubtitleTrack) {
@@ -1344,6 +1434,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         ui.recording = true
         ui.dock = app.filmcam.ui.Dock.NONE
         ui.recordStartMs = System.currentTimeMillis()
+        if (ui.liveCaptions) startCaptions()
     }
 
     /** A 10-bit HLG take: the camera writes straight into the prepared encoder. */
@@ -1388,6 +1479,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
             ui.savingVideo = true
             return
         }
+        stopCaptions()
         engine.stopRecording(immediately)
         click(MediaActionSound.STOP_VIDEO_RECORDING)
         ui.recording = false

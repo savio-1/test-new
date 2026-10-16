@@ -454,6 +454,9 @@ private fun Viewfinder(ui: UiState, actions: CameraActions, chrome: Float, iconR
 
         Box(Modifier.fillMaxSize().alpha(chrome)) {
             if (ui.recording) RecordingBadge(ui, Modifier.align(Alignment.TopCenter).padding(top = 12.dp))
+            if (ui.mode == CaptureMode.VIDEO && ui.edit == null && !ui.logActive) {
+                CaptionToggle(ui, actions, Modifier.align(Alignment.TopStart).padding(12.dp))
+            }
             StatusPill(ui, Modifier.align(Alignment.TopEnd).padding(12.dp))
             if (ui.halfFramePending) {
                 GlassText("½  Take the second half", Modifier.align(Alignment.TopCenter).padding(top = 12.dp))
@@ -533,6 +536,25 @@ private fun FocusRing(pos: Offset, key: Long, onDone: () -> Unit) {
         drawRoundRect(
             Color.White, Offset((size.width - s) / 2, (size.height - s) / 2), Size(s, s),
             CornerRadius(s * 0.18f), style = Stroke(1.2.dp.toPx()),
+        )
+    }
+}
+
+/** Live subtitles: CC on/off (also while recording) and the language spoken. */
+@Composable
+private fun CaptionToggle(ui: UiState, actions: CameraActions, modifier: Modifier) {
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        val on = ui.liveCaptions
+        Text(
+            "CC", color = if (on) Color.Black else Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+            modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(if (on) Color(0xFFFFB347) else Glass)
+                .clickable { actions.setLiveCaptions(!on) }.padding(horizontal = 10.dp, vertical = 6.dp),
+        )
+        if (on) Text(
+            if (ui.captionLanguage == "te") "తెలుగు" else "English", color = Color.White, fontSize = 12.sp,
+            modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(Glass)
+                .clickable { actions.setCaptionLanguage(if (ui.captionLanguage == "te") "en" else "te") }
+                .padding(horizontal = 10.dp, vertical = 6.dp),
         )
     }
 }

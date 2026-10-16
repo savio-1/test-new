@@ -157,8 +157,9 @@ fun TextEditorLayer(ui: UiState, actions: CameraActions) {
                             return@detectTapGestures
                         }
                         val hit = latestUi.textLayers.lastOrNull { map.hit(it, fonts, pos, 12.dp.toPx()) }
-                        // Depth tool: a tap on the picture picks what the text goes behind.
-                        if (hit == null && latestUi.textTool == TextTool.DEPTH && sel?.behind == true) {
+                        // Depth tool: a tap anywhere on the picture (over the text too, which
+                        // often covers the subject) picks what the text goes behind.
+                        if (latestUi.textTool == TextTool.DEPTH && sel?.behind == true) {
                             val l = map.toLayer(pos)
                             actions.pickSubject(l.x, l.y)
                             latestUi.subjectTap = l.x to l.y
@@ -450,6 +451,11 @@ private fun DepthPanel(ui: UiState, actions: CameraActions, layer: TextLayer) {
         }
         Spacer(Modifier.height(8.dp))
         if (layer.behind) {
+            if (ui.subjectStatus.isNotEmpty()) Text(
+                ui.subjectStatus, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                color = if (ui.subjectStatus.startsWith("Cutting")) p.accent else p.muted,
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     "Behind: ${ui.subjectLabel}  ·  tap the subject in the picture to pick it",

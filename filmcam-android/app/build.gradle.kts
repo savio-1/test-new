@@ -16,7 +16,11 @@ android {
         versionCode = 1
         versionName = "1.0"
         // 64-bit phones only: each extra ABI adds ~8 MB of MediaPipe native code.
-        ndk { abiFilters += listOf("arm64-v8a") }
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+            // -PwithX86 adds the emulator ABI, for testing only.
+            if (project.hasProperty("withX86")) abiFilters += listOf("x86_64")
+        }
     }
 
     buildTypes {

@@ -390,6 +390,7 @@ class AudioPump private constructor(
                         } else {
                             val read = record.read(buf, minOf(buf.capacity(), CHUNK))
                             if (read > 0) {
+                                tap?.invoke(buf, 0, read)
                                 if (startNs < 0) startNs = clock() - LATENCY_NS
                                 codec.queueInputBuffer(inIdx, 0, read, ptsUs(startNs, frames), 0)
                                 frames += read / 2
@@ -438,7 +439,9 @@ class AudioPump private constructor(
     }
 
     companion object {
-        private const val SAMPLE_RATE = 48_000
+        /** Gets a copy of the microphone PCM as it is recorded (live subtitles listen to it). */
+        @Volatile var tap: ((ByteBuffer, Int, Int) -> Unit)? = null
+        const val SAMPLE_RATE = 48_000
         private const val CHUNK = 4096
         private const val LATENCY_NS = 20_000_000L
 

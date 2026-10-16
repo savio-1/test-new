@@ -76,6 +76,8 @@ class FilmEngine {
     @Volatile var simulateShutter = true
     /** Text overlays burnt into preview, video and stills. */
     @Volatile var textLayers: List<TextLayer> = emptyList()
+    /** Live subtitles: drawn with the text, over everything. */
+    @Volatile var captionLayers: List<TextLayer> = emptyList()
     @Volatile var fonts: FontLibrary? = null
     /** Log video: what the screen and the encoder get (see Shaders uLogMode), and the gain. */
     @Volatile var logDisplay = 0
@@ -388,7 +390,7 @@ class FilmEngine {
 
     /** Re-renders the text overlays when the layers or the frame shape change. */
     private fun updateText(frameW: Int, frameH: Int, maxSide: Int) {
-        val layers = textLayers
+        val layers = textLayers + captionLayers
         val key = Triple(layers, frameW, frameH)
         if (key == textKey) return
         textKey = key
