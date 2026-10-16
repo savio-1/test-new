@@ -80,6 +80,11 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
     private val encodeCache = HashMap<String, Boolean>()
     private val main = Handler(Looper.getMainLooper())
     private var previewPlayer: PreviewPlayer? = null
+    /** 10-bit log: the encoder surface the camera writes into, kept for the app's lifetime. */
+    private var directSurface: android.view.Surface? = null
+    /** An encoder prepared on [directSurface] for the next 10-bit take, and the one running. */
+    private var directRecorder: VideoRecorder? = null
+    private var directActive: VideoRecorder? = null
     private var exporter: VideoExporter? = null
     private var viewerFromGallery = false
 
@@ -123,12 +128,18 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         ui.camera = saved
         ui.category = if (saved.category == app.filmcam.film.CameraCategory.ORIGINAL) app.filmcam.film.CameraCategory.FILM else saved.category
         ui.look = saved.look
+        ui.style = app.filmcam.film.StyleSetting(
+            enumPref("style", app.filmcam.film.PhotoStyle.STANDARD), prefs.getFloat("styleTone", 0f),
+            prefs.getFloat("styleColor", 0f), prefs.getFloat("stylePalette", 1f),
+        )
         ui.mode = enumPref("mode", CaptureMode.PHOTO)
         ui.videoRes = enumPref("videoRes", VideoResolution.UHD)
         ui.photoRatio = enumPref("photoRatio", AspectRatio.R3_4)
         ui.videoRatio = enumPref("videoRatio", AspectRatio.R9_16)
         ui.log = prefs.getBoolean("log", false)
         ui.logViewAssist = prefs.getBoolean("logViewAssist", true)
+        ui.logCurve = enumPref("logCurve", app.filmcam.ui.LogCurveChoice.HLG)
+        ui.raw = prefs.getBoolean("raw", false)
         ui.timerSeconds = prefs.getInt("timer", 0)
         ui.burstCount = prefs.getInt("burstCount", 1)
         ui.burstInterval = prefs.getFloat("burstInterval", 1f)
@@ -213,6 +224,9 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
     }
 
     override fun onDestroy() {
+        directRecorder?.discard()
+        directRecorder = null
+        directSurface?.release()
         exporter?.cancel()
         stopPreviewPlayer()
         camera?.release()
@@ -272,7 +286,10 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         // Default: the biggest size that doesn't need the slow full-sensor mode.
         val wantMp = prefs.getInt("photoMp", ui.photoSizes.filter { !it.maxRes }.ifEmpty { ui.photoSizes }.maxOf { it.mp })
         ui.photoSize = ui.photoSizes.minBy { kotlin.math.abs(it.mp - wantMp) }
-        ui.logInIsp = c.contrastCurve
+        if (!ui.logActive || ui.logPath != app.filmcam.ui.LogPath.GPU) ui.logInIsp = c.contrastCurve
+        ui.rawSupported = c.rawSize != null
+        val stream = c.videoSize(ui.videoRes)
+        ui.hlgAvailable = c.hlg10 && stream != null && VideoRecorder.chooseHlg(stream.width, stream.height, ui.fps) != null
         if (c.evStep > 0f) {
             ui.evMin = (c.evRange.lower * c.evStep).coerceAtLeast(-3f)
             ui.evMax = (c.evRange.upper * c.evStep).coerceAtMost(3f)
@@ -300,13 +317,49 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         c.flash = ui.flash
         c.stabilization = ui.stabilization
         val photo = ui.photoSize ?: caps?.photoSizes?.first() ?: PhotoSize(4000, 3000)
-        c.open(CameraConfig(lens, ui.mode, ui.videoRes, photo, ui.fps, log = ui.logActive))
+        val direct = if (ui.useHlg) prepareDirect(caps) else { dropDirect(); null }
+        c.open(CameraConfig(
+            lens, ui.mode, ui.videoRes, photo, ui.fps, log = ui.logActive,
+            hlg = direct != null, direct = direct, raw = ui.raw && ui.mode == CaptureMode.PHOTO && ui.rawSupported,
+        ))
+    }
+
+    /**
+     * Makes sure a 10-bit HLG encoder is configured on the persistent surface before the camera
+     * session that writes into it is built. Returns that surface, or null if it can't be done.
+     */
+    private fun prepareDirect(caps: CameraCaps?): android.view.Surface? {
+        if (directActive != null) return directSurface
+        val size = caps?.videoSize(ui.videoRes) ?: return null
+        val choice = VideoRecorder.chooseHlg(size.width, size.height, ui.fps) ?: return null
+        val surface = directSurface ?: android.media.MediaCodec.createPersistentInputSurface().also { directSurface = it }
+        val ready = directRecorder
+        if (ready != null && ready.width == choice.width && ready.height == choice.height) return surface
+        ready?.discard()
+        directRecorder = try {
+            VideoRecorder(choice, surface)
+        } catch (e: Exception) {
+            Log.e("FilmCam", "10-bit encoder", e)
+            null
+        }
+        return if (directRecorder != null) surface else null
+    }
+
+    private fun dropDirect() {
+        if (directActive != null) return
+        directRecorder?.discard()
+        directRecorder = null
     }
 
     /** What the engine draws: the look (plain in log, which is for grading) and the text. */
     private fun pushLook() {
         val log = ui.logActive
-        engine.look = if (log) FilmCameras.ORIGINAL.look.copy(exposureEv = ui.look.exposureEv) else ui.look
+        engine.look = when {
+            log -> FilmCameras.ORIGINAL.look.copy(exposureEv = ui.look.exposureEv)
+            // Styles belong to the Original camera; a look brings its own grading.
+            ui.isOriginal -> ui.look.copy(style = ui.style)
+            else -> ui.look
+        }
         engine.textLayers = if (log) emptyList() else ui.textLayers
         applyLogModes()
     }
@@ -317,6 +370,12 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         val isp = ui.logInIsp
         engine.logGain = 2f.pow(logUnder)
         if (!ui.logActive) { engine.logDisplay = 0; engine.logEncode = 0; return }
+        if (ui.logPath == app.filmcam.ui.LogPath.HLG10) {
+            // The camera writes the file itself; the screen just needs the HLG shown sensibly.
+            engine.logDisplay = if (ui.logViewAssist) 4 else 0
+            engine.logEncode = 0
+            return
+        }
         // The camera makes log itself where it can; otherwise the GPU turns its picture into log.
         engine.logEncode = if (isp) 0 else 1
         engine.logDisplay = when {
@@ -338,11 +397,26 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
     override fun onCameraReady(config: CameraConfig, caps: CameraCaps) {
         runOnUiThread {
             if (config.mode == CaptureMode.PHOTO && config.photo != ui.photoSize) ui.photoSize = config.photo
+            if (ui.useHlg && !config.hlg) {
+                // The camera wouldn't build a 10-bit session: S-Log3 it is.
+                ui.hlgFailed = true
+                dropDirect()
+                engine.outputAspect = ui.frameAspect
+                applyLogModes()
+            }
+            if (config.mode == CaptureMode.PHOTO && ui.raw && !config.raw) ui.message = "RAW isn't available with this lens or size"
             if (config.mode == CaptureMode.VIDEO && config.videoRes != ui.videoRes) {
                 ui.videoRes = config.videoRes
                 engine.maxWorkSide = max(ui.videoRes.width, 1920)
                 refreshAvailability()
             }
+        }
+    }
+
+    override fun onRawCaptured(dng: ByteArray) {
+        io.execute {
+            val uri = MediaSaver.saveDng(this, dng)
+            if (uri == null) runOnUiThread { ui.message = "Couldn't save the RAW file" }
         }
     }
 
@@ -474,8 +548,24 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
     override fun setLog(on: Boolean) {
         if (ui.recording) return
         ui.log = on
+        ui.hlgFailed = false
         prefs.edit { putBoolean("log", on) }
         pushLook()
+        openCamera()
+    }
+
+    override fun setLogCurve(curve: app.filmcam.ui.LogCurveChoice) {
+        if (ui.recording) return
+        ui.logCurve = curve
+        ui.hlgFailed = false
+        prefs.edit { putString("logCurve", curve.name) }
+        pushLook()
+        openCamera()
+    }
+
+    override fun setRaw(on: Boolean) {
+        ui.raw = on
+        prefs.edit { putBoolean("raw", on) }
         openCamera()
     }
 
@@ -487,7 +577,9 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
 
     override fun saveLut() {
         io.execute {
-            val uri = MediaSaver.saveDownload(this, "FilmCam S-Log3 to Rec709.cube", "application/octet-stream", LogCurve.cube())
+            val hlg = ui.logPath == app.filmcam.ui.LogPath.HLG10
+            val name = if (hlg) "FilmCam HLG to Rec709.cube" else "FilmCam S-Log3 to Rec709.cube"
+            val uri = MediaSaver.saveDownload(this, name, "application/octet-stream", LogCurve.cube(hlg))
             runOnUiThread { ui.message = if (uri != null) "LUT saved to Download/FilmCam" else "Couldn't save the LUT" }
         }
     }
@@ -573,6 +665,18 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
             c.applySettings()
         }
         if (look.multiShot != MultiShot.HALF_FRAME) dropHalfFrame()
+    }
+
+    override fun removeLook() = selectCamera(FilmCameras.ORIGINAL)
+
+    override fun setStyle(style: app.filmcam.film.StyleSetting) {
+        if (!ui.isOriginal) selectCamera(FilmCameras.ORIGINAL)
+        ui.style = style
+        prefs.edit {
+            putString("style", style.style.name); putFloat("styleTone", style.tone)
+            putFloat("styleColor", style.color); putFloat("stylePalette", style.palette)
+        }
+        pushLook()
     }
 
     override fun resetLook() = updateLook(ui.camera.look.copy(exposureEv = 0f))
@@ -830,7 +934,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
     private fun saveEdit() {
         val e = ui.edit ?: return
         if (ui.progress >= 0f || ui.developing > 0) return
-        val look = ui.look
+        val look = engine.look
         if (!e.video) {
             ui.developing++
             ui.flashPulse++
@@ -906,7 +1010,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
 
     private fun takePhoto() {
         val cam = camera ?: return
-        val look = ui.look
+        val look = engine.look   // what the viewfinder shows: the look, or Original with its style
         if (look.multiShot == MultiShot.SAMPLER) {
             if (ui.sampling) return
             ui.sampling = true
@@ -921,7 +1025,8 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         val turns = ui.quarterTurns
         val shotLook = if (look.multiShot == MultiShot.HALF_FRAME) look.copy(frame = FrameStyle.NONE) else look
         // Original, unframed, in the sensor's own shape: keep the camera's JPEG as it is.
-        val untouched = look.copy(exposureEv = 0f) == FilmCameras.ORIGINAL.look && ui.textLayers.isEmpty() &&
+        val untouched = look.copy(exposureEv = 0f, style = app.filmcam.film.StyleSetting()) == FilmCameras.ORIGINAL.look &&
+            look.style.isIdentity && ui.textLayers.isEmpty() &&
             ui.photoRatio == AspectRatio.R3_4
         // The saved frame has the viewfinder's shape, turned with the phone.
         val ratio = ui.photoRatio.value
@@ -1024,6 +1129,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
     // ------------------------------------------------------------------ video
 
     private fun startRecording() {
+        if (ui.logPath == app.filmcam.ui.LogPath.HLG10 && ui.logActive) { startDirectRecording(); return }
         val size = engine.outputSize ?: return
         val turns = ui.quarterTurns
         // The encoder runs landscape; the file carries a rotation for players.
@@ -1031,7 +1137,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         val target = MediaSaver.createVideo(this) ?: run { ui.message = "Couldn't create the video file"; return }
         val (uri, pfd) = target
         val recorder = try {
-            VideoRecorder(
+            VideoRecorder.create(
                 choice, (turns * 90 + 90) % 360, pfd,
                 audio = if (hasPermission(Manifest.permission.RECORD_AUDIO)) AudioPump.create() else null,
             ) { ok -> onVideoFinished(uri, ok) }
@@ -1050,8 +1156,48 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         ui.recordStartMs = System.currentTimeMillis()
     }
 
+    /** A 10-bit HLG take: the camera writes straight into the prepared encoder. */
+    private fun startDirectRecording() {
+        val cam = camera ?: return
+        val rec = directRecorder ?: run { ui.message = "10-bit recorder isn't ready yet"; return }
+        val target = MediaSaver.createVideo(this) ?: run { ui.message = "Couldn't create the video file"; return }
+        val (uri, pfd) = target
+        // Sound on the same clock as the camera's frame timestamps.
+        val realtime = caps()?.realtimeTimestamps == true
+        val clock: () -> Long = if (realtime) android.os.SystemClock::elapsedRealtimeNanos else System::nanoTime
+        try {
+            rec.open(cam.uprightRotation(ui.quarterTurns), pfd,
+                if (hasPermission(Manifest.permission.RECORD_AUDIO)) AudioPump.create(clock) else null) { ok -> onVideoFinished(uri, ok) }
+            rec.start()
+        } catch (e: Exception) {
+            Log.e("FilmCam", "10-bit start", e)
+            runCatching { pfd.close() }
+            MediaSaver.publishVideo(this, uri, false)
+            ui.message = "10-bit recording failed"
+            return
+        }
+        directRecorder = null
+        directActive = rec
+        cam.setDirectRecording(true)
+        ui.encoderInfo = "${rec.width}×${rec.height} HEVC 10-bit HLG ${ui.fps}p"
+        sound.play(MediaActionSound.START_VIDEO_RECORDING)
+        ui.recording = true
+        ui.dock = app.filmcam.ui.Dock.NONE
+        ui.recordStartMs = System.currentTimeMillis()
+    }
+
     private fun stopRecording(immediately: Boolean = false) {
         if (!ui.recording) return
+        val direct = directActive
+        if (direct != null) {
+            camera?.setDirectRecording(false)
+            // Let the frames already on their way land before closing the stream.
+            main.postDelayed({ direct.stop() }, if (immediately) 0L else 150L)
+            sound.play(MediaActionSound.STOP_VIDEO_RECORDING)
+            ui.recording = false
+            ui.savingVideo = true
+            return
+        }
         engine.stopRecording(immediately)
         sound.play(MediaActionSound.STOP_VIDEO_RECORDING)
         ui.recording = false
@@ -1064,6 +1210,11 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
             val thumb = if (ok) runCatching { contentResolver.loadThumbnail(uri, Size(240, 240), null) }.getOrNull() else null
             runOnUiThread {
                 ui.savingVideo = false
+                if (directActive != null) {
+                    // Arm a fresh 10-bit encoder on the same surface for the next take.
+                    directActive = null
+                    if (ui.useHlg) prepareDirect(caps())
+                }
                 if (ok) {
                     ui.lastUri = uri
                     ui.lastIsVideo = true

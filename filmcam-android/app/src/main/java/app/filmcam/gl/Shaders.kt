@@ -215,8 +215,16 @@ uniform vec2 uPrismGhost;
 uniform float uTracking;
 uniform float uRollBurn;
 
+// Photographic style (Original camera). See PhotoStyle.kt.
+uniform float uStyleOn;
+uniform vec4 uStyleA;       // warm, tint, saturation, contrast (the style's own, before palette)
+uniform vec4 uStyleB;       // tone, brightness, fade, mono
+uniform vec3 uStyleShadow;
+uniform vec3 uStyleHigh;
+uniform vec4 uStyleUser;    // pad tone, pad colour, palette, skin weight
+
 // Log video: 0 off, 1 encode the camera's picture to S-Log3 (when the ISP can't),
-// 2 show S-Log3 as Rec.709 (view assist), 3 both. See LogCurve.kt.
+// 2 show S-Log3 as Rec.709 (view assist), 3 both, 4 show 10-bit HLG as Rec.709. See LogCurve.kt.
 uniform int uLogMode;
 uniform float uLogGain;     // 2^stops of underexposure to give back
 
@@ -332,6 +340,65 @@ vec3 grade(vec3 c) {
     return black + clamp(c, 0.0, 1.0) * (white - black);
 }
 
+// ---------------------------------------------------------------- photographic style
+// How skin-like a colour is: warm hues of moderate saturation in the mid-tones.
+float skinWeight(vec3 c) {
+    vec3 hsv = rgb2hsv(clamp(c, 0.0, 1.0));
+    float hue = hsv.x;
+    float h = 1.0 - smoothstep(0.02, 0.06, abs(hue - 0.07));
+    if (hue > 0.95) h = 1.0 - smoothstep(0.02, 0.06, 1.07 - hue);
+    return h * smoothstep(0.1, 0.22, hsv.y) * (1.0 - smoothstep(0.62, 0.85, hsv.y))
+             * smoothstep(0.12, 0.3, hsv.z);
+}
+
+vec3 photoStyle(vec3 c) {
+    float p = uStyleUser.z;
+    float skin = skinWeight(c);
+    float l0 = dot(c, LUMA);
+
+    // Undertone: a white-balance shift. Undertone styles lean on skin a little harder.
+    float k = 1.0 + (uStyleUser.w - 1.0) * skin;
+    float warm = uStyleA.x * p * k;
+    float tint = uStyleA.y * p * k;
+    c *= vec3(1.0 + 0.10 * warm + 0.035 * tint, 1.0 + 0.015 * warm - 0.07 * tint, 1.0 - 0.15 * warm + 0.03 * tint);
+    c *= l0 / max(dot(c, LUMA), 1e-4);          // keep brightness: only the colour moves
+
+    // Tone: lifted shadows and a softer curve going up the pad, deeper and punchier going down.
+    float t = clamp(uStyleUser.x + uStyleB.x * p, -1.0, 1.0);
+    float l = max(dot(c, LUMA), 1e-4);
+    float l1 = pow(l, exp2(-0.55 * t));
+    float kc = max(0.55, 1.0 + uStyleA.w * p - 0.22 * t);
+    l1 = sCurve(l1, kc);
+    float b = uStyleB.y * p;
+    l1 = l1 * (1.0 + b) / (1.0 + b * l1);
+    // Half hue-preserving (scale by the luma change), half per channel: strong colours don't
+    // turn neon when brightened or go to mud when deepened.
+    vec3 perChannel = clamp(c, 0.0, 1.0);
+    perChannel = pow(perChannel, vec3(exp2(-0.55 * t)));
+    perChannel = vec3(sCurve(perChannel.r, kc), sCurve(perChannel.g, kc), sCurve(perChannel.b, kc));
+    perChannel = perChannel * (1.0 + b) / (1.0 + b * perChannel);
+    c = mix(c * (l1 / l), perChannel, 0.5);
+    // Anything pushed past white rolls toward white instead of shifting hue.
+    float over = max(max(c.r, c.g), c.b);
+    if (over > 1.0) c = mix(c / over, vec3(1.0), clamp((over - 1.0) * 0.5, 0.0, 1.0));
+
+    // Colour: vibrance that spares colours already strong, and spares skin when boosting.
+    l = dot(c, LUMA);
+    float userSat = uStyleUser.y >= 0.0 ? 0.6 * uStyleUser.y : 0.92 * uStyleUser.y;
+    float s = 1.0 + uStyleA.z * p + userSat;
+    if (s > 1.0) {
+        float chroma = max(max(c.r, c.g), c.b) - min(min(c.r, c.g), c.b);
+        s = 1.0 + (s - 1.0) * (1.0 - 0.55 * chroma) * (1.0 - 0.5 * skin);
+    }
+    c = mix(vec3(l), c, max(s, 0.0));
+    c = mix(c, vec3(l), uStyleB.w * p);
+
+    // Split tints and faded blacks.
+    c += (uStyleShadow * (1.0 - smoothstep(0.0, 0.5, l)) + uStyleHigh * smoothstep(0.5, 1.0, l)) * p;
+    float fade = uStyleB.z * p;
+    return clamp(fade + c * (1.0 - fade), 0.0, 1.0);
+}
+
 // ---------------------------------------------------------------- log
 float slog3(float x) {
     return x >= 0.01125 ? (420.0 + log(max((x + 0.01) / 0.19, 1e-6)) / log(10.0) * 261.5) / 1023.0
@@ -346,6 +413,17 @@ vec3 srgbToLinear(vec3 c) { return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(
 vec3 linearToSrgb(vec3 c) { return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
 vec3 logView(vec3 y) {
     vec3 lin = vec3(slog3Inv(y.r), slog3Inv(y.g), slog3Inv(y.b));
+    return linearToSrgb(1.0 - exp(-max(lin, 0.0) * 1.6));
+}
+
+// 10-bit HLG (BT.2100, Rec.2020 primaries) shown on an SDR screen: the same filmic view.
+float hlgInv(float e) {
+    return e <= 0.5 ? e * e / 3.0 : (exp((e - 0.55991073) / 0.17883277) + 0.28466892) / 12.0;
+}
+vec3 hlgView(vec3 e) {
+    vec3 lin = vec3(hlgInv(e.r), hlgInv(e.g), hlgInv(e.b)) * (0.18 / (0.38 * 0.38 / 3.0));
+    // Columns of the BT.2020 -> BT.709 matrix.
+    lin = mat3(1.6605, -0.1246, -0.0182, -0.5876, 1.1329, -0.1006, -0.0728, -0.0083, 1.1187) * lin;
     return linearToSrgb(1.0 - exp(-max(lin, 0.0) * 1.6));
 }
 
@@ -661,6 +739,7 @@ void main() {
 
     // ---- emulsion
     c = grade(c);
+    if (uStyleOn > 0.5) c = photoStyle(c);
 
     // ---- halation, bloom and streaks, as light (then back to display space)
     vec3 gT = texture(uGlowTight, s).rgb;
@@ -835,6 +914,7 @@ void main() {
         c = vec3(slog3(lin.r), slog3(lin.g), slog3(lin.b));
     }
     if (uLogMode == 2 || uLogMode == 3) c = logView(clamp(c, 0.0, 1.0));
+    if (uLogMode == 4) c = hlgView(clamp(c, 0.0, 1.0));
 
     // A hair of dither so smooth skies never band.
     c += (rnd(uvec3(uvec2(gl_FragCoord.xy + uTileOffset), uSeed + 99u)) - 0.5) / 255.0;

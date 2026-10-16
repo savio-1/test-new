@@ -24,7 +24,20 @@ import app.filmcam.film.StampStyle
 import app.filmcam.film.TextLayer
 
 /** The tray above the shutter. One at a time keeps the screen calm. */
-enum class Dock(val label: String) { NONE(""), LOOKS("Looks"), ADJUST("Adjust"), FRAME("Frame"), TEXT("Text") }
+enum class Dock(val label: String) { NONE(""), STYLES("Styles"), LOOKS("Looks"), ADJUST("Adjust"), FRAME("Frame"), TEXT("Text") }
+
+/** How log is made, best first. */
+enum class LogPath(val words: List<String>) {
+    /** 10-bit HLG from the sensor straight into the encoder. */
+    HLG10(listOf("HLG", "10-bit", "Rec.2020")),
+    /** S-Log3 tone curve applied by the camera's processor, 8-bit. */
+    ISP(listOf("S-Log3", "Rec.709", "in camera")),
+    /** S-Log3 made on the GPU from the camera's normal picture. */
+    GPU(listOf("S-Log3", "Rec.709", "approx.")),
+}
+
+/** The log curve the user prefers when the phone offers both. */
+enum class LogCurveChoice(val label: String) { HLG("HLG 10-bit"), SLOG3("S-Log3") }
 
 /** The small option panels opened from the chips above the viewfinder. */
 enum class Quick { RATIO, SIZE, VIDEO, TIMER, BURST, LOG }
@@ -57,6 +70,10 @@ class UiState {
     var camera by mutableStateOf(FilmCameras.byId(null))
     var category by mutableStateOf(CameraCategory.FILM)
     var look by mutableStateOf(FilmCameras.byId(null).look)
+    /** Photographic style of the Original camera (kept while a look is on, for when it comes off). */
+    var style by mutableStateOf(app.filmcam.film.StyleSetting())
+    /** No look applied: the phone's own picture, with its photographic style. */
+    val isOriginal get() = camera.id == FilmCameras.ORIGINAL.id
 
     // chrome
     var dock by mutableStateOf(Dock.NONE)
@@ -131,6 +148,20 @@ class UiState {
     /** True when the camera's own processor applies the log curve; false means it is approximated. */
     var logInIsp by mutableStateOf(false)
     var logViewAssist by mutableStateOf(true)
+    var logCurve by mutableStateOf(LogCurveChoice.HLG)
+    /** The phone streams 10-bit HLG and has a 10-bit encoder for the current size. */
+    var hlgAvailable by mutableStateOf(false)
+    /** The camera refused the 10-bit session; S-Log3 takes over. */
+    var hlgFailed by mutableStateOf(false)
+    var raw by mutableStateOf(false)
+    var rawSupported by mutableStateOf(false)
+    val useHlg get() = logActive && logCurve == LogCurveChoice.HLG && hlgAvailable && !hlgFailed
+    val logPath get() = when {
+        useHlg -> LogPath.HLG10
+        logInIsp -> LogPath.ISP
+        else -> LogPath.GPU
+    }
+    val logSummary get() = logPath.words
     var fps by mutableIntStateOf(30)
     var availableVideoRes by mutableStateOf<Set<VideoResolution>>(setOf(VideoResolution.FHD))
     var availableFps by mutableStateOf<Set<Int>>(setOf(30))
@@ -148,6 +179,8 @@ class UiState {
     /** The frame shape in use, upright: the mode's ratio, or the imported picture's. */
     val frameAspect: Float get() {
         edit?.let { e -> return editRatio?.value ?: e.aspect }
+        // 10-bit takes record the sensor's 16:9 stream as it is.
+        if (useHlg) return 9f / 16f
         return if (mode == CaptureMode.VIDEO) videoRatio.value else photoRatio.value
     }
     val logActive get() = log && mode == CaptureMode.VIDEO && edit == null
@@ -163,6 +196,9 @@ interface CameraActions {
     fun switchFacing()
     fun setZoom(total: Float)
     fun selectCamera(camera: FilmCamera)
+    /** Back to the Original camera. */
+    fun removeLook()
+    fun setStyle(style: app.filmcam.film.StyleSetting)
     fun updateLook(look: FilmLook)
     fun resetLook()
     fun setFrame(frame: FrameStyle)
@@ -173,6 +209,8 @@ interface CameraActions {
     fun setRatio(ratio: AspectRatio?)
     fun setLog(on: Boolean)
     fun setLogViewAssist(on: Boolean)
+    fun setLogCurve(curve: LogCurveChoice)
+    fun setRaw(on: Boolean)
     fun saveLut()
     fun setTimer(seconds: Int)
     fun setBurst(count: Int, interval: Float)

@@ -43,6 +43,14 @@ data class CameraConfig(
     val fps: Int,
     /** Video in log: our own tone curve in the camera's ISP instead of its picture style. */
     val log: Boolean = false,
+    /**
+     * Log as 10-bit HLG: the camera streams HLG10 and writes straight into [direct], the
+     * encoder's persistent input surface, with no 8-bit GPU step in between.
+     */
+    val hlg: Boolean = false,
+    val direct: Surface? = null,
+    /** Also shoot a RAW frame (DNG) with every photo. */
+    val raw: Boolean = false,
 )
 
 /**
@@ -57,6 +65,8 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
         fun onCameraError(message: String)
         /** Log video: stops of underexposure to give back, and whether the camera applies the curve. */
         fun onLogState(under: Float, inIsp: Boolean) = Unit
+        /** A DNG of the frame just shot. */
+        fun onRawCaptured(dng: ByteArray) = Unit
     }
 
     var listener: Listener? = null
@@ -82,6 +92,13 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
     private var session: CameraCaptureSession? = null
     private var previewSurface: Surface? = null
     private var reader: ImageReader? = null
+    private var rawReader: ImageReader? = null
+    private var rawImage: android.media.Image? = null
+    private var rawResult: TotalCaptureResult? = null
+    private var rawRotation = 0
+    /** The camera ignored our log curve (some phones list it but don't apply it). */
+    private var ispCurveRejected = false
+    @Volatile private var directOn = false
     private var streamSize = Size(1920, 1080)
 
     private var lastExposureNs = 0L
@@ -159,7 +176,18 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
         val cfg = config ?: return
         val c = caps ?: return
         previewSurface = surface
-        val outputs = arrayListOf(OutputConfiguration(surface))
+        val hlg = cfg.mode == CaptureMode.VIDEO && cfg.hlg && c.hlg10 && Build.VERSION.SDK_INT >= 33
+        fun out(s: Surface) = OutputConfiguration(s).also {
+            if (hlg && Build.VERSION.SDK_INT >= 33) it.dynamicRangeProfile = android.hardware.camera2.params.DynamicRangeProfiles.HLG10
+        }
+        val outputs = arrayListOf(out(surface))
+        if (cfg.mode == CaptureMode.VIDEO) cfg.direct?.let { outputs += out(it) }
+        if (cfg.mode == CaptureMode.PHOTO && cfg.raw && !cfg.photo.maxRes) c.rawSize?.let { rs ->
+            rawReader = ImageReader.newInstance(rs.width, rs.height, ImageFormat.RAW_SENSOR, 2).also { r ->
+                r.setOnImageAvailableListener({ onRaw(it) }, handler)
+                outputs += OutputConfiguration(r.surface)
+            }
+        }
         if (cfg.mode == CaptureMode.PHOTO) {
             val js = cfg.photo
             reader = ImageReader.newInstance(js.width, js.height, ImageFormat.JPEG, 2).also { r ->
@@ -187,6 +215,9 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
                     // Fall back: drop high-res stills first, then step the video size down.
                     val smaller = c.photoSizes.filter { it.pixels < cfg.photo.pixels }.maxByOrNull { it.pixels }
                     val retry = when {
+                        // Drop the extras first: 10-bit, then RAW.
+                        cfg.hlg || cfg.direct != null -> cfg.copy(hlg = false, direct = null)
+                        cfg.raw -> cfg.copy(raw = false)
                         cfg.mode == CaptureMode.PHOTO && smaller != null -> cfg.copy(photo = smaller)
                         cfg.mode == CaptureMode.VIDEO && cfg.videoRes != VideoResolution.HD ->
                             cfg.copy(videoRes = VideoResolution.entries[cfg.videoRes.ordinal - 1])
@@ -219,9 +250,15 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
         runCatching { session?.close() }
         runCatching { device?.close() }
         runCatching { reader?.close() }
+        runCatching { rawReader?.close() }
+        runCatching { rawImage?.close() }
         session = null
         device = null
         reader = null
+        rawReader = null
+        rawImage = null
+        rawResult = null
+        directOn = false
         previewSurface = null
         pendingStill?.invoke(null)
         pendingStill = null
@@ -241,11 +278,26 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
             val template = if (cfg.mode == CaptureMode.VIDEO) CameraDevice.TEMPLATE_RECORD else CameraDevice.TEMPLATE_PREVIEW
             val b = dev.createCaptureRequest(template)
             b.addTarget(surface)
+            // While a 10-bit take runs, the camera feeds the encoder directly as well.
+            if (directOn) cfg.direct?.let { b.addTarget(it) }
             fill(b, still = false)
             s.setRepeatingRequest(b.build(), captureCallback, handler)
         } catch (e: Exception) {
             Log.e(TAG, "setRepeatingRequest", e)
         }
+    }
+
+    /** Starts or stops the camera writing into the 10-bit encoder surface. */
+    fun setDirectRecording(on: Boolean) = handler.post {
+        directOn = on
+        applyRepeating()
+    }
+
+    /** Clockwise rotation that stands a sensor-oriented frame upright for [quarterTurns]. */
+    fun uprightRotation(quarterTurns: Int): Int {
+        val c = caps ?: return 90
+        val deg = (quarterTurns and 3) * 90
+        return if (c.front) (c.sensorOrientation - deg + 360) % 360 else (c.sensorOrientation + deg) % 360
     }
 
     /** True when exposure is set by hand (real shutter speed). */
@@ -256,7 +308,8 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
      * Returns the stops of underexposure actually applied (AE steps are coarse).
      */
     private fun logUnder(c: CameraCaps): Float {
-        if (config?.log != true) return 0f
+        // HLG keeps its own highlight headroom: expose normally.
+        if (config?.log != true || config?.hlg == true) return 0f
         if (manual() || c.evStep <= 0f) return LogCurve.UNDER
         val idx = ((exposureEv - LogCurve.UNDER) / c.evStep).roundToInt().coerceIn(c.evRange.lower, c.evRange.upper)
         return (exposureEv - idx * c.evStep).coerceAtLeast(0f)
@@ -338,9 +391,9 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
 
         // Log: an S-Log3 curve on the sensor's linear signal in place of the phone's picture
         // style, and no extra sharpening (it bakes in halos a grade can't take out).
-        val log = video && cfg.log
+        val log = video && cfg.log && !cfg.hlg
         val under = if (log) logUnder(c) else 0f
-        val isp = log && c.contrastCurve
+        val isp = log && c.contrastCurve && !ispCurveRejected
         if (!still && (under != appliedLogUnder || isp != logInIsp)) {
             appliedLogUnder = under
             logInIsp = isp
@@ -362,6 +415,15 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
 
     private val captureCallback = object : CameraCaptureSession.CaptureCallback() {
         override fun onCaptureCompleted(s: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
+            // Some phones list custom tone curves but quietly use their own. Check what was
+            // applied; if it wasn't ours, make log on the GPU instead of showing a wrong picture.
+            if (logInIsp && request.get(CaptureRequest.TONEMAP_MODE) == CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE &&
+                result.get(CaptureResult.TONEMAP_MODE) != CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE
+            ) {
+                Log.w(TAG, "tone curve not applied (${result.get(CaptureResult.TONEMAP_MODE)}); log falls back to the GPU")
+                ispCurveRejected = true
+                applyRepeating()
+            }
             if (!manual()) {
                 result.get(CaptureResult.SENSOR_EXPOSURE_TIME)?.let { if (it > 0) lastExposureNs = it }
                 result.get(CaptureResult.SENSOR_SENSITIVITY)?.let { if (it > 0) lastIso = it }
@@ -463,6 +525,8 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
             val maxRes = cfg.photo.maxRes && Build.VERSION.SDK_INT >= 31
             // Full-resolution captures can only go to streams set up for that mode.
             if (!maxRes) previewSurface?.let { b.addTarget(it) }
+            val raw = if (!maxRes) rawReader else null
+            raw?.let { b.addTarget(it.surface) }
             fill(b, still = true)
             pendingZoomCrop = 1f
             if (maxRes) {
@@ -476,7 +540,15 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
             // Keep the pixels in sensor orientation; the film pipeline turns them upright.
             b.set(CaptureRequest.JPEG_ORIENTATION, 0)
             b.set(CaptureRequest.JPEG_QUALITY, 97.toByte())
-            s.capture(b.build(), null, handler)
+            rawImage?.close(); rawImage = null; rawResult = null
+            rawRotation = pendingRotation
+            val callback = if (raw == null) null else object : CameraCaptureSession.CaptureCallback() {
+                override fun onCaptureCompleted(s: CameraCaptureSession, r: CaptureRequest, result: TotalCaptureResult) {
+                    rawResult = result
+                    writeDng()
+                }
+            }
+            s.capture(b.build(), callback, handler)
         } catch (e: Exception) {
             Log.e(TAG, "still capture", e)
             failStill()
@@ -486,6 +558,39 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
     private fun failStill() {
         pendingStill?.invoke(null)
         pendingStill = null
+    }
+
+    private fun onRaw(r: ImageReader) {
+        val image = runCatching { r.acquireNextImage() }.getOrNull() ?: return
+        rawImage?.close()
+        rawImage = image
+        writeDng()
+    }
+
+    /** Once the raw frame and its capture result are both in: a DNG, upright by its tag. */
+    private fun writeDng() {
+        val image = rawImage ?: return
+        val result = rawResult ?: return
+        val c = caps ?: return
+        rawImage = null
+        rawResult = null
+        try {
+            val out = java.io.ByteArrayOutputStream(image.width * image.height * 2 + 65536)
+            android.hardware.camera2.DngCreator(c.characteristics, result).use { dng ->
+                dng.setOrientation(when ((rawRotation / 90) and 3) {
+                    1 -> android.media.ExifInterface.ORIENTATION_ROTATE_90
+                    2 -> android.media.ExifInterface.ORIENTATION_ROTATE_180
+                    3 -> android.media.ExifInterface.ORIENTATION_ROTATE_270
+                    else -> android.media.ExifInterface.ORIENTATION_NORMAL
+                })
+                dng.writeImage(out, image)
+            }
+            listener?.onRawCaptured(out.toByteArray())
+        } catch (e: Exception) {
+            Log.e(TAG, "dng", e)
+        } finally {
+            image.close()
+        }
     }
 
     private fun onJpeg(r: ImageReader) {

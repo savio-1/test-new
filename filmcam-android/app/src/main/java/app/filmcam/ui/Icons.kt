@@ -104,6 +104,9 @@ object Ico {
     val Scissors = icon("scissors", c(6.5f, 6.5f, 2.5f), c(6.5f, 17.5f, 2.5f), "M8.6 8L19.5 18", "M8.6 16L19.5 6")
     val Wand = icon("wand", "M4 20L15 9", "M13.5 7.5l3 3", "M18 3.5v3", "M16.5 5h3", "M20 9.5v2", "M19 10.5h2", "M9.5 3.5v2", "M8.5 4.5h2")
     val Back = icon("back", "M15 5l-7 7 7 7")
+    val Styles = icon("styles", "M6 3.5h12A2.5 2.5 0 0 1 20.5 6v12a2.5 2.5 0 0 1-2.5 2.5H6A2.5 2.5 0 0 1 3.5 18V6A2.5 2.5 0 0 1 6 3.5z",
+        fills = listOf(8f, 12f, 16f).flatMap { y -> listOf(8f, 12f, 16f).map { x -> c(x, y, 1.1f) } })
+    val None = icon("none", c(12f, 12f, 8f), "M6.4 17.6L17.6 6.4")
     val Play = icon("play", fills = listOf("M8 5.5v13l10.5-6.5z"))
     val Pause = icon("pause", fills = listOf("M7 5h3.5v14H7z", "M13.5 5H17v14h-3.5z"))
 }

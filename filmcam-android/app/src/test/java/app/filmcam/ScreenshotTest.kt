@@ -79,5 +79,19 @@ class ScreenshotTest {
         edit = EditSession(android.net.Uri.EMPTY, video = false, width = 3000, height = 4000); dock = Dock.LOOKS
     })
     @Test fun galleryEmptyDark() = shot(state(ThemeMode.DARK) { screen = Screen.GALLERY })
+    @Test fun stylesDark() = shot(state(ThemeMode.DARK) {
+        camera = FilmCameras.ORIGINAL; look = camera.look; dock = Dock.STYLES
+        style = app.filmcam.film.StyleSetting(app.filmcam.film.PhotoStyle.DRAMATIC, tone = -0.3f, color = 0.45f, palette = 0.7f)
+    })
+    @Test fun stylesLight() = shot(state(ThemeMode.LIGHT) {
+        camera = FilmCameras.ORIGINAL; look = camera.look; dock = Dock.STYLES
+        style = app.filmcam.film.StyleSetting(app.filmcam.film.PhotoStyle.GOLD, tone = 0.4f, color = -0.2f)
+    })
+    @Test fun originalLooksLight() = shot(state(ThemeMode.LIGHT) { camera = FilmCameras.ORIGINAL; look = camera.look; dock = Dock.LOOKS })
+    @Test fun logHlgDark() = shot(state(ThemeMode.DARK) {
+        mode = CaptureMode.VIDEO; log = true; hlgAvailable = true; quick = Quick.LOG; rawSupported = true
+        availableVideoRes = setOf(app.filmcam.camera.VideoResolution.FHD, app.filmcam.camera.VideoResolution.UHD)
+    })
+    @Test fun rawChipLight() = shot(state(ThemeMode.LIGHT) { rawSupported = true; raw = true })
     @Test fun settingsDark() = shot(state(ThemeMode.DARK) { settingsOpen = true; mode = CaptureMode.VIDEO; availableVideoRes = setOf(app.filmcam.camera.VideoResolution.FHD, app.filmcam.camera.VideoResolution.UHD); availableFps = setOf(24, 25, 30) })
 }

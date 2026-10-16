@@ -104,7 +104,7 @@ fun CameraScreen(ui: UiState, actions: CameraActions) {
 
             Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
                 TopBar(ui, actions, iconRotation, Modifier.alpha(chrome))
-                QuickBar(ui, Modifier.alpha(chrome))
+                QuickBar(ui, actions, Modifier.alpha(chrome))
                 Box(
                     Modifier.weight(1f).fillMaxWidth().padding(horizontal = 10.dp),
                     contentAlignment = Alignment.Center,
@@ -123,6 +123,7 @@ fun CameraScreen(ui: UiState, actions: CameraActions) {
                         label = "tray",
                     ) { dock ->
                         when (dock) {
+                            Dock.STYLES -> StylesTray(ui, actions, chrome)
                             Dock.LOOKS -> LooksTray(ui, actions, chrome)
                             Dock.ADJUST -> AdjustTray(ui, actions, chrome)
                             Dock.FRAME -> FrameTray(ui, actions, chrome)
@@ -210,13 +211,17 @@ private fun TopBar(ui: UiState, actions: CameraActions, iconRotation: Float, mod
         Column(
             Modifier
                 .clip(RoundedCornerShape(12.dp))
-                .clickable(enabled = !ui.recording && !ui.logActive) { ui.dock = if (ui.dock == Dock.LOOKS) Dock.NONE else Dock.LOOKS }
+                .clickable(enabled = !ui.recording && !ui.logActive) {
+                    val d = if (ui.isOriginal) Dock.STYLES else Dock.LOOKS
+                    ui.dock = if (ui.dock == d) Dock.NONE else d
+                }
                 .padding(horizontal = 10.dp, vertical = 2.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(if (ui.logActive) "Log" else ui.camera.name, color = p.text, fontSize = 21.sp, fontFamily = SerifDisplay, maxLines = 1)
             val sub = when {
-                ui.logActive -> listOf("S-Log3", "Rec.709", if (ui.logInIsp) "in camera" else "approx.")
+                ui.logActive -> ui.logSummary
+                ui.isOriginal && edit == null -> listOf(ui.style.style.label, if (ui.mode == CaptureMode.VIDEO) "Video" else "Photo")
                 edit != null -> listOf("Developing", ui.look.stock.name)
                 else -> listOf(ui.look.stock.name, ui.look.shutter.label) +
                     if (ui.mode == CaptureMode.VIDEO && ui.look.frameRate != FilmFrameRate.NATIVE) listOf("${ui.look.frameRate.label}fps") else emptyList()
@@ -232,7 +237,7 @@ private fun TopBar(ui: UiState, actions: CameraActions, iconRotation: Float, mod
 
 /** Chips for the shot's shape and options; each opens a small panel over the picture. */
 @Composable
-private fun QuickBar(ui: UiState, modifier: Modifier) {
+private fun QuickBar(ui: UiState, actions: CameraActions, modifier: Modifier) {
     val sideways = ui.frameTurns % 2 == 1
     val edit = ui.edit
     Row(
@@ -253,6 +258,7 @@ private fun QuickBar(ui: UiState, modifier: Modifier) {
             QuickChip(ui, Quick.TIMER, Ico.Timer, timerLabel(ui.timerSeconds), active = ui.timerSeconds > 0)
         } else {
             QuickChip(ui, Quick.SIZE, null, ui.photoSize?.label ?: "—")
+            if (ui.rawSupported) ToggleChip("RAW", ui.raw, enabled = ui.photoSize?.maxRes != true) { actions.setRaw(!ui.raw) }
             QuickChip(ui, Quick.TIMER, Ico.Timer, timerLabel(ui.timerSeconds), active = ui.timerSeconds > 0)
             QuickChip(ui, Quick.BURST, Ico.Burst, burstLabel(ui.burstCount, ui.burstInterval), active = ui.burstCount != 1)
         }
@@ -289,6 +295,24 @@ private fun QuickChip(ui: UiState, quick: Quick?, icon: ImageVector?, text: Stri
         }
         Text(text, color = tint, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace, maxLines = 1)
     }
+}
+
+/** A chip that switches something on and off (RAW). */
+@Composable
+private fun ToggleChip(text: String, on: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
+    val p = LocalPalette.current
+    val shape = RoundedCornerShape(10.dp)
+    Text(
+        text, color = if (on && enabled) p.bg else p.text, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+        fontFamily = FontFamily.Monospace,
+        modifier = Modifier
+            .alpha(if (enabled) 1f else 0.35f)
+            .clip(shape)
+            .background(if (on && enabled) p.accent else Color.Transparent)
+            .border(1.dp, if (on && enabled) p.accent else p.line, shape)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 9.dp, vertical = 5.dp),
+    )
 }
 
 /** While a clip is being developed or trimmed: progress over everything, nothing to tap. */
@@ -467,7 +491,11 @@ private fun StatusPill(ui: UiState, modifier: Modifier) {
         ui.sampling -> "Sampling"
         ui.savingVideo -> "Saving"
         ui.developing > 0 -> "Developing"
-        ui.logActive -> if (ui.logInIsp) "Log" else "Log · approx."
+        ui.logActive -> when (ui.logPath) {
+            LogPath.HLG10 -> "Log · 10-bit"
+            LogPath.ISP -> "Log"
+            LogPath.GPU -> "Log · approx."
+        }
         else -> null
     } ?: return
     Row(
@@ -567,9 +595,11 @@ private fun DockBar(ui: UiState, modifier: Modifier) {
         modifier.fillMaxWidth().padding(top = 4.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
     ) {
-        for (d in listOf(Dock.LOOKS, Dock.ADJUST, Dock.FRAME, Dock.TEXT)) {
+        for (d in listOf(Dock.STYLES, Dock.LOOKS, Dock.ADJUST, Dock.FRAME, Dock.TEXT)) {
             val sel = ui.dock == d
-            val icon = when (d) { Dock.LOOKS -> Ico.Film; Dock.ADJUST -> Ico.Adjust; Dock.FRAME -> Ico.Frame; else -> Ico.Text }
+            val icon = when (d) {
+                Dock.STYLES -> Ico.Styles; Dock.LOOKS -> Ico.Film; Dock.ADJUST -> Ico.Adjust; Dock.FRAME -> Ico.Frame; else -> Ico.Text
+            }
             Column(
                 Modifier
                     .clip(RoundedCornerShape(14.dp))

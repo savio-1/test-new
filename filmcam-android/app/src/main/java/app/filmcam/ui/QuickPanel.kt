@@ -99,11 +99,15 @@ fun QuickPanel(q: Quick, ui: UiState, actions: CameraActions, modifier: Modifier
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Shoot log", color = p.text, fontSize = 14.sp)
-                        Text("Flat S-Log3 footage for grading. No film look.", color = p.muted, fontSize = 11.sp)
+                        Text("Flat, wide-range footage for grading. No film look.", color = p.muted, fontSize = 11.sp)
                     }
                     PanelSwitch(ui.log) { actions.setLog(it) }
                 }
                 if (ui.log) {
+                    if (ui.hlgAvailable) {
+                        PanelLabel("Curve", top = 12)
+                        Segmented(LogCurveChoice.entries, ui.logCurve, { it.label }, Modifier.fillMaxWidth()) { actions.setLogCurve(it) }
+                    }
                     Spacer(Modifier.height(10.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
@@ -113,8 +117,14 @@ fun QuickPanel(q: Quick, ui: UiState, actions: CameraActions, modifier: Modifier
                         PanelSwitch(ui.logViewAssist) { actions.setLogViewAssist(it) }
                     }
                     PanelHelp(
-                        if (ui.logInIsp) "This camera applies the curve to the sensor signal itself. In your editor: S-Log3 gamma, Rec.709 colour."
-                        else "This camera can't take a custom curve, so log is approximated from its picture: less range in the highlights.",
+                        when (ui.logPath) {
+                            LogPath.HLG10 -> "10-bit HLG straight from the sensor into the encoder (HEVC Main10, 16:9). " +
+                                "Most range and no banding. In your editor: Rec.2100 HLG, Rec.2020 colour."
+                            LogPath.ISP -> "8-bit S-Log3, applied to the sensor signal by the camera itself. " +
+                                "In your editor: S-Log3 gamma, Rec.709 colour."
+                            LogPath.GPU -> "This camera won't apply a custom curve, so S-Log3 is made from its normal picture: " +
+                                "flat and gradeable, with less range in the highlights."
+                        } + if (ui.hlgFailed) " (The camera refused a 10-bit session at this size.)" else "",
                     )
                     Spacer(Modifier.height(8.dp))
                     Pill("Save LUT to Downloads") { actions.saveLut() }

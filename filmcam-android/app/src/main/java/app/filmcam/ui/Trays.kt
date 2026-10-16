@@ -140,14 +140,39 @@ fun LooksTray(ui: UiState, actions: CameraActions, chrome: Float) {
             val category = if (ui.category == CameraCategory.ORIGINAL) CameraCategory.FILM else ui.category
             TextTabs(CameraCategory.entries.filter { it != CameraCategory.ORIGINAL }, category, { it.label }) { ui.category = it }
             Spacer(Modifier.height(8.dp))
-            // "Original" (no filter) leads every row.
-            val cams = listOf(FilmCameras.ORIGINAL) + FilmCameras.ALL.filter { it.category == category }
-            val state = rememberLazyListState(cams.indexOf(ui.camera).coerceAtLeast(0))
-            LaunchedEffect(ui.category) { state.scrollToItem(cams.indexOf(ui.camera).coerceAtLeast(0)) }
+            // Looks sit on top of the Original camera: "None" takes the look off, and so does
+            // tapping the chosen look again.
+            val cams = FilmCameras.ALL.filter { it.category == category }
+            val start = (cams.indexOf(ui.camera) + 1).coerceAtLeast(0)
+            val state = rememberLazyListState(start)
+            LaunchedEffect(ui.category) { state.scrollToItem((cams.indexOf(ui.camera) + 1).coerceAtLeast(0)) }
             LazyRow(state = state, contentPadding = PaddingValues(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(cams, key = { it.id }) { cam -> LookCard(cam, cam.id == ui.camera.id) { actions.selectCamera(cam) } }
+                item(key = "none") { NoLookCard(ui.isOriginal) { actions.removeLook() } }
+                items(cams, key = { it.id }) { cam ->
+                    val sel = cam.id == ui.camera.id
+                    LookCard(cam, sel) { if (sel) actions.removeLook() else actions.selectCamera(cam) }
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun NoLookCard(selected: Boolean, onClick: () -> Unit) {
+    val p = LocalPalette.current
+    Column(
+        Modifier.width(64.dp).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            Modifier
+                .size(width = 62.dp, height = 64.dp)
+                .border(if (selected) 2.dp else 1.dp, if (selected) p.text else p.line, RoundedCornerShape(14.dp)),
+            contentAlignment = Alignment.Center,
+        ) { Icon(Ico.None, null, tint = if (selected) p.text else p.muted, modifier = Modifier.size(24.dp)) }
+        Spacer(Modifier.height(4.dp))
+        Text("None", color = if (selected) p.text else p.muted, fontSize = 10.sp, maxLines = 1,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
     }
 }
 

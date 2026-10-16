@@ -96,6 +96,7 @@ for cid, name, sub, cat, body, uniform_grain in found:
         if k == 'stock': look['stock'] = stock_of(v)
         elif k == 'frame': look['frame'] = enum_ids['FrameStyle'][v.split('.')[-1]]
         elif k == 'stamp': look['stamp'] = enum_ids['StampStyle'][v.split('.')[-1]]
+        elif k == 'style': continue
         else: look[k] = value(v)
     # FilmCameras.cam() gives every camera the same default grain.
     g = re.search(r'const val DEFAULT_GRAIN = ([\d.]+)f', look_src)
@@ -104,6 +105,24 @@ for cid, name, sub, cat, body, uniform_grain in found:
     if uniform_grain and gs: look['grainSize'] = float(gs.group(1))
     cams.append({'id': cid, 'name': name, 'subtitle': sub, 'category': cat, 'look': look})
 
-json.dump({'shaders': shaders, 'cameras': cams, 'frames': enum_ids['FrameStyle']},
+# Photographic styles: enum entries NAME("Label", field = value, ...), with nested parentheses.
+style_src = strip_comments(open(root + 'film/PhotoStyle.kt').read())
+style_body = style_src[style_src.index('{', style_src.index('enum class PhotoStyle')) + 1:]
+style_defaults = named(re.search(r'enum class PhotoStyle\((.*?)\n\) \{', style_src, re.S).group(1))
+styles = []
+for m in re.finditer(r'\n    ([A-Z_]+)\(', style_body):
+    i, depth = m.end(), 1
+    while depth:
+        depth += {'(': 1, ')': -1}.get(style_body[i], 0); i += 1
+    args = split_args(style_body[m.end():i - 1])
+    a = {k: v for k, v in style_defaults.items() if k != 'label'}
+    a.update(named(','.join(args[1:])))
+    st = {k: value(v) for k, v in a.items() if value(v) is not None}
+    st.update({'id': m.group(1).lower(), 'label': args[0].strip('"')})
+    styles.append(st)
+for c in cams:
+    c['look'].pop('style', None)
+
+json.dump({'shaders': shaders, 'cameras': cams, 'frames': enum_ids['FrameStyle'], 'styles': styles},
           open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data.json'), 'w'), indent=1)
-print(len(cams), 'cameras,', len(stocks), 'stocks,', len(enum_ids['FrameStyle']), 'borders')
+print(len(styles), 'styles,', len(cams), 'cameras,', len(stocks), 'stocks,', len(enum_ids['FrameStyle']), 'borders')

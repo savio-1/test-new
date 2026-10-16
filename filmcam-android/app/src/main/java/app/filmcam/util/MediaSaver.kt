@@ -76,6 +76,29 @@ object MediaSaver {
         }
     }
 
+    /** Saves a RAW frame as a DNG next to the photos. */
+    fun saveDng(context: Context, bytes: ByteArray): Uri? {
+        val resolver = context.contentResolver
+        val values = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, "FILM_${stamp()}.dng")
+            put(MediaStore.Images.Media.MIME_TYPE, "image/x-adobe-dng")
+            put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/$ALBUM")
+            put(MediaStore.Images.Media.IS_PENDING, 1)
+        }
+        val uri = resolver.insert(MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), values)
+            ?: return null
+        return try {
+            resolver.openOutputStream(uri)?.use { it.write(bytes) }
+            values.clear()
+            values.put(MediaStore.Images.Media.IS_PENDING, 0)
+            resolver.update(uri, values, null, null)
+            uri
+        } catch (e: Exception) {
+            resolver.delete(uri, null, null)
+            null
+        }
+    }
+
     /** Writes a text file (the log LUT) to Download/FilmCam. */
     fun saveDownload(context: Context, name: String, mime: String, text: String): Uri? {
         val resolver = context.contentResolver

@@ -487,6 +487,14 @@ class FilmRenderer {
             set2f("uPrismGhost", fx.prismGhost[0], fx.prismGhost[1])
             set1f("uTracking", fx.tracking)
             set1f("uRollBurn", fx.rollBurn)
+            val st = look.style
+            set1f("uStyleOn", if (st.isIdentity) 0f else 1f)
+            val ps = st.style
+            GLES30.glUniform4f(loc("uStyleA"), ps.warm, ps.tint, ps.sat, ps.contrast)
+            GLES30.glUniform4f(loc("uStyleB"), ps.tone, ps.bright, ps.fade, ps.mono)
+            set3f("uStyleShadow", ps.shadowTint.r, ps.shadowTint.g, ps.shadowTint.b)
+            set3f("uStyleHigh", ps.highTint.r, ps.highTint.g, ps.highTint.b)
+            GLES30.glUniform4f(loc("uStyleUser"), st.tone, st.color, st.palette, ps.skin)
             set1i("uLogMode", logMode)
             set1f("uLogGain", logGain)
         }

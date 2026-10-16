@@ -145,7 +145,7 @@ class VideoExporter(
             val at = audioTrack(ex)
             val audio = if (at >= 0) AudioCopy({ MediaExtractor().apply { setDataSource(context, uri, null) } }, at,
                 ex.getTrackFormat(at), 0L, Long.MAX_VALUE) else null
-            val rec = VideoRecorder(choice, if (portrait) 90 else 0, target.second, audio) { success ->
+            val rec = VideoRecorder.create(choice, if (portrait) 90 else 0, target.second, audio) { success ->
                 ok = success
                 finished.release()
             }

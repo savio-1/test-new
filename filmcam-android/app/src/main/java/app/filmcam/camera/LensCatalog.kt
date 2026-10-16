@@ -151,6 +151,23 @@ class CameraCaps(val id: String, ch: CameraCharacteristics) {
     /** The offered size closest to [mp] megapixels. */
     fun photoSize(mp: Int): PhotoSize = photoSizes.minBy { abs(it.pixels - mp * 1_000_000L) }
 
+    /** Kept for the DNG writer. */
+    val characteristics: CameraCharacteristics = ch
+
+    /** Largest RAW_SENSOR size, if the camera hands out raw frames. */
+    val rawSize: Size? = if (CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_RAW in capabilities)
+        map?.getOutputSizes(ImageFormat.RAW_SENSOR)?.maxByOrNull { it.width.toLong() * it.height } else null
+
+    /** 10-bit HLG straight from the sensor (Android 13+, on phones that open it to apps). */
+    val hlg10: Boolean = Build.VERSION.SDK_INT >= 33 &&
+        CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_DYNAMIC_RANGE_TEN_BIT in capabilities &&
+        ch.get(CameraCharacteristics.REQUEST_AVAILABLE_DYNAMIC_RANGE_PROFILES)?.supportedProfiles
+            ?.contains(android.hardware.camera2.params.DynamicRangeProfiles.HLG10) == true
+
+    /** Frame timestamps on the elapsed-realtime clock (else the monotonic one). */
+    val realtimeTimestamps = ch.get(CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE) ==
+        CameraMetadata.SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME
+
     /** Whether the camera can apply our own tone curve (needed for true log). */
     val contrastCurve: Boolean = (ch.get(CameraCharacteristics.TONEMAP_AVAILABLE_TONE_MAP_MODES) ?: IntArray(0))
         .contains(CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE) && (ch.get(CameraCharacteristics.TONEMAP_MAX_CURVE_POINTS) ?: 0) >= 32

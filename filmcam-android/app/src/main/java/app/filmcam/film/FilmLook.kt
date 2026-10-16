@@ -155,6 +155,8 @@ data class FilmLook(
     val multiShot: MultiShot = MultiShot.SINGLE,
     /** Real exposure compensation sent to the camera, in EV. */
     val exposureEv: Float = 0f,
+    /** Photographic style; only the Original camera sets one. */
+    val style: StyleSetting = StyleSetting(),
 )
 
 enum class CameraCategory(val label: String) {
@@ -409,5 +411,6 @@ object FilmCameras {
                 stamp = StampStyle.DATE)),
     )
 
-    fun byId(id: String?): FilmCamera = ALL.firstOrNull { it.id == id } ?: ALL.first { it.id == "classic35" }
+    /** The Original camera is the default: no look until you pick one. */
+    fun byId(id: String?): FilmCamera = ALL.firstOrNull { it.id == id } ?: ORIGINAL
 }

@@ -18,8 +18,12 @@ import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** The encoder choice for one recording. */
-data class EncoderChoice(val mime: String, val width: Int, val height: Int, val fps: Int, val bitrate: Int) {
-    val codecName get() = if (mime == MediaFormat.MIMETYPE_VIDEO_HEVC) "HEVC" else "H.264"
+data class EncoderChoice(
+    val mime: String, val width: Int, val height: Int, val fps: Int, val bitrate: Int,
+    /** 10-bit HEVC Main10 tagged BT.2020 / HLG. */
+    val hlg: Boolean = false,
+) {
+    val codecName get() = if (hlg) "HEVC 10-bit HLG" else if (mime == MediaFormat.MIMETYPE_VIDEO_HEVC) "HEVC" else "H.264"
 }
 
 /**
@@ -29,19 +33,22 @@ data class EncoderChoice(val mime: String, val width: Int, val height: Int, val 
  */
 class VideoRecorder(
     private val choice: EncoderChoice,
-    orientationHint: Int,
-    private val output: ParcelFileDescriptor,
-    /** The microphone ([AudioPump]), an imported clip's own sound ([AudioCopy]), or none. */
-    private val audio: AudioFeed?,
-    private val onFinished: (success: Boolean) -> Unit,
+    /**
+     * A persistent input surface the camera writes into directly (10-bit takes). The codec is
+     * configured on it straight away, before the camera session that uses it is built.
+     */
+    private val persistent: Surface? = null,
 ) {
     val width = choice.width
     val height = choice.height
     private val videoThread = HandlerThread("VideoEncoder").apply { start() }
     private val videoCodec: MediaCodec
     val inputSurface: Surface
-    private val muxer = MediaMuxer(output.fileDescriptor, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
-    private val sink: MuxerSink
+    private lateinit var output: ParcelFileDescriptor
+    private lateinit var muxer: MediaMuxer
+    private lateinit var sink: MuxerSink
+    private var audio: AudioFeed? = null
+    private var onFinished: (Boolean) -> Unit = {}
 
     private val videoDone = AtomicBoolean(false)
     private val finished = AtomicBoolean(false)
@@ -49,13 +56,18 @@ class VideoRecorder(
     private var lastVideoPts = -1L
 
     init {
-        muxer.setOrientationHint(orientationHint)
         val format = MediaFormat.createVideoFormat(choice.mime, width, height).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
             // Grain is pure entropy; give it bits or it turns to mush.
             setInteger(MediaFormat.KEY_BIT_RATE, choice.bitrate)
             setInteger(MediaFormat.KEY_FRAME_RATE, choice.fps)
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
+            if (choice.hlg) {
+                setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10)
+                setInteger(MediaFormat.KEY_COLOR_STANDARD, MediaFormat.COLOR_STANDARD_BT2020)
+                setInteger(MediaFormat.KEY_COLOR_TRANSFER, MediaFormat.COLOR_TRANSFER_HLG)
+                setInteger(MediaFormat.KEY_COLOR_RANGE, MediaFormat.COLOR_RANGE_LIMITED)
+            }
         }
         videoCodec = MediaCodec.createEncoderByType(choice.mime)
         videoCodec.setCallback(object : MediaCodec.Callback() {
@@ -90,11 +102,29 @@ class VideoRecorder(
             }
         }, Handler(videoThread.looper))
         videoCodec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-        inputSurface = videoCodec.createInputSurface()
+        inputSurface = if (persistent != null) persistent.also { videoCodec.setInputSurface(it) } else videoCodec.createInputSurface()
+    }
 
+    /**
+     * Where the take goes: the file, its rotation flag, the sound ([AudioPump] for the
+     * microphone, [AudioCopy] for an imported clip, or none) and what to do when it's written.
+     */
+    fun open(orientationHint: Int, output: ParcelFileDescriptor, audio: AudioFeed?, onFinished: (success: Boolean) -> Unit) {
+        this.output = output
+        this.audio = audio
+        this.onFinished = onFinished
+        muxer = MediaMuxer(output.fileDescriptor, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+        muxer.setOrientationHint(orientationHint)
         sink = MuxerSink(muxer, if (audio != null) 2 else 1)
         audio?.sink = sink
         audio?.onDone = { maybeFinish() }
+    }
+
+    /** Frees a recorder that was prepared but never used. */
+    fun discard() {
+        runCatching { videoCodec.release() }
+        if (persistent == null) runCatching { inputSurface.release() }
+        videoThread.quitSafely()
     }
 
     fun start() {
@@ -124,12 +154,13 @@ class VideoRecorder(
     }
 
     private fun maybeFinish() {
+        val audio = audio
         if (!videoDone.get() || (audio != null && !audio.done)) return
         if (!finished.compareAndSet(false, true)) return
         val ok = sink.finish()
         runCatching { videoCodec.stop() }
         runCatching { videoCodec.release() }
-        runCatching { inputSurface.release() }
+        if (persistent == null) runCatching { inputSurface.release() }
         runCatching { output.close() }
         videoThread.quitSafely()
         onFinished(ok)
@@ -137,6 +168,28 @@ class VideoRecorder(
 
     companion object {
         private const val TAG = "VideoRecorder"
+
+        /** A recorder fed by the GPU, writing to [output] straight away. */
+        fun create(
+            choice: EncoderChoice, orientationHint: Int, output: ParcelFileDescriptor, audio: AudioFeed?,
+            onFinished: (success: Boolean) -> Unit,
+        ) = VideoRecorder(choice).also { it.open(orientationHint, output, audio, onFinished) }
+
+        /** A 10-bit HLG HEVC encoder for [w]x[h] (sensor-oriented) at [fps], or null if the phone has none. */
+        fun chooseHlg(w: Int, h: Int, fps: Int): EncoderChoice? {
+            val mime = MediaFormat.MIMETYPE_VIDEO_HEVC
+            val ok = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.any { info ->
+                info.isEncoder && info.supportedTypes.any { it.equals(mime, true) } && runCatching {
+                    val caps = info.getCapabilitiesForType(mime)
+                    caps.profileLevels.any { it.profile == MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10 } &&
+                        caps.videoCapabilities.areSizeAndRateSupported(w, h, fps.toDouble())
+                }.getOrDefault(false)
+            }
+            if (!ok) return null
+            // 10-bit log is graded hard: plenty of bits.
+            val rate = (w.toLong() * h * fps * 0.3).toLong().coerceIn(20_000_000L, 200_000_000L)
+            return EncoderChoice(mime, w, h, fps, rate.toInt(), hlg = true)
+        }
 
         private fun videoCaps(mime: String) = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos
             .filter { it.isEncoder && it.supportedTypes.any { t -> t.equals(mime, true) } }
@@ -292,8 +345,13 @@ class AudioCopy(private val open: () -> android.media.MediaExtractor, private va
     override fun forceDone() { cancelled = true; done = true }
 }
 
-/** Microphone -> AAC on a dedicated thread. */
-class AudioPump private constructor(private val record: AudioRecord, private val codec: MediaCodec) : AudioFeed {
+/**
+ * Microphone -> AAC on a dedicated thread. [clock] gives nanoseconds on the same clock as the
+ * video frames: System.nanoTime for the GPU path, the camera's own for direct 10-bit takes.
+ */
+class AudioPump private constructor(
+    private val record: AudioRecord, private val codec: MediaCodec, private val clock: () -> Long,
+) : AudioFeed {
     override var sink: MuxerSink? = null
     override var onDone: (() -> Unit)? = null
     @Volatile override var done = false
@@ -332,7 +390,7 @@ class AudioPump private constructor(private val record: AudioRecord, private val
                         } else {
                             val read = record.read(buf, minOf(buf.capacity(), CHUNK))
                             if (read > 0) {
-                                if (startNs < 0) startNs = System.nanoTime() - LATENCY_NS
+                                if (startNs < 0) startNs = clock() - LATENCY_NS
                                 codec.queueInputBuffer(inIdx, 0, read, ptsUs(startNs, frames), 0)
                                 frames += read / 2
                             } else {
@@ -375,7 +433,7 @@ class AudioPump private constructor(private val record: AudioRecord, private val
     }
 
     private fun ptsUs(startNs: Long, frames: Long): Long {
-        val base = if (startNs < 0) System.nanoTime() else startNs
+        val base = if (startNs < 0) clock() else startNs
         return (base + frames * 1_000_000_000L / SAMPLE_RATE) / 1000L
     }
 
@@ -386,7 +444,7 @@ class AudioPump private constructor(private val record: AudioRecord, private val
 
         /** Null if the microphone is unavailable (no permission, in use, no hardware). */
         @SuppressLint("MissingPermission")
-        fun create(): AudioPump? = try {
+        fun create(clock: () -> Long = System::nanoTime): AudioPump? = try {
             val min = AudioRecord.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
             val record = AudioRecord(
                 MediaRecorder.AudioSource.CAMCORDER, SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO,
@@ -402,7 +460,7 @@ class AudioPump private constructor(private val record: AudioRecord, private val
                 }
                 val codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC)
                 codec.configure(fmt, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-                AudioPump(record, codec)
+                AudioPump(record, codec, clock)
             }
         } catch (e: Exception) {
             Log.w("AudioPump", "no audio", e)

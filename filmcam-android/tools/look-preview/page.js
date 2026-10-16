@@ -182,6 +182,18 @@ async function runFilm(DATA, imgUrl, camId, opts) {
   gl.uniform1f(U(f, 'uBaseLod'), Math.max(0, Math.log2(Math.min(W, H) / Math.min(iw, ih))));
   gl.uniform1f(U(f, 'uRefScale'), opts.refScale || Math.max(1, Math.min(iw, ih) / 1080));
   gl.uniform1i(U(f, 'uLogMode'), opts.logMode || 0); gl.uniform1f(U(f, 'uLogGain'), opts.logGain || 1);
+  // Photographic style: opts.style = {id, tone, color, palette}
+  const ps = opts.style ? DATA.styles.find(x => x.id === opts.style.id) : null;
+  const sTone = opts.style ? (opts.style.tone || 0) : 0, sColor = opts.style ? (opts.style.color || 0) : 0;
+  const sPal = opts.style && opts.style.palette !== undefined ? opts.style.palette : 1;
+  const sOn = ps && !((ps.id === 'standard' || sPal === 0) && sTone === 0 && sColor === 0);
+  gl.uniform1f(U(f, 'uStyleOn'), sOn ? 1 : 0);
+  if (ps) {
+    gl.uniform4f(U(f, 'uStyleA'), ps.warm, ps.tint, ps.sat, ps.contrast);
+    gl.uniform4f(U(f, 'uStyleB'), ps.tone, ps.bright, ps.fade, ps.mono);
+    gl.uniform3fv(U(f, 'uStyleShadow'), ps.shadowTint); gl.uniform3fv(U(f, 'uStyleHigh'), ps.highTint);
+    gl.uniform4f(U(f, 'uStyleUser'), sTone, sColor, sPal, ps.skin);
+  }
   const s = look.stock;
   const f1 = (n, v) => gl.uniform1f(U(f, n), v), f3 = (n, v) => gl.uniform3fv(U(f, n), v);
   f1('uTemp', s.temperature + look.warmth * 0.6); f1('uTint', s.tint); f1('uSat', s.saturation);

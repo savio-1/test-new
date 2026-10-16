@@ -1,32 +1,63 @@
 # FilmCam (Android)
 
-A camera app that shoots photos and video through a live film emulsion, at the phone's full
-resolution: 720p to 8K video, 12/50/200 MP stills where the sensor offers them, and every lens
-on the phone. What you see in the viewfinder is what gets saved, borders included. It can also
-shoot with no filter at all, record flat log video for grading, and develop photos and clips
-you took with any other camera.
+A camera app that is first a normal phone camera and then, one tap away, a film camera.
+**Original** shows the phone's own picture, with iPhone-style photographic styles. A **look**
+puts it through a live film emulsion. It shoots at the phone's full resolution: 720p to 8K
+video, 12/50/200 MP stills where the sensor offers them, RAW (DNG), and every lens on the phone.
+What you see in the viewfinder is what gets saved, borders included. It also records 10-bit
+log video for grading, and develops photos and clips taken with any other camera.
+
+The look definitions and shaders are shared with the coming iOS app through
+[`../filmcam-shared`](../filmcam-shared) (see [the porting guide](../filmcam-shared/PORTING-iOS.md)).
 
 ![The cameras, rendered by the app's own shaders](docs/looks.jpg)
 
-*Original plus all 58 cameras, rendered through the app's real shaders by `tools/look-preview`.*
+*Original plus all 58 looks, rendered through the app's real shaders by `tools/look-preview`.
+Preview photo: Pietro De Grandi on Unsplash (Unsplash Licence).*
 
 ## The app
 
 ![FilmCam screens, light and dark](docs/ui.jpg)
 
 The interface stays out of the picture.
-- **Top bar:** flash, the camera name, the gallery and the settings button.
+- **Top bar:** flash, the camera name (*Original* and its style, or the look), the gallery and
+  the settings button.
 - **Chips under it:** the frame shape (`3:4`), photo size (`50 MP`) or video format (`4K · 30`),
   log, the self-timer and bursts. Each opens a small panel over the top of the picture.
 - **Viewfinder:** rounded, the shape of the saved frame, with glass zoom pills (`.5  1×  2  3  10`).
-- **Dock:** four items above the shutter (*Looks*, *Adjust*, *Frame* and *Text*). Each one opens a
-  single tray, never a long panel.
+- **Dock:** five items above the shutter (*Styles*, *Looks*, *Adjust*, *Frame* and *Text*). Each
+  one opens a single tray, never a long panel.
 - **Adjust:** pick a group (Light, Film, Lens, Motion, Retro), then a tool, and drag the ruler.
   While you drag, everything else fades away so you can judge the picture; only the ruler and
   its value stay. Double-tap the ruler to go back to the camera's own setting. A dot marks the
   tools you've changed.
 - **Themes:** light (on a fine dot grid) and dark, or follow the system.
 - **Grain:** every camera starts with the same light grain; turn it up per shot in *Adjust*.
+
+## Original and photographic styles
+
+![The sixteen styles](docs/styles.jpg)
+
+The app opens as a plain phone camera: **Original**, with nothing applied. It shows the camera's
+own picture through the same stream the system camera app uses. Phones keep some of their
+processing (Samsung's scene optimiser, multi-frame HDR) for their own app, so photos can differ
+slightly from it.
+
+*Styles* works like the iPhone's photographic styles:
+- **Sixteen styles.** Six undertone styles (Amber, Gold, Rose Gold, Neutral, Cool Rose, Cool)
+  that shift white balance and lean on skin tones. Seven mood styles (Vibrant, Natural,
+  Luminous, Dramatic, Quiet, Cozy, Ethereal) and two black-and-white ones (Muted B&W, Stark
+  B&W).
+- **The pad.** The chosen style turns into a dotted pad. Drag up and down for **Tone** (deeper
+  and punchier at the bottom, lifted and softer at the top) and left and right for **Colour**
+  (muted to rich). Double-tap it to centre it.
+- **Palette.** The slider under the pad sets how much of the style's own character is applied.
+- **Skin-aware.** Saturation boosts spare skin and already-strong colours. The tone curve is
+  half hue-preserving, so bright reds don't turn neon and deep ones don't go to mud.
+
+These are an emulation written for this app, tuned by eye against the iPhone's; Apple's own
+processing isn't available to other apps. A look replaces the style. Take it off with *None* in
+*Looks*, or by tapping the chosen look again, and the style comes back.
 
 ## Text overlays
 
@@ -45,8 +76,8 @@ Burn text into video while you record, and into photos.
 
 ## Cameras
 
-Fifty-eight presets in seven groups, plus **Original**, which leads every row. Each preset pairs a
-film stock with a format and the effects that go with it, and every setting can be changed live
+Fifty-eight looks in seven groups, on top of the Original camera. Each look pairs a film stock
+with a format and the effects that go with it, and every setting can be changed live
 afterwards. The names describe looks; none of them is a real product or brand.
 
 | Group | Cameras |
@@ -67,10 +98,10 @@ disposable, a dated daily snapshot, a golden 400, a cine "kino" look, a toy-colo
 a crisp street compact, a muted amber one). All of them are written from scratch, under their
 own names, with their own film stocks.
 
-**Original** is no filter at all: the camera's picture passes through untouched (checked pixel
-for pixel in the harness). Borders, date stamps and text still work on it. A plain Original
-photo in the sensor's 3:4 shape skips the GPU entirely, so the camera's own JPEG is saved
-exactly as it came off the sensor, at full resolution (200 MP included).
+With no look and the Standard style, the camera's picture passes through untouched (checked
+pixel for pixel in the harness). Borders, date stamps and text still work on it. A plain
+Original photo in the sensor's 3:4 shape skips the GPU entirely, so the camera's own JPEG is
+saved exactly as it came off the sensor, at full resolution (200 MP included).
 
 ## Borders
 
@@ -154,6 +185,8 @@ camcorder display (REC or PLAY plus the date and time).
   Stills up to 8192 px on the long side are developed on the GPU in tiles, so a 200 MP frame
   with a film look comes out at 50 MP; an Original photo keeps all 200. Stills are rotated on
   the GPU too, so a 50 MP frame never needs a rotated copy in memory.
+- **RAW:** the *RAW* chip saves a DNG of the sensor data next to every photo (on cameras that
+  hand out raw frames, and not in the full-sensor 50/200 MP mode).
 - **Self-timer and bursts:** a 3, 5 or 10 s timer with a countdown on the viewfinder (for video
   too), and interval bursts of 3, 5, 10, 20 or unlimited shots, every 0.5 to 30 s. Press the
   shutter again to stop.
@@ -178,19 +211,32 @@ makes sure the two agree:
 
 ## Log
 
-*Log* in video mode records flat footage for colour grading, with no film look:
-- The curve is Sony's published **S-Log3**, applied to the sensor's linear signal by the phone's
-  own image processor (Camera2's custom tone curve), with sharpening off. 18% grey lands at 41%
-  as on a cinema camera, which leaves about four stops above grey for highlights; the camera
-  underexposes by 1.7 stops and the curve gives it back.
-- Colours are the phone's own, Rec.709 primaries. In Resolve or similar, set the input to
-  S-Log3 gamma and Rec.709 colour space, or use the LUT the app saves to `Download/FilmCam`
-  (*Save LUT* in the log panel), which matches the on-screen view assist.
-- *View assist* shows the footage graded on screen; the file stays log.
-- Phones that won't take a custom tone curve get log made on the GPU from their normal
-  picture. That is marked *approx.*: the encoding is the same, but there is less range in the
-  highlights.
-- Log records HEVC at about a third more bitrate. It is 8-bit, like the rest of the app's video.
+*Log* in video mode records flat footage for colour grading, with no film look. The app uses
+the best path the phone allows and says which one it is in the log panel and under the title:
+
+1. **HLG 10-bit** (Android 13+, on phones that open 10-bit HDR capture to apps, such as recent
+   Galaxy S models). The sensor streams 10-bit HLG straight into a 10-bit HEVC (Main10)
+   encoder, with no 8-bit step in between. This keeps the most range and doesn't band. The file
+   is tagged Rec.2100 HLG / Rec.2020; grade it as such. It records the sensor's 16:9 frame.
+2. **S-Log3 in camera.** Sony's published S-Log3 curve, applied to the sensor's linear signal by
+   the camera's processor, with sharpening off. Rec.709 colours, 8-bit HEVC. 18% grey lands at
+   41%, and the camera exposes a stop under so highlights keep a stop more room. In your
+   editor: S-Log3 gamma, Rec.709 colour space.
+3. **S-Log3 approx.** For phones that won't apply a custom curve: the same encoding made on the
+   GPU from the camera's normal picture, with less highlight range.
+
+*View assist* (on by default) shows log graded on screen while the file stays flat. *Save LUT*
+writes a .cube to `Download/FilmCam` that matches it, for HLG or S-Log3.
+
+**Why log could look dark before.** Some phones list custom tone curves but
+quietly don't apply them. The app then decoded a normal picture as if it were log, which made
+it dark. The camera now checks every frame's capture result. If the curve wasn't applied, it
+switches to path 3 on its own; the panel and the title show which path is in use. With HLG
+available, log uses path 1 by default, which doesn't rely on custom curves at all.
+
+**RAW video** isn't offered: at 12 MP and 30 fps it would be around 700 MB/s of sensor data, far
+beyond what a phone can write. The 10-bit HLG path is the closest real alternative, and RAW
+stills are covered by DNG.
 
 ## Gallery, trimming and importing
 
@@ -251,11 +297,21 @@ Camera2 stream (up to 8K) ──► SurfaceTexture (OES) ─┐
 | `film/TextLayer.kt` | Text layers, the font library and text rendering |
 | `ui/` | Compose UI: theme, icons, ruler, trays, text editor |
 | `film/FrameFx.kt` | Per-frame randomness: weave, slips, flicker, leaks, prism, tape tracking, scratches |
-| `camera/LogCurve.kt` | The S-Log3 curve for the camera, the view assist and the .cube LUT |
+| `camera/LogCurve.kt` | The S-Log3 and HLG curves, the view assist and the .cube LUTs |
+| `film/PhotoStyle.kt` | The photographic styles and their settings |
+| `ui/StylesTray.kt` | The style row, the dotted Tone/Colour pad and the Palette slider |
 | `record/VideoRecorder.kt` | Codec choice, MP4 muxing, microphone or copied audio |
 | `record/VideoExporter.kt` | Imported clips: preview playback, and developing them frame by frame |
 | `record/Trimmer.kt` | Lossless trimming |
 | `util/MediaLibrary.kt` | The app's own album, for the gallery |
+
+## Shared with iOS
+
+[`../filmcam-shared`](../filmcam-shared) holds every stock, look, style and option as JSON, and
+the GLSL of every pass. `SpecExportTest` regenerates it from the Kotlin on every unit-test run,
+so the iOS app will render exactly the same looks.
+[PORTING-iOS.md](../filmcam-shared/PORTING-iOS.md) maps each Android part to its iOS
+counterpart (AVFoundation, Metal, SwiftUI, Apple Log) and sets the order of work.
 
 ## Screens without a phone
 
@@ -300,6 +356,8 @@ Still to check on a real phone (it has **not been run on one yet**):
 - 4K/8K recording and the frame rate the GPU sustains there.
 - Lens switching and real shutter speed.
 - Which photo sizes each phone opens to apps, and the full-sensor 200 MP mode.
-- Log on phones with and without a custom tone curve.
+- Log: which of the three paths each phone gets, the 10-bit HLG session and encoder, and A/V
+  sync of 10-bit takes.
+- RAW (DNG) on logical multi-lens cameras.
 - Developing imported clips (HDR clips from the phone's own camera may look flat, since the
   decoder's output isn't tone-mapped).
