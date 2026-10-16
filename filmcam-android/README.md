@@ -96,9 +96,9 @@ Burn text into video while you record, and into photos.
   - **Timing:** segmentation runs alongside the film passes. The frame waits up to 12 ms for
     its own cut-out, so a moving subject and its cut-out stay together. If the model is slower
     on a phone, the cut-out lands one frame later. Photos wait for their own cut-out.
-  - **GPU or CPU:** the model runs on the GPU where it can. It is checked with a test frame
-    when it loads, and if the GPU can't run it (phones without OpenGL ES 3.1, or a mask the
-    CPU can't read) it moves to the CPU, which is slower but works on every phone.
+  - **On the CPU:** both models run on the phone's CPU (XNNPACK), at 256 pixels on the long
+    side. MediaPipe's GPU delegate is not used: on phones where it can't start, its GL thread
+    takes the whole app down a few seconds later.
 
 ## Subtitles
 

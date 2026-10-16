@@ -50,7 +50,6 @@ class SubjectMasker(private val context: Context) {
     private val main = Handler(context.mainLooper)
     private var people: ImageSegmenter? = null
     private var objects: ImageSegmenter? = null
-    private var objectsOnGpu = false
     private var failed = false
     private var peopleTs = 0L
     private var objectsTs = 0L
@@ -110,15 +109,7 @@ class SubjectMasker(private val context: Context) {
                 process(bmp)
             } catch (e: Throwable) {
                 Log.e(TAG, "segment", e)
-                // A GPU model that fails at run time: the CPU takes over from the next frame.
-                if (objectsOnGpu) {
-                    runCatching { objects?.close() }
-                    objects = null
-                    objectsOnGpu = false
-                    forceCpu = true
-                } else {
-                    status("Cut-out error: ${e.message ?: e.javaClass.simpleName}")
-                }
+                status("Cut-out error: ${e.message ?: e.javaClass.simpleName}")
             } finally {
                 bmp.recycle()
                 busy = false
@@ -142,8 +133,6 @@ class SubjectMasker(private val context: Context) {
 
     // ------------------------------------------------------------------ worker
 
-    private var forceCpu = false
-
     private fun segmenter(asset: String, category: Boolean, delegate: Delegate): ImageSegmenter? = try {
         ImageSegmenter.createFromOptions(
             context,
@@ -165,34 +154,12 @@ class SubjectMasker(private val context: Context) {
     private fun peopleModel() = people ?: segmenter(PEOPLE_MODEL, category = false, Delegate.CPU).also { people = it }
 
     /**
-     * DeepLab on the GPU where it really works (checked once on a test frame: some GPUs hand
-     * back masks the CPU can't read), else on the CPU.
+     * DeepLab on the CPU (XNNPACK). Not the GPU delegate: where it can't start (no OpenGL ES
+     * 3.1) its GL thread crashes the whole app a few seconds later, which no catch can stop,
+     * and at 256 px the CPU keeps up.
      */
-    private fun objectModel(): ImageSegmenter? {
-        objects?.let { return it }
-        if (!forceCpu) {
-            val gpu = segmenter(OBJECT_MODEL, category = true, Delegate.GPU)
-            if (gpu != null) {
-                val ok = try {
-                    val probe = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888)
-                    val r = gpu.segmentForVideo(BitmapImageBuilder(probe).build(), ++objectsTs)
-                    val m = r.categoryMask().get()
-                    ByteBufferExtractor.extract(m).get(ByteArray(m.width * m.height))
-                    m.close()
-                    probe.recycle()
-                    true
-                } catch (e: Throwable) {
-                    Log.w(TAG, "GPU segmenter unusable", e)
-                    false
-                }
-                if (ok) { objects = gpu; objectsOnGpu = true; return gpu }
-                runCatching { gpu.close() }
-            }
-        }
-        objectsOnGpu = false
-        objects = segmenter(OBJECT_MODEL, category = true, Delegate.CPU)
-        return objects
-    }
+    private fun objectModel(): ImageSegmenter? =
+        objects ?: segmenter(OBJECT_MODEL, category = true, Delegate.CPU).also { objects = it }
 
     /** Person confidence, 0..1 per pixel. */
     private fun personConfidence(img: MPImage): FloatArray? {
@@ -273,8 +240,8 @@ class SubjectMasker(private val context: Context) {
         out.position(0)
         latest = Matte(out, w, h, ++seq, empty = !any)
         status(when {
-            any && tt() is Target.AllPeople -> "Cutting out people" + if (objectsOnGpu) " · GPU" else ""
-            any -> "Cutting out the subject" + if (objectsOnGpu) " · GPU" else ""
+            any && tt() is Target.AllPeople -> "Cutting out people"
+            any -> "Cutting out the subject"
             tt() is Target.AllPeople -> "No person in view"
             else -> "Subject out of view"
         })
