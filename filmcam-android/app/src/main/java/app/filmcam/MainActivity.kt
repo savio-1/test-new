@@ -984,7 +984,36 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
             main.postDelayed({ pickSubject(x, y) }, 4000)
         }
         i.getStringExtra("test_shoot")?.toLongOrNull()?.let { ms -> main.postDelayed({ shutter() }, ms) }
+        i.getStringExtra("test_seg")?.let { path -> debugSegment(path, i.getStringExtra("test_seg_pick")) }
     }
+
+    /** Debug: cuts the subject out of a picture file and writes the matte next to it. */
+    private fun debugSegment(path: String, pickAt: String?) = Thread {
+        val src = android.graphics.BitmapFactory.decodeFile(path) ?: return@Thread
+        val k = SubjectMasker.INPUT_SIDE.toFloat() / maxOf(src.width, src.height)
+        val small = android.graphics.Bitmap.createScaledBitmap(src, (src.width * k).toInt(), (src.height * k).toInt(), true)
+        val buf = java.nio.ByteBuffer.allocateDirect(small.width * small.height * 4)
+        small.copyPixelsToBuffer(buf)
+        val m = SubjectMasker(applicationContext)
+        m.onStatus = { Log.i("SegTest", "status: $it") }
+        m.onSubject = { Log.i("SegTest", "subject: $it") }
+        pickAt?.split(',')?.mapNotNull { it.toFloatOrNull() }?.takeIf { it.size == 2 }?.let { (x, y) -> m.pick(x, y) }
+        for (run in 0 until 3) {
+            val t0 = System.nanoTime()
+            m.submit(buf, small.width, small.height)
+            m.await(300_000)
+            Log.i("SegTest", "run $run: ${(System.nanoTime() - t0) / 1_000_000} ms")
+        }
+        val matte = m.latest
+        Log.i("SegTest", "matte ${matte?.w}x${matte?.h} empty=${matte?.empty}")
+        if (matte != null) {
+            val out = android.graphics.Bitmap.createBitmap(matte.w, matte.h, android.graphics.Bitmap.Config.ARGB_8888)
+            val px = IntArray(matte.w * matte.h) { val v = matte.pixels.get(it).toInt() and 0xFF; (0xFF shl 24) or (v shl 16) or (v shl 8) or v }
+            out.setPixels(px, 0, matte.w, 0, 0, matte.w, matte.h)
+            java.io.FileOutputStream(java.io.File(filesDir, "matte.png")).use { out.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+        }
+        m.release()
+    }.start()
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)

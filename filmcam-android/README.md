@@ -84,14 +84,21 @@ Burn text into video while you record, and into photos.
   it, live in the viewfinder, in video while you record, and in photos.
   - **What the subject is:** by default every person in the frame. With the Depth tool open, tap
     something in the picture to make that the subject: a person, a pet, a horse with its rider,
-    a car, a bike. *All people* goes back to the default.
+    a car, a bike. *All people* goes back to the default. While a text is set *Behind*, a tap
+    anywhere in the picture picks the subject (it does not select or move texts).
+  - **What it's doing:** a line under the Depth controls says what the cut-out is doing
+    ("Cutting out people", "No person in view", "Subject out of view") or why it couldn't
+    start, so a text that isn't going behind anything is never silent about it.
   - **How it's cut out:** each frame is segmented on the phone, with no network. DeepLab v3
     finds people, animals and vehicles; around people, MediaPipe's selfie model adds the soft
     edge of hair. A picked subject is followed frame to frame by its outline, so it stays the
     subject as it moves, and someone walking past it is not.
   - **Timing:** segmentation runs alongside the film passes. The frame waits up to 12 ms for
     its own cut-out, so a moving subject and its cut-out stay together. If the model is slower
-    on a phone, the cut-out lands one frame later.
+    on a phone, the cut-out lands one frame later. Photos wait for their own cut-out.
+  - **GPU or CPU:** the model runs on the GPU where it can. It is checked with a test frame
+    when it loads, and if the GPU can't run it (phones without OpenGL ES 3.1, or a mask the
+    CPU can't read) it moves to the CPU, which is slower but works on every phone.
 
 ## Subtitles
 
@@ -122,6 +129,21 @@ After a clip is shot, open it and tap **Subtitles**.
     sound are uploaded through Gemini's Files API.
   - The model can be changed next to the key (default `gemini-3.8-flash`).
   - Only the sound is sent, and only when you tap Generate.
+  - The answer streams in: the screen shows the time so far and how many lines have come
+    back, and *Cancel* stops it. *Fast* picks a lighter model (`gemini-3.5-flash-lite`) that
+    answers in a few seconds; *Best* is the default.
+- **Live, while you speak:** in video mode, the **CC** pill at the top left turns live
+  subtitles on and off, and the chip next to it picks English or తెలుగు. While you record,
+  what is said appears at the bottom of the frame as it is heard, burnt into the video, and
+  clears a couple of seconds after the speaker stops. You can turn it on or off mid-clip.
+  - It uses the phone's own speech recogniser (Google's), fed the same microphone sound the
+    clip records, so it never takes the mic from the video.
+  - It needs Android 13 or newer and Google's speech services. Telugu usually needs an
+    internet connection; English works offline on many phones. If a language isn't
+    available, the app says so.
+  - Live lines are quick and rough. For a clean, editable set, use *Subtitles* after
+    recording.
+  - Not with the 10-bit HLG video setting, which skips the film passes that draw text.
 
 ## Fujifilm simulations and recipes
 

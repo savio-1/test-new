@@ -327,6 +327,7 @@ class SubjectMasker(private val context: Context) {
     private fun status(s: String) {
         if (s == lastStatus) return
         lastStatus = s
+        Log.i(TAG, s)
         main.post { onStatus?.invoke(s) }
     }
 

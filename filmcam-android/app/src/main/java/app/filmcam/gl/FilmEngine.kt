@@ -431,7 +431,7 @@ class FilmEngine {
         val w = max(16, (fw * k).roundToInt())
         val h = max(16, (fh * k).roundToInt())
         val buf = segBuf ?: ByteBuffer.allocateDirect(SubjectMasker.INPUT_SIDE * SubjectMasker.INPUT_SIDE * 4).also { segBuf = it }
-        if (forStill) m.awaitIdle(3000L)
+        if (forStill) m.awaitIdle(10_000L)
         if (!m.idle) return
         renderer.readSegInput(src, turns, w, h, buf)
         m.submit(buf, w, h)
@@ -720,7 +720,7 @@ class FilmEngine {
                 renderer.glow(source, look, 0)
                 updateText(w, h, 4096)
                 startSubject(source, 0, forStill = true)
-                finishSubject(waitMs = 3000L)
+                finishSubject(waitMs = 10_000L)
                 result = renderTiled(source, look, frameFx ?: stillFx(look), w, h, targetRot = 0, frameRot = 0)
                 textKey = null   // the live view re-renders its own size next frame
             } catch (e: Throwable) {
