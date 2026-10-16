@@ -129,6 +129,8 @@ final class CameraEngine: NSObject {
             videoOutput.setSampleBufferDelegate(self, queue: renderQueue)
             session.addOutput(videoOutput)
         }
+        // Stills come from the photo output; the viewfinder only needs screen-sized frames.
+        videoOutput.deliversPreviewSizedOutputBuffers = !video
         if !session.outputs.contains(photoOutput), session.canAddOutput(photoOutput) {
             session.addOutput(photoOutput)
             photoOutput.maxPhotoQualityPrioritization = .quality
