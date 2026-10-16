@@ -1,0 +1,627 @@
+{
+ "provia": {
+  "name": "Provia",
+  "sim": "PROVIA",
+  "about": "Standard: Fujifilm's neutral, natural colour",
+  "wb": "auto",
+  "wb_shift": [
+   0,
+   0
+  ],
+  "dr": 400,
+  "highlight": 0,
+  "shadow": 0,
+  "color": 0,
+  "cce": "off",
+  "ccb": "off",
+  "grain": [
+   "weak",
+   "small"
+  ],
+  "clarity": 0,
+  "sharpness": 0,
+  "ev": 0,
+  "kind": "sim"
+ },
+ "velvia": {
+  "name": "Velvia",
+  "sim": "VELVIA",
+  "about": "Vivid: saturated slide film for landscapes",
+  "wb": "auto",
+  "wb_shift": [
+   0,
+   0
+  ],
+  "dr": 400,
+  "highlight": 0,
+  "shadow": 0,
+  "color": 0,
+  "cce": "off",
+  "ccb": "off",
+  "grain": [
+   "weak",
+   "small"
+  ],
+  "clarity": 0,
+  "sharpness": 0,
+  "ev": 0,
+  "kind": "sim"
+ },
+ "astia": {
+  "name": "Astia",
+  "sim": "ASTIA",
+  "about": "Soft: gentle skin, rich blues and greens",
+  "wb": "auto",
+  "wb_shift": [
+   0,
+   0
+  ],
+  "dr": 400,
+  "highlight": 0,
+  "shadow": 0,
+  "color": 0,
+  "cce": "off",
+  "ccb": "off",
+  "grain": [
+   "weak",
+   "small"
+  ],
+  "clarity": 0,
+  "sharpness": 0,
+  "ev": 0,
+  "kind": "sim"
+ },
+ "classicchrome": {
+  "name": "Classic Chrome",
+  "sim": "CLASSIC_CHROME",
+  "about": "Muted documentary colour, hard shadows",
+  "wb": "auto",
+  "wb_shift": [
+   0,
+   0
+  ],
+  "dr": 400,
+  "highlight": 0,
+  "shadow": 0,
+  "color": 0,
+  "cce": "off",
+  "ccb": "off",
+  "grain": [
+   "weak",
+   "small"
+  ],
+  "clarity": 0,
+  "sharpness": 0,
+  "ev": 0,
+  "kind": "sim"
+ },
+ "classicneg": {
+  "name": "Classic Neg.",
+  "sim": "CLASSIC_NEG",
+  "about": "Consumer negative: cyan shadows, magenta highlights",
+  "wb": "auto",
+  "wb_shift": [
+   0,
+   0
+  ],
+  "dr": 400,
+  "highlight": 0,
+  "shadow": 0,
+  "color": 0,
+  "cce": "off",
+  "ccb": "off",
+  "grain": [
+   "weak",
+   "small"
+  ],
+  "clarity": 0,
+  "sharpness": 0,
+  "ev": 0,
+  "kind": "sim"
+ },
+ "nostalgic": {
+  "name": "Nostalgic Neg.",
+  "sim": "NOSTALGIC_NEG",
+  "about": "1970s colour: amber highlights, soft rich shadows",
+  "wb": "auto",
+  "wb_shift": [
+   0,
+   0
+  ],
+  "dr": 400,
+  "highlight": 0,
+  "shadow": 0,
+  "color": 0,
+  "cce": "off",
+  "ccb": "off",
+  "grain": [
+   "weak",
+   "small"
+  ],
+  "clarity": 0,
+  "sharpness": 0,
+  "ev": 0,
+  "kind": "sim"
+ },
+ "reala": {
+  "name": "Reala Ace",
+  "sim": "REALA_ACE",
+  "about": "Faithful negative colour with crisp contrast",
+  "wb": "auto",
+  "wb_shift": [
+   0,
+   0
+  ],
+  "dr": 400,
+  "highlight": 0,
+  "shadow": 0,
+  "color": 0,
+  "cce": "off",
+  "ccb": "off",
+  "grain": [
+   "weak",
+   "small"
+  ],
+  "clarity": 0,
+  "sharpness": 0,
+  "ev": 0,
+  "kind": "sim"
+ },
+ "pronegstd": {
+  "name": "Pro Neg. Std",
+  "sim": "PRO_NEG_STD",
+  "about": "Studio portrait negative: soft and natural",
+  "wb": "auto",
+  "wb_shift": [
+   0,
+   0
+  ],
+  "dr": 400,
+  "highlight": 0,
+  "shadow": 0,
+  "color": 0,
+  "cce": "off",
+  "ccb": "off",
+  "grain": [
+   "weak",
+   "small"
+  ],
+  "clarity": 0,
+  "sharpness": 0,
+  "ev": 0,
+  "kind": "sim"
+ },
+ "proneghi": {
+  "name": "Pro Neg. Hi",
+  "sim": "PRO_NEG_HI",
+  "about": "Portrait negative with more snap",
+  "wb": "auto",
+  "wb_shift": [
+   0,
+   0
+  ],
+  "dr": 400,
+  "highlight": 0,
+  "shadow": 0,
+  "color": 0,
+  "cce": "off",
+  "ccb": "off",
+  "grain": [
+   "weak",
+   "small"
+  ],
+  "clarity": 0,
+  "sharpness": 0,
+  "ev": 0,
+  "kind": "sim"
+ },
+ "eterna": {
+  "name": "Eterna",
+  "sim": "ETERNA",
+  "about": "Cinema: flat, quiet colour, wide range",
+  "wb": "auto",
+  "wb_shift": [
+   0,
+   0
+  ],
+  "dr": 400,
+  "highlight": 0,
+  "shadow": 0,
+  "color": 0,
+  "cce": "off",
+  "ccb": "off",
+  "grain": [
+   "weak",
+   "small"
+  ],
+  "clarity": 0,
+  "sharpness": 0,
+  "ev": 0,
+  "kind": "sim"
+ },
+ "bleach": {
+  "name": "Eterna Bleach Bypass",
+  "sim": "ETERNA_BB",
+  "about": "Silver-retained: hard, desaturated, metallic",
+  "wb": "auto",
+  "wb_shift": [
+   0,
+   0
+  ],
+  "dr": 400,
+  "highlight": 0,
+  "shadow": 0,
+  "color": 0,
+  "cce": "off",
+  "ccb": "off",
+  "grain": [
+   "weak",
+   "small"
+  ],
+  "clarity": 0,
+  "sharpness": 0,
+  "ev": 0,
+  "kind": "sim"
+ },
+ "acros": {
+  "name": "Acros",
+  "sim": "ACROS",
+  "about": "Fine black and white with deep tonality",
+  "wb": "auto",
+  "wb_shift": [
+   0,
+   0
+  ],
+  "dr": 400,
+  "highlight": 0,
+  "shadow": 0,
+  "color": 0,
+  "cce": "off",
+  "ccb": "off",
+  "grain": [
+   "weak",
+   "small"
+  ],
+  "clarity": 0,
+  "sharpness": 0,
+  "ev": 0,
+  "kind": "sim"
+ },
+ "reggiesportra": {
+  "name": "Reggie's Portra",
+  "sim": "CLASSIC_CHROME",
+  "about": "Warm Portra 400 scans, moderate contrast",
+  "wb": "auto",
+  "wb_shift": [
+   2,
+   -4
+  ],
+  "dr": "auto",
+  "highlight": -1,
+  "shadow": -1,
+  "color": 2,
+  "cce": "strong",
+  "ccb": "weak",
+  "grain": [
+   "weak",
+   "small"
+  ],
+  "clarity": 0,
+  "sharpness": -2,
+  "ev": 0.33,
+  "kind": "recipe"
+ },
+ "kodachrome64": {
+  "name": "Kodachrome 64",
+  "sim": "CLASSIC_CHROME",
+  "about": "Warm slide film: vivid reds and yellows",
+  "wb": "daylight",
+  "wb_shift": [
+   2,
+   -5
+  ],
+  "dr": 200,
+  "highlight": 0,
+  "shadow": 0,
+  "color": 2,
+  "cce": "strong",
+  "ccb": "weak",
+  "grain": [
+   "weak",
+   "small"
+  ],
+  "clarity": 3,
+  "sharpness": 1,
+  "ev": 0.17,
+  "kind": "recipe"
+ },
+ "gold200": {
+  "name": "Kodak Gold 200",
+  "sim": "CLASSIC_CHROME",
+  "about": "Warm, sunny, punchy consumer negative",
+  "wb": "daylight",
+  "wb_shift": [
+   4,
+   -5
+  ],
+  "dr": 400,
+  "highlight": -1.5,
+  "shadow": 0.5,
+  "color": 3,
+  "cce": "weak",
+  "ccb": "off",
+  "grain": [
+   "strong",
+   "small"
+  ],
+  "clarity": -2,
+  "sharpness": -2,
+  "ev": 0.42,
+  "kind": "recipe"
+ },
+ "portra400": {
+  "name": "Kodak Portra 400",
+  "sim": "CLASSIC_CHROME",
+  "about": "Soft warm portrait negative, golden-hour glow",
+  "wb": 5200,
+  "wb_shift": [
+   1,
+   -6
+  ],
+  "dr": 400,
+  "highlight": 0,
+  "shadow": -2,
+  "color": 2,
+  "cce": "strong",
+  "ccb": "off",
+  "grain": [
+   "strong",
+   "small"
+  ],
+  "clarity": -2,
+  "sharpness": -2,
+  "ev": 0.33,
+  "kind": "recipe"
+ },
+ "portra800": {
+  "name": "Kodak Portra 800",
+  "sim": "CLASSIC_CHROME",
+  "about": "Warm, film-like, soft highlights",
+  "wb": 6600,
+  "wb_shift": [
+   -1,
+   -3
+  ],
+  "dr": 400,
+  "highlight": -2,
+  "shadow": -0.5,
+  "color": 3,
+  "cce": "strong",
+  "ccb": "off",
+  "grain": [
+   "strong",
+   "large"
+  ],
+  "clarity": -3,
+  "sharpness": -2,
+  "ev": 0.42,
+  "kind": "recipe"
+ },
+ "classiccolor": {
+  "name": "Classic Color",
+  "sim": "CLASSIC_CHROME",
+  "about": "Warm sunlit colour-negative character",
+  "wb": 5300,
+  "wb_shift": [
+   0,
+   -6
+  ],
+  "dr": 400,
+  "highlight": -0.5,
+  "shadow": -2,
+  "color": 3,
+  "cce": "strong",
+  "ccb": "weak",
+  "grain": [
+   "strong",
+   "small"
+  ],
+  "clarity": -2,
+  "sharpness": -2,
+  "ev": 0.25,
+  "kind": "recipe"
+ },
+ "vibrantarizona": {
+  "name": "Vibrant Arizona",
+  "sim": "CLASSIC_CHROME",
+  "about": "Bright, warm, overexposed Kodak negative",
+  "wb": 4350,
+  "wb_shift": [
+   6,
+   -8
+  ],
+  "dr": "P",
+  "highlight": 0,
+  "shadow": 0,
+  "color": 4,
+  "cce": "off",
+  "ccb": "weak",
+  "grain": [
+   "weak",
+   "small"
+  ],
+  "clarity": -3,
+  "sharpness": -2,
+  "ev": 0.5,
+  "kind": "recipe"
+ },
+ "cinestill800t": {
+  "name": "CineStill 800T",
+  "sim": "ETERNA",
+  "about": "Tungsten cine film at night: cool, grainy",
+  "wb": "fluorescent3",
+  "wb_shift": [
+   -6,
+   -4
+  ],
+  "dr": 400,
+  "highlight": 0,
+  "shadow": 2,
+  "color": 4,
+  "cce": "strong",
+  "ccb": "weak",
+  "grain": [
+   "strong",
+   "large"
+  ],
+  "clarity": -5,
+  "sharpness": -3,
+  "ev": 0.08,
+  "halation": 0.35,
+  "kind": "recipe"
+ },
+ "pacificblues": {
+  "name": "Pacific Blues",
+  "sim": "CLASSIC_NEG",
+  "about": "Nostalgic negative with rich blues and turquoise",
+  "wb": 5800,
+  "wb_shift": [
+   1,
+   -3
+  ],
+  "dr": 400,
+  "highlight": -2,
+  "shadow": 3,
+  "color": 4,
+  "cce": "strong",
+  "ccb": "strong",
+  "grain": [
+   "strong",
+   "large"
+  ],
+  "clarity": -3,
+  "sharpness": -2,
+  "ev": 0.42,
+  "kind": "recipe"
+ },
+ "superhg": {
+  "name": "Fujicolor Super HG",
+  "sim": "CLASSIC_NEG",
+  "about": "Warm 90s Fujicolor consumer negative",
+  "wb": "auto_white",
+  "wb_shift": [
+   -3,
+   -1
+  ],
+  "dr": 400,
+  "highlight": -1,
+  "shadow": 1,
+  "color": 2,
+  "cce": "weak",
+  "ccb": "weak",
+  "grain": [
+   "weak",
+   "large"
+  ],
+  "clarity": 2,
+  "sharpness": 0,
+  "ev": 0.42,
+  "kind": "recipe"
+ },
+ "californiasummer": {
+  "name": "California Summer",
+  "sim": "NOSTALGIC_NEG",
+  "about": "Warm, saturated, sun-drenched",
+  "wb": 6700,
+  "wb_shift": [
+   -1,
+   -6
+  ],
+  "dr": 400,
+  "highlight": -2,
+  "shadow": -1,
+  "color": 4,
+  "cce": "strong",
+  "ccb": "weak",
+  "grain": [
+   "weak",
+   "small"
+  ],
+  "clarity": -4,
+  "sharpness": -2,
+  "ev": 0.5,
+  "kind": "recipe"
+ },
+ "fujinegative": {
+  "name": "Fujifilm Negative",
+  "sim": "REALA_ACE",
+  "about": "Vintage negative: warm skin, vivid blues and greens",
+  "wb": 5000,
+  "wb_shift": [
+   0,
+   -2
+  ],
+  "dr": 400,
+  "highlight": -1,
+  "shadow": -0.5,
+  "color": 2,
+  "cce": "strong",
+  "ccb": "off",
+  "grain": [
+   "weak",
+   "small"
+  ],
+  "clarity": -2,
+  "sharpness": -1,
+  "ev": 0.33,
+  "kind": "recipe"
+ },
+ "vibrantvelvia": {
+  "name": "Vibrant Velvia",
+  "sim": "VELVIA",
+  "about": "Bold landscape slide colour",
+  "wb": "auto",
+  "wb_shift": [
+   0,
+   0
+  ],
+  "dr": 400,
+  "highlight": -2,
+  "shadow": -1,
+  "color": 4,
+  "cce": "strong",
+  "ccb": "strong",
+  "grain": [
+   "weak",
+   "small"
+  ],
+  "clarity": 4,
+  "sharpness": 0,
+  "ev": 0,
+  "kind": "recipe"
+ },
+ "trix400": {
+  "name": "Kodak Tri-X 400",
+  "sim": "ACROS",
+  "about": "Gritty, punchy black and white",
+  "wb": "daylight",
+  "wb_shift": [
+   9,
+   -9
+  ],
+  "dr": 200,
+  "highlight": 0,
+  "shadow": 3,
+  "color": 0,
+  "cce": "strong",
+  "ccb": "off",
+  "grain": [
+   "strong",
+   "large"
+  ],
+  "clarity": 4,
+  "sharpness": 1,
+  "ev": 0.33,
+  "kind": "recipe"
+ }
+}

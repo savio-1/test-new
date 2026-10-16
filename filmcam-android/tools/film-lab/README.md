@@ -27,3 +27,26 @@ python3 filmlab.py luts ../../app/src/main/assets/luts               # rebake ev
 ```
 
 Grain, halation, bloom, leaks and the rest stay in the shader; only colour lives in the LUT.
+
+## Fujifilm simulations and recipes (`fujilab.py`)
+
+```bash
+python3 fujilab.py fetch                                        # Fujifilm's F-Log2 LUTs, into .fuji-cache/
+python3 fujilab.py preview photo.jpg sheet.jpg classicchrome reggiesportra   # try them on a picture
+python3 fujilab.py luts ../../app/src/main/assets/luts          # bake luts/fx_<recipe>.png
+python3 fujilab.py tiles lake.jpg ../../app/src/main/assets/looks
+python3 fujilab.py kotlin ../../app/src/main/java/app/filmcam/film/FujiRecipes.kt
+```
+
+The pipeline:
+1. **Phone picture to scene light.** The picture is inverted through Fujifilm's PROVIA LUT.
+   Each colour is walked out from its grey so the solver stays on the right branch; 99% of
+   colours come back within 0.06.
+2. **Camera settings in scene light.** White balance (Kelvin or preset, plus the R/B shift),
+   exposure, then DR and Highlight/Shadow tone, which bend the curve in stops around grey.
+3. **The simulation.** Fujifilm's own LUT for it.
+4. **After the simulation.** Color, Color Chrome Effect and Color Chrome FX Blue, in OKLab,
+   with a soft gamut edge.
+
+The recipes, with their Fuji X Weekly settings, are in `recipes.json`. Grain Effect, Clarity
+and Sharpness map onto the look's shader settings (see `look_args`).

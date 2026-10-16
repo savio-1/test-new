@@ -137,7 +137,7 @@ fun ToolButton(icon: ImageVector, label: String, selected: Boolean, changed: Boo
 fun LooksTray(ui: UiState, actions: CameraActions, chrome: Float) {
     TrayCard(chrome) {
         Column {
-            val category = if (ui.category == CameraCategory.ORIGINAL) CameraCategory.FILM else ui.category
+            val category = if (ui.category == CameraCategory.ORIGINAL) CameraCategory.FUJI else ui.category
             TextTabs(CameraCategory.entries.filter { it != CameraCategory.ORIGINAL }, category, { it.label }) { ui.category = it }
             Spacer(Modifier.height(8.dp))
             // Looks sit on top of the Original camera: "None" takes the look off, and so does

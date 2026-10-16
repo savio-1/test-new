@@ -81,11 +81,49 @@ Burn text into video while you record, and into photos.
 - **Placement:** text is laid out in the upright frame, so it stays put when you turn the phone,
   and it sits above borders (a caption on an instant print works).
 
+## Fujifilm simulations and recipes
+
+The first two groups develop the picture the way a Fujifilm camera makes a JPEG, from
+Fujifilm's own data rather than an imitation:
+
+| Group | Looks |
+|---|---|
+| **Fujifilm** | Provia, Velvia, Astia, Classic Chrome, Classic Neg., Nostalgic Neg., Reala Ace, Pro Neg. Std, Pro Neg. Hi, Eterna, Eterna Bleach Bypass, Acros |
+| **Fuji Recipes** | Reggie's Portra, Kodachrome 64, Kodak Gold 200, Kodak Portra 400, Kodak Portra 800, Classic Color, Vibrant Arizona, CineStill 800T, Pacific Blues, Fujicolor Super HG, California Summer, Fujifilm Negative, Vibrant Velvia, Kodak Tri-X 400 |
+
+How it's done:
+- **The simulations are Fujifilm's.** Fujifilm publishes each film simulation as a 3D LUT
+  from F-Log2 (the camera's scene light) to BT.709. [`tools/film-lab/fujilab.py`](tools/film-lab/fujilab.py)
+  downloads them and develops through them.
+- **The phone's picture is read as Provia.** A phone renders much like Fujifilm's neutral
+  PROVIA, so the picture is run backwards through Fujifilm's PROVIA LUT to get the scene light
+  back. That light then goes forwards through the chosen simulation. PROVIA returns the
+  phone's own picture, and every other simulation differs from it exactly as it does on a
+  Fujifilm camera.
+- **The recipes are the camera's settings.** Each recipe sets:
+  - White balance, in Kelvin or a preset, plus the R/B shift.
+  - DR100, DR200, DR400 or D-Range Priority.
+  - Highlight and Shadow tone, and Color.
+  - Color Chrome Effect: deeper, denser strong colours.
+  - Color Chrome FX Blue: deeper blues.
+
+  These are applied in the scene light or after the simulation, where the camera applies
+  them. Grain Effect (weak or strong, small or large), Clarity and Sharpness become the
+  look's grain, clarity and sharpness, so they stay adjustable.
+- **Two simulations are built, not measured.** Nostalgic Neg. and Pro Neg. Hi have no
+  published LUT. They are built from Pro Neg. Std: amber highlights with soft, rich shadows
+  for Nostalgic Neg., more contrast for Pro Neg. Hi.
+- **Where the recipes come from.** The recipes are from [Fuji X Weekly](https://fujixweekly.com)
+  (Ritchie Roesch and contributors).
+- **Names and licensing.** Film simulation, film and recipe names belong to their owners.
+  Fujifilm's LUT files are not in this repository; `fujilab.py fetch` downloads them for
+  baking.
+
 ## Cameras
 
-Sixty-four looks in seven groups, on top of the Original camera. Each look pairs a film stock
-with a format and the effects that go with it, and every setting can be changed live
-afterwards. The names describe looks; none of them is a real product or brand.
+Sixty-four looks in seven more groups. Each look pairs a film stock with a format and the
+effects that go with it, and every setting can be changed live afterwards. These names
+describe looks; none of them is a real product or brand.
 
 | Group | Cameras |
 |---|---|

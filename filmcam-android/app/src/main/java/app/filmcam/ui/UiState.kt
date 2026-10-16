@@ -68,7 +68,7 @@ class UiState {
     var theme by mutableStateOf(ThemeMode.SYSTEM)
     var mode by mutableStateOf(CaptureMode.PHOTO)
     var camera by mutableStateOf(FilmCameras.byId(null))
-    var category by mutableStateOf(CameraCategory.FILM)
+    var category by mutableStateOf(CameraCategory.FUJI)
     var look by mutableStateOf(FilmCameras.byId(null).look)
     /** Photographic style of the Original camera (kept while a look is on, for when it comes off). */
     var style by mutableStateOf(app.filmcam.film.StyleSetting())

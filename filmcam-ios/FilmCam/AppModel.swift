@@ -67,7 +67,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var camera: FilmCamera
     @Published private(set) var look: Look
     @Published var tray: Tray = .none
-    @Published var category: String = "ALL"
+    @Published var category: String = "FUJI"
     @Published var toolGroup: ToolGroup = .basic
     @Published var toolId: String = "exposure"
     @Published private(set) var videoMode = false
