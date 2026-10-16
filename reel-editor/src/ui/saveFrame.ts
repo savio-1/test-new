@@ -2,6 +2,7 @@ import { useEditor } from '../state/store';
 import { Renderer } from '../engine/renderer';
 import { preview } from '../engine/instance';
 import { notify } from '../state/toasts';
+import { saveFile } from './saveFile';
 
 /** Render the frame under the playhead at full project resolution and download it. */
 export async function saveFrame() {
@@ -14,11 +15,7 @@ export async function saveFrame() {
     renderer.render(s.project, s.playhead, preview);
     const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/png'));
     if (!blob) throw new Error('Could not encode the frame.');
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `${s.project.name || 'frame'} ${s.playhead.toFixed(2)}s.png`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    await saveFile(blob, `${s.project.name || 'frame'} ${s.playhead.toFixed(2)}s.png`);
   } catch (e) {
     notify((e as Error).message, 'error');
   } finally {

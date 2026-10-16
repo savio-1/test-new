@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { Clipboard, ClipboardPaste, Copy, Layers, RotateCcw, Trash2, Upload, X } from 'lucide-react';
 import { useEditor, selectedClip } from '../state/store';
 import type { AudioSettings, ColorSettings, EffectInstance, FilmSettings, MediaClip, TextClip, Transform, TextStyle } from '../model/types';
@@ -566,6 +566,7 @@ function ProjectPanel() {
   const project = useEditor((s) => s.project);
   const update = useEditor((s) => s.update);
   const loadProject = useEditor((s) => s.loadProject);
+  const [confirmNew, setConfirmNew] = useState(false);
   const fmt = PROJECT_FORMATS.find((f) => f.width === project.settings.width && f.height === project.settings.height);
   return (
     <aside className="inspector">
@@ -599,16 +600,30 @@ function ProjectPanel() {
             onChange={(v) => update((p) => void (p.settings.fps = v))}
           />
           <ColorField label="Background" value={project.settings.background} onChange={(v) => update((p) => void (p.settings.background = v), 'bg')} />
-          <button
-            className="btn danger full"
-            onClick={async () => {
-              if (!confirm('Start a new project? The current project and its imported media will be removed from this browser.')) return;
-              await clearAll();
-              loadProject(newProject(), {});
-            }}
-          >
-            New project
-          </button>
+          {confirmNew ? (
+            <div className="confirm-box">
+              <p>Remove this project and its imported media from this browser?</p>
+              <div className="confirm-btns">
+                <button className="btn" onClick={() => setConfirmNew(false)}>
+                  Keep it
+                </button>
+                <button
+                  className="btn danger"
+                  onClick={async () => {
+                    await clearAll();
+                    loadProject(newProject(), {});
+                    setConfirmNew(false);
+                  }}
+                >
+                  Start new project
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button className="btn danger full" onClick={() => setConfirmNew(true)}>
+              New project
+            </button>
+          )}
         </Section>
         <Section title="Keyboard shortcuts">
           <dl className="shortcuts">

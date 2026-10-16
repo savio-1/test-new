@@ -5,6 +5,7 @@ import { exportProject, pickCodecs, type ExportOptions, type ExportResult } from
 import { projectDuration, formatTime } from '../model/timeline';
 import { FRAME_RATES } from '../model/presets';
 import { togglePlay } from '../engine/instance';
+import { saveFile } from './saveFile';
 
 const SIZES = [
   { id: 'project', label: 'Project size', scale: 1 },
@@ -69,10 +70,6 @@ export function ExportDialog() {
         ctrl.signal,
       );
       const url = URL.createObjectURL(result.blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = result.filename;
-      a.click();
       setPhase({ kind: 'done', result, url, seconds: (performance.now() - t0) / 1000 });
     } catch (e) {
       if ((e as Error).name === 'AbortError') setPhase({ kind: 'setup' });
@@ -187,11 +184,11 @@ export function ExportDialog() {
               <video className="export-preview" src={phase.url} controls />
             </div>
             <div className="modal-foot">
-              <a className="btn" href={phase.url} download={phase.result.filename}>
-                <Download size={15} /> Download again
-              </a>
-              <button className="btn primary" onClick={close}>
+              <button className="btn" onClick={close}>
                 Close
+              </button>
+              <button className="btn primary" onClick={() => void saveFile(phase.result.blob, phase.result.filename)}>
+                <Download size={15} /> Save video
               </button>
             </div>
           </>

@@ -1353,3 +1353,20 @@ input[type='range']::-moz-range-track {
     width: 140px;
   }
 }
+
+.confirm-box {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+.confirm-box p {
+  margin: 0 0 8px;
+  color: var(--text-dim);
+}
+.confirm-btns {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}

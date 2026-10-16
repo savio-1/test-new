@@ -161,8 +161,7 @@ export const useEditor = create<EditorState>((set, get) => ({
     get().update((p) => {
       p.clips.push(clip);
     });
-    // Without an explicit position, move on so the next add lands after this clip.
-    set({ selectedClipId: clip.id, ...(start === undefined && kind !== 'audio' ? { playhead: clipEnd(clip) } : {}) });
+    set({ selectedClipId: clip.id });
     return clip.id;
   },
 
