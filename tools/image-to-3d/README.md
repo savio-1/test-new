@@ -1,53 +1,79 @@
-# Depth Studio: 3D from a single image
+# Photo to 3D
 
-Turn one photo into a 3D scene you can orbit, render and export. Everything runs in the browser; the photo never leaves the device.
+Turn one photo of an object into a full, textured 3D model (GLB) that you can turn all the way around, then render it photoreal.
 
-- **Live:** https://claude.ai/artifact/7nj7zjUXXm2MGM5wkHySCp (private; share it from the page's Share menu)
-- **Local:** `python3 serve.py`, then open http://localhost:8000
+The work is done by generative image-to-3D models running on GPUs: they rebuild the whole object, including the sides and back the photo can't see, with PBR materials. Three steps:
 
-## How it works
+1. **Convert** (`convert.py`). The photo goes to a hosted model on Hugging Face and comes back as a GLB.
+2. **View** (`index.html`). A real-time PBR viewer: image-based lighting, soft shadows, four lighting presets, clay and wireframe views, and PNG, turntable video and GLB exports.
+3. **Render** (`render.py`). Blender Cycles path-traced studio shots: a seamless sweep, softbox lighting and real contact shadows, plus an optional turntable MP4.
 
-1. **Depth.** [Depth Anything V2 Small](https://huggingface.co/depth-anything/Depth-Anything-V2-Small) (Apache-2.0), int8 ONNX, runs on-device through ONNX Runtime Web (WASM). The input is resized so the short side is 518 px (long side capped at 1036, both multiples of 14) and normalised with ImageNet statistics. The output is relative inverse depth; the page normalises it robustly (0.5 / 99.5 percentiles), so 1 is nearest and 0 is farthest.
-2. **Geometry.** A grid is unprojected through a pinhole camera set by the lens (35 mm equivalent, 24 mm sensor height). Disparity `d` maps to distance `z = 1 / (d·(1 − 1/R) + 1/R)`, so the nearest point sits at 1 and the farthest at `R`, the "Depth" ratio. Seen from the origin, the mesh lines up exactly with the photo.
-3. **Separation.** Quads that span a large relative depth jump are dropped, so foreground objects come away from what is behind them. A second, coarser **backdrop** mesh fills those gaps. It is built from the depth with foreground objects min-filtered away, then pushed back 1.5%.
-4. **Looks.** Photo (unlit texture), Lit (texture with a key light), Clay (geometry only) and Depth (inferno ramp).
+## Setup
 
-## Controls
+```bash
+pip install gradio_client          # conversion
+pip install bpy                    # optional: Cycles renders (Blender 5.2 as a Python module)
+export HF_TOKEN=hf_...             # a free Hugging Face read token: huggingface.co/settings/tokens
+```
 
-| Control | Effect |
-|---|---|
-| Depth | Far/near distance ratio, 1× (flat) to 11.5× |
-| Lens | Field of view the photo is assumed to have. Phones are about 24 to 28 mm. |
-| Separate objects at edges | Tear threshold. 0 keeps one continuous sheet. |
-| Smoothing | Box blur on the depth before meshing, to remove model noise |
-| Mesh detail | Grid quads along the long edge |
-| Motion | Parallax (a small loop around the photo view) or Orbit arc (±24°) |
+The models run on Hugging Face ZeroGPU. Without a token you get a small anonymous allowance (about a minute of GPU a day, shared per network). A free account's token gives more, and a PRO account gives the most. The token is read from the environment only.
 
-Orbit is clamped to about 65° from the photo view. Past that, a single photo has nothing to show.
+## Use it
 
-## Exports
+**In the browser (local app):**
+```bash
+python3 tools/image-to-3d/serve.py        # http://localhost:8000
+```
+Drop a photo, pick a model, then press **Convert to 3D**. When the model appears, **Studio render** runs Cycles and shows four shots. Results are saved in `tools/image-to-3d/out/<job>/` (`model.glb`, `meta.json`, `renders/`).
 
-- **Render image**: PNG at 1920, 2880 or 4096 px on the long edge, optionally with a transparent background.
-- **Record loop**: one seamless loop of the current motion, WebM (MP4 in Safari).
-- **3D model**: a `.zip` holding a `.glb` (meshes `relief` and `backdrop`, plus `photo_camera`), the depth PNG and a README. The viewer can't save `.glb` directly, which is why it is zipped. In Blender, use File > Import > glTF, then render from `photo_camera` to line up with the original.
-- **Depth map**: 8-bit grayscale PNG, white = near.
+**From the command line:**
+```bash
+python3 convert.py photo.jpg                          # TRELLIS.2 -> out/photo/model.glb
+python3 convert.py photo.jpg --model hunyuan --render # Hunyuan3D 2.1, then Cycles stills
+python3 render.py out/photo/model.glb --res 2400 --samples 256 --turntable 96
+python3 render.py out/photo/model.glb --transparent   # alpha + shadow catcher, for compositing
+```
 
-**Use my depth map** replaces the estimated depth with your own grayscale map (white = near), for example one from a stronger model.
+**On claude.ai:** the published page (https://claude.ai/artifact/7nj7zjUXXm2MGM5wkHySCp) is the same `index.html`. It can't reach Hugging Face from there, so it works as the viewer and exporter for models you already have, and shows the command to run the converter.
+
+## Models
+
+| `--model` | Space | Strengths | Time | License |
+|---|---|---|---|---|
+| `trellis2` (default) | microsoft/TRELLIS.2 | Most geometric detail; PBR (colour, roughness, metal); textures up to 4096 | 1 to 2 min | MIT |
+| `hunyuan` | tencent/Hunyuan3D-2.1 | PBR texture painting, strong on products and characters | 1 to 3 min | Tencent Hunyuan Community (not for use in the EU, UK or South Korea) |
+| `sf3d` | stabilityai/stable-fast-3d | Seconds; lighter detail | under 10 s | Stability AI Community (free below $1M revenue) |
+
+Check the license before using a result commercially.
+
+## Getting realistic results
+
+- Photograph **one object, whole in frame**, on a plain or tidy background. The models cut the object out themselves.
+- Use **even, diffuse light**. Light baked into the photo ends up in the texture, so hard shadows and highlights get painted on.
+- A three-quarter view usually reconstructs better than a dead-front one, because it shows two sides.
+- The hidden sides are generated, not measured: plausible, not exact. For exact geometry, use photogrammetry from many photos.
+- Scenes (rooms, landscapes) are not what these models do. They reconstruct objects.
+
+## render.py studio
+
+The model is scaled so its largest side is 1 m and stood on the floor. Shots turn the model, like a product on a turntable, while the camera and lights stay put:
+
+| Shot | Turn | Camera height |
+|---|---|---|
+| `hero` | −32° | 14° |
+| `front` | 0° (the side the photo saw) | 6° |
+| `side` | 90° | 8° |
+| `back` | 180° | 10° |
+| `top` | 35° | 42° |
+
+The lights are a large key front-left, a strip fill on the right, an overhead bounce and a warm rim from behind. The view transform is AgX Medium High Contrast. Other options: `--backdrop "#hex"`, `--exposure`, `--spin` (if a model faces the wrong way) and `--aspect`. Cycles uses OptiX, CUDA, HIP, Metal or oneAPI when present, otherwise the CPU (about 20 s per 720 px still at 48 samples on 4 cores).
 
 ## Files
 
 ```
-index.html       the whole app (artifact source: no doctype; the host adds the skeleton, and serve.py adds it locally)
-serve.py         downloads + splits the model and the ORT runtime on first run, then serves the page
-sample/          the opening sample (a frame from site/tools/home-scene) and its precomputed 16-bit depth (R = high byte, G = low)
-model/, ort/     downloaded by serve.py, git-ignored
+convert.py   photo -> GLB via a hosted model (TRELLIS.2, Hunyuan3D 2.1, Stable Fast 3D)
+render.py    GLB -> Cycles studio stills and turntable
+serve.py     local app: serves index.html plus /api/convert, /api/render, /api/jobs
+index.html   converter UI and PBR viewer (also the claude.ai artifact; no doctype, the host adds the skeleton)
+out/         results, git-ignored
 ```
-
-The model is split into two parts so each stays under the artifact host's 15 MB per-file limit. The parts are named `.wasm` only because the host serves that extension; they hold raw ONNX bytes. To republish, run `python3 serve.py --prepare`, then publish `index.html` with `model/*`, `ort/*` and `sample/*` as supporting files.
-
-## Limits
-
-- It's a 2.5D relief. Surfaces hidden in the photo stay unknown, so the backs of objects aren't there.
-- Depth is relative, not metric. Scale comes from the lens setting and the Depth ratio.
-- First use downloads about 38 MB (model plus runtime). On a laptop, inference takes about 2 to 10 seconds.
-- A full 360° object model would need an image-to-3D model (such as TripoSR, Stable Fast 3D or Hunyuan3D) running on a GPU. Those are too large to run in the browser.
