@@ -241,6 +241,8 @@ private fun SubVideo(
 /** The clip full screen with its subtitles, to check them before burning in. */
 @Composable
 private fun SubFullScreen(ui: UiState, actions: CameraActions, s: SubtitleSession, fonts: FontLibrary?, player: SubPlayer, close: () -> Unit) {
+    // Back leaves full screen, not the editor.
+    androidx.activity.compose.BackHandler(onBack = close)
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             val fit = if (maxWidth / maxHeight > s.aspect) Modifier.fillMaxHeight().aspectRatio(s.aspect) else Modifier.fillMaxWidth().aspectRatio(s.aspect)
