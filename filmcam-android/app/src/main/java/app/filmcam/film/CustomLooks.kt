@@ -2,6 +2,7 @@ package app.filmcam.film
 
 // The cu_* LUTs are made by tools/film-lab/customlab.py: edit that, then run
 //   python3 customlab.py luts ../../app/src/main/assets/luts [look ...]
+// (stylelab.py makes Noah's Nostalgia, nolanlab.py the two Nolan On The Run looks).
 
 /**
  * Custom looks: a creator's grade measured from their published before/after frames, and
@@ -17,6 +18,10 @@ object CustomLooks {
             halationColor = Rgb(1f, 0.42f, 0.16f)),
         FilmStock(id = "cu_dehancer500t", name = "Dehancer 500T", colorGrain = 0.1f, monochrome = false, swatch = 0xFF5E6676,
             halationColor = Rgb(1f, 0.2f, 0.02f)),
+        FilmStock(id = "cu_nolanontherun", name = "On The Run", colorGrain = 0.1f, monochrome = false, swatch = 0xFF9A8466,
+            halationColor = Rgb(1f, 0.38f, 0.12f)),
+        FilmStock(id = "cu_nolanontherunteal", name = "On The Run Teal", colorGrain = 0.1f, monochrome = false, swatch = 0xFF4E8288,
+            halationColor = Rgb(1f, 0.38f, 0.12f)),
     )
 
     val CAMERAS: List<FilmCamera> by lazy {
@@ -37,6 +42,21 @@ object CustomLooks {
                 CameraCategory.CUSTOM, FilmLook(
                     stock = FilmStocks.byId("cu_noahsnostalgia"), halation = 0.35f, halationSize = 0.45f, bloom = 0.2f,
                     diffusion = 0.15f, vignette = 0.15f, aberration = 0f, grain = 0.25f, grainSize = 1.0f, softness = 0.08f,
+                )),
+            // Nolan On The Run (nolanontherun.com): his PowerGrade is Kodak 2383 / Fuji print
+            // emulation with 16 mm grain, halation and vignette. Colour: measured from the seven
+            // graded | S-Log3 frames on his shop (tools/film-lab/nolanlab.py). Most are golden
+            // and hazy, one is orange and teal, so there are two looks. His LUT files, imported,
+            // are the exact grade.
+            FilmCamera("cu_nolanontherun", "On The Run", "Nolan On The Run's golden grade: warm haze, peach highlights, soft skies",
+                CameraCategory.CUSTOM, FilmLook(
+                    stock = FilmStocks.byId("cu_nolanontherun"), halation = 0.5f, halationSize = 0.4f, bloom = 0.15f,
+                    diffusion = 0.1f, vignette = 0.2f, aberration = 0f, grain = 0.35f, grainSize = 1.3f, softness = 0f,
+                )),
+            FilmCamera("cu_nolanontherunteal", "On The Run Teal", "Nolan On The Run's orange and teal: cyan skies, golden skin",
+                CameraCategory.CUSTOM, FilmLook(
+                    stock = FilmStocks.byId("cu_nolanontherunteal"), halation = 0.5f, halationSize = 0.4f, bloom = 0.15f,
+                    diffusion = 0.1f, vignette = 0.2f, aberration = 0f, grain = 0.35f, grainSize = 1.3f, softness = 0f,
                 )),
             // Dehancer Pro. Colour: fitted to Dehancer's own before/after frames, with the film
             // lab's cine stocks filling in colours those frames don't show. Effects: matched to

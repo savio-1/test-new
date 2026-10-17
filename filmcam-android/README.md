@@ -204,6 +204,26 @@ The **Custom** tab holds creators' grades and your own LUTs.
     mild vignette, as in his frames.
   - It is learned, not copied: there is no before/after of his to fit, so it captures his
     look's direction and strength, not any one shot's exact grade.
+- **On The Run / On The Run Teal:** Nolan On The Run's grade (nolanontherun.com). He sells it
+  as a Resolve PowerGrade and a LUT pack (Kodak 2383 / Fuji print emulation, 16 mm grain,
+  halation, vignette, made for Sony S-Log3). His shop shows seven split frames, his grade
+  beside the S-Log3 original, plus six more graded frames (`tools/film-lab/nolanlab.py`).
+  - **How it's measured:** the two sides of each split are different moments, so there is no
+    pixel pair to fit. The log side is decoded (S-Log3, S-Gamut3.Cine → Rec.709, a filmic
+    display curve) into what a phone would show, and both sides are pooled and compared on
+    skin, sky, foliage, warm highlights, the tone scale and its tint.
+  - **What it does:** skies turn from blue toward teal-cyan (242° → 211° in OKLab), warm
+    highlights go golden (96° → 81°, richer), skin goes a little richer and redder, foliage
+    goes olive and darker, mid-tones sit lower (median L 0.59 → 0.47) with soft, rolled-off
+    highlights, near-neutrals go quieter while vivid colours get stronger, and the top of
+    the scale goes strongly warm.
+  - **Two looks:** his frames aren't one grade. Most are golden and hazy (dunes, the Tetons,
+    fields at dusk): *On The Run* (warmer balance, peach highlights, pale skies). One is
+    orange and teal with a cyan sky: *On The Run Teal*.
+  - **Texture:** halation, light bloom, 16 mm-sized grain and a mild vignette, as in his
+    PowerGrade.
+  - **Exactly his:** his LUT files (Rec.709 versions for phones are in his pack) import as
+    they are through Import LUT below; these two looks are the measured approximation.
 - **Any plugin's looks, exactly (Hald image):** Import LUT also takes a *Hald CLUT* image:
   `tools/hald/hald-identity-512.png` (every colour, 64 steps per channel) put through a grade
   and saved as PNG. That captures any look you can run, exactly: every FilmBox look (Video
