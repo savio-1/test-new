@@ -31,6 +31,8 @@ android {
             // Signed with the debug key so the release APK installs straight away.
             // Swap in your own signingConfig before publishing to a store.
             signingConfig = signingConfigs.getByName("debug")
+            // -PtestRelease: a shrunk build that still takes the debug test hooks (emulator only).
+            if (project.hasProperty("testRelease")) isDebuggable = true
         }
     }
 

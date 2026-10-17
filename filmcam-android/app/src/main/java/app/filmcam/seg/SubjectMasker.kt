@@ -145,7 +145,8 @@ class SubjectMasker(private val context: Context) {
         )
     } catch (e: Throwable) {
         Log.w(TAG, "load $asset on $delegate", e)
-        lastError = "${e.javaClass.simpleName}: ${e.message}"
+        lastError = generateSequence(e) { it.cause }.take(4)
+            .joinToString(" ← ") { "${it.javaClass.simpleName}${it.message?.let { m -> ": " + m.take(120) } ?: ""}" }
         null
     }
 
