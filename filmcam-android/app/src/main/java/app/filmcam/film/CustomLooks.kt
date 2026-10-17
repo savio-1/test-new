@@ -13,6 +13,8 @@ object CustomLooks {
         // Dehancer's halation is redder than film's usual orange, and pulls a little blue.
         FilmStock(id = "cu_dehancer250d", name = "Dehancer 250D", colorGrain = 0.1f, monochrome = false, swatch = 0xFF8E7A68,
             halationColor = Rgb(1f, 0.2f, 0.02f)),
+        FilmStock(id = "cu_noahsnostalgia", name = "Noah's Nostalgia", colorGrain = 0.08f, monochrome = false, swatch = 0xFF5E7064,
+            halationColor = Rgb(1f, 0.42f, 0.16f)),
         FilmStock(id = "cu_dehancer500t", name = "Dehancer 500T", colorGrain = 0.1f, monochrome = false, swatch = 0xFF5E6676,
             halationColor = Rgb(1f, 0.2f, 0.02f)),
     )
@@ -26,6 +28,15 @@ object CustomLooks {
                 CameraCategory.CUSTOM, FilmLook(
                     stock = FilmStocks.byId("cu_sleepycharlie"), halation = 0.3f, halationSize = 0.35f, bloom = 0.08f,
                     vignette = 0f, aberration = 0f, grain = 0.22f, grainSize = 0.9f, softness = 0f,
+                )),
+            // Noah's Nostalgia (YouTube, Noah Sandvik): no LUT or grade is offered, so the look is
+            // measured from his own footage (tools/film-lab/stylelab.py): golden skin, blue skies
+            // turned teal, dark olive-teal foliage, muted reds, deeper mid-tones, olive shadows and
+            // cream highlights. Texture from his frames: soft glow round highlights, fine grain.
+            FilmCamera("cu_noahsnostalgia", "Noah's Nostalgia", "Moody travel-film colour: golden skin, teal skies, olive greens",
+                CameraCategory.CUSTOM, FilmLook(
+                    stock = FilmStocks.byId("cu_noahsnostalgia"), halation = 0.35f, halationSize = 0.45f, bloom = 0.2f,
+                    diffusion = 0.15f, vignette = 0.15f, aberration = 0f, grain = 0.25f, grainSize = 1.0f, softness = 0.08f,
                 )),
             // Dehancer Pro. Colour: fitted to Dehancer's own before/after frames, with the film
             // lab's cine stocks filling in colours those frames don't show. Effects: matched to

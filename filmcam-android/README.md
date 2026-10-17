@@ -191,6 +191,19 @@ The **Custom** tab holds creators' grades and your own LUTs.
     is redder and stronger than film's usual orange (this look uses a redder halo near the
     top of the range); its bloom is a wide, low-threshold glow, which the app's diffusion
     reproduces.
+- **Noah's Nostalgia:** the look of Noah Sandvik's travel films (YouTube, Noah's Nostalgia).
+  He sells no LUT and names no grading tools, so it is learned from his own footage: the
+  frames YouTube captures inside 30 of his videos (90 frames), measured against ungraded
+  Rec.709 frames of similar subjects (`tools/film-lab/stylelab.py`).
+  - **What it does** (each measured on his footage): skin goes golden (hue 56° → 67° in
+    OKLab, a little richer), blue skies turn teal (243° → 208°), foliage goes darker and
+    olive-teal with less saturation, reds are muted, mid-tones sit lower, shadows lean
+    olive-green and highlights cream. The graded references land within a few degrees and a
+    few percent of his footage on skin, foliage, sky and the tone curve.
+  - **Texture:** a soft warm glow round highlights, light bloom and diffusion, fine grain and a
+    mild vignette, as in his frames.
+  - It is learned, not copied: there is no before/after of his to fit, so it captures his
+    look's direction and strength, not any one shot's exact grade.
 - **Any plugin's looks, exactly (Hald image):** Import LUT also takes a *Hald CLUT* image:
   `tools/hald/hald-identity-512.png` (every colour, 64 steps per channel) put through a grade
   and saved as PNG. That captures any look you can run, exactly: every FilmBox look (Video
