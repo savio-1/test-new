@@ -91,6 +91,27 @@ class CubeLut(val title: String, val size: Int, val data: FloatArray, val domain
     }
 
     /**
+     * The share of lattice points that jump away from their neighbours (more than 0.15 from
+     * the mean of the six around them): near 0 for any real grade; a watermark or text burnt
+     * into a Hald image shows up as a patch of them.
+     */
+    fun roughness(): Float {
+        if (size < 3) return 0f
+        var bad = 0
+        var total = 0
+        fun at(r: Int, g: Int, b: Int, c: Int) = data[((b * size + g) * size + r) * 3 + c]
+        for (b in 1 until size - 1) for (g in 1 until size - 1) for (r in 1 until size - 1) {
+            total++
+            for (c in 0 until 3) {
+                val mean = (at(r - 1, g, b, c) + at(r + 1, g, b, c) + at(r, g - 1, b, c) + at(r, g + 1, b, c) +
+                    at(r, g, b - 1, c) + at(r, g, b + 1, c)) / 6f
+                if (kotlin.math.abs(at(r, g, b, c) - mean) > 0.15f) { bad++; break }
+            }
+        }
+        return if (total == 0) 0f else bad.toFloat() / total
+    }
+
+    /**
      * The app's LUT strip: 33^3 as a 1089x33 ARGB image, pixel (x = b*33 + r, y = g) holding
      * the output for input (r, g, b)/32.
      */
@@ -107,6 +128,36 @@ class CubeLut(val title: String, val size: Int, val data: FloatArray, val domain
     }
 
     companion object {
+        /**
+         * A Hald CLUT: an identity image of every colour ([level]^3 pixels square, a
+         * [level]^2-point cube, red changing fastest, row by row) after it has been through a
+         * grade. Each pixel is the grade's output for its colour. [argb] holds the pixels.
+         */
+        fun fromHald(width: Int, height: Int, argb: IntArray): CubeLut {
+            val level = (2..16).firstOrNull { it * it * it == width }
+                ?: throw CubeException("That image isn't a Hald CLUT: it should be square, 512×512 (or another level³ size), not ${width}×$height")
+            if (height != width) throw CubeException("A Hald CLUT is square; this one is ${width}×$height. Render it at its original size, without scaling or cropping")
+            val n = level * level
+            val data = FloatArray(n * n * n * 3)
+            for (i in 0 until n * n * n) {
+                val c = argb[i]
+                data[i * 3] = ((c shr 16) and 255) / 255f
+                data[i * 3 + 1] = ((c shr 8) and 255) / 255f
+                data[i * 3 + 2] = (c and 255) / 255f
+            }
+            return CubeLut("", n, data, floatArrayOf(0f, 0f, 0f), floatArrayOf(1f, 1f, 1f))
+        }
+
+        /** The identity Hald CLUT of [level] (8: 512×512, a 64-point cube), as ARGB pixels. */
+        fun identityHald(level: Int): IntArray {
+            val n = level * level
+            return IntArray(n * n * n) { i ->
+                val r = i % n; val g = i / n % n; val b = i / (n * n)
+                fun v(x: Int) = (x * 255f / (n - 1) + 0.5f).toInt()
+                (0xFF shl 24) or (v(r) shl 16) or (v(g) shl 8) or v(b)
+            }
+        }
+
         fun parse(text: String): CubeLut {
             var title = ""
             var size = 0

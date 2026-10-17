@@ -191,6 +191,13 @@ The **Custom** tab holds creators' grades and your own LUTs.
     is redder and stronger than film's usual orange (this look uses a redder halo near the
     top of the range); its bloom is a wide, low-threshold glow, which the app's diffusion
     reproduces.
+- **Any plugin's looks, exactly (Hald image):** Import LUT also takes a *Hald CLUT* image:
+  `tools/hald/hald-identity-512.png` (every colour, 64 steps per channel) put through a grade
+  and saved as PNG. That captures any look you can run, exactly: every FilmBox look (Video
+  Village publishes no per-look before/after frames, so they can't be fitted the way the
+  looks above were), every Dehancer stock, Lightroom presets. Step by step for FilmBox in
+  Resolve: `tools/hald/README.md`. Images that aren't a Hald size are refused with what's
+  wrong, and a watermark or text on the image is detected and reported.
 - **Import LUT (.cube):** the last card in Custom adds any 3D `.cube` LUT as a look: one you
   bought (Cinecell 02's Look LUT gives its colour exactly), or your own grade from Resolve,
   Premiere or Lightroom. It is resampled to the app's 33³ LUT and applied to the picture as

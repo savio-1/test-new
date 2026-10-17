@@ -68,6 +68,36 @@ class CubeLutTest {
         }
     }
 
+    @Test fun haldIdentityRoundTrips() {
+        val px = CubeLut.identityHald(8)
+        assertEquals(512 * 512, px.size)
+        val lut = CubeLut.fromHald(512, 512, px)
+        assertEquals(64, lut.size)
+        val o = FloatArray(3)
+        for ((r, g, b) in listOf(Triple(0.2f, 0.6f, 0.95f), Triple(1f, 0f, 0.5f), Triple(0.33f, 0.33f, 0.33f))) {
+            lut.sample(r, g, b, o)
+            assertEquals(r, o[0], 0.004f); assertEquals(g, o[1], 0.004f); assertEquals(b, o[2], 0.004f)
+        }
+        // Red changes fastest along the first row.
+        assertEquals(0xFF000000.toInt(), px[0])
+        assertEquals(0xFFFF0000.toInt(), px[63])
+        assertEquals(0xFF00FF00.toInt(), px[63 * 64])
+    }
+
+    @Test fun haldGradeIsRead() {
+        // A "grade" that swaps red and blue, applied to the identity image.
+        val graded = CubeLut.identityHald(4).map { c -> (c and 0xFF00FF00.toInt()) or ((c and 0xFF) shl 16) or ((c shr 16) and 0xFF) }.toIntArray()
+        val o = FloatArray(3)
+        CubeLut.fromHald(64, 64, graded).sample(1f, 0f, 0f, o)
+        assertEquals(0f, o[0], 1e-3f); assertEquals(1f, o[2], 1e-3f)
+    }
+
+    @Test fun refusesImagesThatArentHalds() {
+        for ((w, h) in listOf(500 to 500, 512 to 288)) {
+            try { CubeLut.fromHald(w, h, IntArray(w * h)); fail("accepted ${w}x$h") } catch (e: CubeException) { }
+        }
+    }
+
     @Test fun customLookIsRegistered() {
         val cam = FilmCameras.byId("cu_sleepycharlie")
         assertEquals(CameraCategory.CUSTOM, cam.category)

@@ -525,16 +525,30 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
     /** Reads a .cube, bakes it into the app's 33^3 strip and a tile, and selects it. */
     private fun importLutFrom(uri: Uri) {
         io.execute {
+            var rough = false
             val result = runCatching {
-                val name = contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                val fileName = contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
                     if (c.moveToFirst()) c.getString(0) else null
-                }?.substringBeforeLast('.')?.take(24) ?: "Imported"
-                val text = contentResolver.openInputStream(uri)?.use { input ->
-                    val bytes = input.readBytes()
-                    if (bytes.size > 64 * 1024 * 1024) throw app.filmcam.film.CubeException("That file is too large for a LUT")
-                    String(bytes, Charsets.UTF_8)
-                } ?: throw app.filmcam.film.CubeException("Couldn't open the file")
-                val cube = app.filmcam.film.CubeLut.parse(text)
+                } ?: "Imported"
+                val name = fileName.substringBeforeLast('.').take(24)
+                val bytes = contentResolver.openInputStream(uri)?.use { input -> input.readBytes() }
+                    ?: throw app.filmcam.film.CubeException("Couldn't open the file")
+                if (bytes.size > 64 * 1024 * 1024) throw app.filmcam.film.CubeException("That file is too large for a LUT")
+                val ext = fileName.substringAfterLast('.', "").lowercase()
+                val isImage = contentResolver.getType(uri)?.startsWith("image/") == true || ext in setOf("png", "jpg", "jpeg", "webp", "tif", "tiff")
+                // A .cube, or a Hald CLUT image that has been through a grade (FilmBox, Lightroom...).
+                val cube = if (isImage) {
+                    if (ext == "tif" || ext == "tiff") throw app.filmcam.film.CubeException("Save the Hald image as PNG (TIFF can't be read here)")
+                    val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply {
+                        inPreferredConfig = Bitmap.Config.ARGB_8888; inScaled = false
+                    }) ?: throw app.filmcam.film.CubeException("Couldn't read that image")
+                    val px = IntArray(bmp.width * bmp.height)
+                    bmp.getPixels(px, 0, bmp.width, 0, 0, bmp.width, bmp.height)
+                    app.filmcam.film.CubeLut.fromHald(bmp.width, bmp.height, px).also { bmp.recycle() }
+                } else {
+                    app.filmcam.film.CubeLut.parse(String(bytes, Charsets.UTF_8))
+                }
+                rough = cube.roughness() > 0.004f
                 val id = CustomLooks.USER_PREFIX + System.currentTimeMillis()
                 val strip = Bitmap.createBitmap(33 * 33, 33, Bitmap.Config.ARGB_8888)
                 strip.setPixels(cube.toStrip(), 0, 33 * 33, 0, 0, 33 * 33, 33)
@@ -563,7 +577,8 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
                     setUserLooks(ui.userLooks + cam)
                     ui.category = app.filmcam.film.CameraCategory.CUSTOM
                     selectCamera(cam)
-                    ui.message = "Added ${cam.name}"
+                    ui.message = if (rough) "Added ${cam.name}, but some of its colours jump about (a watermark or text on the image?)"
+                        else "Added ${cam.name}"
                 }.onFailure { e ->
                     Log.w("FilmCam", "import LUT", e)
                     ui.message = (e as? app.filmcam.film.CubeException)?.message ?: "That file isn't a .cube LUT this app can read"
