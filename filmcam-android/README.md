@@ -283,7 +283,9 @@ How it's made (`tools/film-lab/genesislab.py`):
   on a lattice fitted to all 22 stocks' frames pooled (the density, tone and colour
   separation Genesis's stocks share), moved toward what this stock does differently.
 - **How close:** each half of each frame, predicted from a fit to the other half (with the
-  prior pooled from the other stocks only), lands at ACCURACY.
+  prior pooled from the other stocks only), lands at a median ΔE of 0.26–0.59 (0.44 on
+  average) from Genesis's own frame, against 1.2–6.6 (3.4 on average) for the untouched Base
+  frame; below about 1 is invisible.
 - **Texture:** Genesis's default 35 mm grain, measured from its Base / 35 mm frames (grain
   0.3 here), and its gentle halation ("felt, not seen"), plus a touch of bloom. Adjust them
   per shot under Looks → Adjust.
