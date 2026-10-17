@@ -154,7 +154,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
             }
             engine.subjects = m
         }
-        ui.theme = enumPref("theme", ThemeMode.SYSTEM)
+        ui.theme = enumPref("theme", ThemeMode.DARK)
         ui.geminiKey = prefs.getString("geminiKey", "") ?: ""
         ui.liveCaptions = prefs.getBoolean("liveCaptions", false) && LiveCaptioner.supported(this)
         ui.captionLanguage = prefs.getString("captionLanguage", "en") ?: "en"
@@ -162,14 +162,11 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         ui.textLayers = TextLayer.listFromJson(prefs.getString("text", null))
         engine.textLayers = ui.textLayers
 
+        ui.favourites = prefs.getStringSet("favourites", null)?.toSet() ?: emptySet()
         val saved = FilmCameras.byId(prefs.getString("camera", null))
         ui.camera = saved
         ui.category = if (saved.category == app.filmcam.film.CameraCategory.ORIGINAL) app.filmcam.film.CameraCategory.FUJI else saved.category
         ui.look = saved.look
-        ui.style = app.filmcam.film.StyleSetting(
-            enumPref("style", app.filmcam.film.PhotoStyle.STANDARD), prefs.getFloat("styleTone", 0f),
-            prefs.getFloat("styleColor", 0f), prefs.getFloat("stylePalette", 1f),
-        )
         ui.mode = enumPref("mode", CaptureMode.PHOTO)
         ui.videoRes = enumPref("videoRes", VideoResolution.UHD)
         ui.photoRatio = enumPref("photoRatio", AspectRatio.R3_4)
@@ -832,16 +829,6 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
 
     override fun removeLook() = selectCamera(FilmCameras.ORIGINAL)
 
-    override fun setStyle(style: app.filmcam.film.StyleSetting) {
-        if (!ui.isOriginal) selectCamera(FilmCameras.ORIGINAL)
-        ui.style = style
-        prefs.edit {
-            putString("style", style.style.name); putFloat("styleTone", style.tone)
-            putFloat("styleColor", style.color); putFloat("stylePalette", style.palette)
-        }
-        pushLook()
-    }
-
     override fun resetLook() = updateLook(ui.camera.look.copy(exposureEv = 0f))
 
     override fun setFrame(frame: FrameStyle) = updateLook(ui.look.copy(frame = frame))
@@ -914,6 +901,35 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         ui.screen = Screen.CAMERA
         ui.viewing = null
         openCamera()
+    }
+
+    /** Which look each take was made with (id and name), kept with the app, keyed by the file. */
+    private val shots by lazy { getSharedPreferences("shots", MODE_PRIVATE) }
+
+    private fun tagShot(uri: Uri, id: String = if (ui.logActive) "" else ui.camera.id, name: String = when {
+        ui.logActive -> "Log"
+        ui.isOriginal -> "No look"
+        else -> ui.camera.name
+    }) = shots.edit { putString(uri.toString(), "$id\t$name") }
+
+    override fun lookOf(item: MediaItem): Pair<String, String>? =
+        shots.getString(item.uri.toString(), null)?.split('\t', limit = 2)?.takeIf { it.size == 2 }?.let { it[0] to it[1] }
+
+    override fun useLookOf(item: MediaItem) {
+        val id = lookOf(item)?.first ?: return
+        val cam = FilmCameras.byId(id)
+        if (id.isNotEmpty() && cam.id != id) { ui.message = "That look isn't here any more"; return }
+        selectCamera(cam)
+        if (!cam.id.startsWith(CustomLooks.USER_PREFIX) && cam.category != app.filmcam.film.CameraCategory.ORIGINAL) ui.category = cam.category
+        ui.viewing = null
+        backToCamera()
+        ui.message = if (cam.id == FilmCameras.ORIGINAL.id) "No look" else "${cam.name} is on"
+    }
+
+    override fun toggleFavourite(id: String) {
+        val now = if (id in ui.favourites) ui.favourites - id else ui.favourites + id
+        ui.favourites = now
+        prefs.edit { putStringSet("favourites", now) }
     }
 
     private fun refreshGallery() {
@@ -994,6 +1010,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
                 ui.gallery = items
                 if (out == null) { ui.message = "Couldn't trim the clip"; return@runOnUiThread }
                 ui.message = "Trimmed copy saved"
+                shots.getString(item.uri.toString(), null)?.let { t -> shots.edit { putString(out.toString(), t) } }
                 items.firstOrNull { it.uri == out }?.let { ui.viewing = it }
                 ui.lastUri = out
                 ui.lastIsVideo = true
@@ -1429,6 +1446,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
                     engine.maxWorkSide = 1920
                     if (out != null) {
                         ui.message = "Saved with ${ui.camera.name}"
+                        tagShot(out)
                         ui.lastUri = out
                         ui.lastIsVideo = true
                         loadThumb(MediaItem(out, true, 0L))
@@ -1515,6 +1533,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         runOnUiThread {
             ui.developing--
             if (uri == null) { ui.message = "Couldn't save the picture"; return@runOnUiThread }
+            tagShot(uri, "", "No look")
             ui.lastUri = uri
             ui.lastIsVideo = false
             if (thumb != null) ui.thumbnail = thumb
@@ -1576,6 +1595,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
             bitmap.recycle()
             runOnUiThread {
                 if (uri != null) {
+                    tagShot(uri)
                     ui.thumbnail = thumb
                     ui.lastUri = uri
                     ui.lastIsVideo = false
@@ -1616,6 +1636,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         ui.dock = app.filmcam.ui.Dock.NONE
         ui.recordStartMs = System.currentTimeMillis()
         recordingUri = uri
+        tagShot(uri)
         recordingStartedAt = android.os.SystemClock.elapsedRealtime()
         ui.captionsFor = null
         if (ui.liveCaptions) startCaptions()
@@ -1650,6 +1671,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         ui.dock = app.filmcam.ui.Dock.NONE
         ui.recordStartMs = System.currentTimeMillis()
         recordingUri = uri
+        tagShot(uri)
         recordingStartedAt = android.os.SystemClock.elapsedRealtime()
         ui.captionsFor = null
         if (ui.liveCaptions) startCaptions()

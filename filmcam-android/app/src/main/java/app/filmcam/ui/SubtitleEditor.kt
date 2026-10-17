@@ -79,8 +79,8 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 import app.filmcam.film.TextAlign as SubAlign
 
-private val Accent = Color(0xFFFFB347)
-private val Panel = Color(0xFF161616)
+private val Accent = Color(0xFFF4F4F2)
+private val Panel = Color(0xFF111112)
 private val Muted = Color.White.copy(alpha = 0.55f)
 
 /** Text colours, and box / outline colours, offered for subtitles. */
@@ -144,7 +144,7 @@ fun SubtitleScreen(ui: UiState, actions: CameraActions) {
         if (ui.progress >= 0f) {
             Text(
                 "${ui.progressLabel}  ${(ui.progress * 100).roundToInt()}%", color = Color.White, fontSize = 14.sp,
-                modifier = Modifier.align(Alignment.Center).background(Color(0xCC000000), RoundedCornerShape(14.dp))
+                modifier = Modifier.align(Alignment.Center).background(Color(0xCC000000), Corners.medium)
                     .padding(horizontal = 18.dp, vertical = 12.dp),
             )
         }
@@ -262,14 +262,14 @@ private fun SubFullScreen(ui: UiState, actions: CameraActions, s: SubtitleSessio
                 Box(Modifier.size(36.dp).clip(CircleShape).clickable { player.toggle() }, contentAlignment = Alignment.Center) {
                     Icon(if (player.playing) Ico.Pause else Ico.Play, null, tint = Color.White, modifier = Modifier.size(20.dp))
                 }
-                Text(subStamp(s.positionMs), color = Color.White, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                Text(subStamp(s.positionMs), color = Color.White, fontSize = 12.sp, fontFamily = UiType.mono)
                 Slider(
                     value = (s.positionMs.toFloat() / dur).coerceIn(0f, 1f),
                     onValueChange = { f -> val ms = (f * dur).toLong(); s.positionMs = ms; player.seek(ms) },
                     colors = SliderDefaults.colors(thumbColor = Accent, activeTrackColor = Accent),
                     modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
                 )
-                Text(subStamp(dur), color = Muted, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                Text(subStamp(dur), color = Muted, fontSize = 12.sp, fontFamily = UiType.mono)
             }
             Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 SubSecondary("Back to editing", onClick = close)
@@ -291,8 +291,8 @@ private fun SubIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, onCli
 private fun SubChip(text: String, on: Boolean, font: FontFamily? = null, onClick: () -> Unit) {
     Text(
         text, color = if (on) Color.Black else Color.White, fontSize = 13.sp, fontFamily = font, maxLines = 1,
-        modifier = Modifier.clip(RoundedCornerShape(16.dp)).background(if (on) Color.White else Panel)
-            .border(1.dp, if (on) Color.White else Color.White.copy(alpha = 0.15f), RoundedCornerShape(16.dp))
+        modifier = Modifier.clip(Corners.medium).background(if (on) Color.White else Panel)
+            .border(1.dp, if (on) Color.White else Color.White.copy(alpha = 0.15f), Corners.medium)
             .clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 7.dp),
     )
 }
@@ -301,7 +301,7 @@ private fun SubChip(text: String, on: Boolean, font: FontFamily? = null, onClick
 private fun SubPrimary(text: String, modifier: Modifier = Modifier, enabled: Boolean = true, onClick: () -> Unit) {
     Text(
         text, color = Color.Black, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-        modifier = modifier.clip(RoundedCornerShape(20.dp)).background(if (enabled) Accent else Accent.copy(alpha = 0.4f))
+        modifier = modifier.clip(Corners.small).background(if (enabled) Accent else Accent.copy(alpha = 0.4f))
             .clickable(enabled = enabled, onClick = onClick).padding(horizontal = 18.dp, vertical = 11.dp),
     )
 }
@@ -310,7 +310,7 @@ private fun SubPrimary(text: String, modifier: Modifier = Modifier, enabled: Boo
 private fun SubSecondary(text: String, onClick: () -> Unit) {
     Text(
         text, color = Color.White, fontSize = 13.sp,
-        modifier = Modifier.clip(RoundedCornerShape(20.dp)).border(1.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(20.dp))
+        modifier = Modifier.clip(Corners.small).border(1.dp, Color.White.copy(alpha = 0.25f), Corners.small)
             .clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 10.dp),
     )
 }
@@ -320,7 +320,7 @@ private fun SubSecondary(text: String, onClick: () -> Unit) {
 private fun SubKeyPanel(ui: UiState, actions: CameraActions, onDone: () -> Unit) {
     var key by remember { mutableStateOf(ui.geminiKey) }
     var model by remember { mutableStateOf(ui.geminiModel) }
-    Column(Modifier.fillMaxWidth().padding(12.dp).clip(RoundedCornerShape(16.dp)).background(Panel).padding(14.dp)) {
+    Column(Modifier.fillMaxWidth().padding(12.dp).clip(Corners.medium).background(Panel).padding(14.dp)) {
         Text("Gemini API key", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
         Text("Free from aistudio.google.com/apikey. The clip's sound is sent to Google to be transcribed; nothing else leaves the phone.",
             color = Muted, fontSize = 11.sp, modifier = Modifier.padding(top = 3.dp, bottom = 8.dp))
@@ -339,7 +339,7 @@ private fun SubKeyPanel(ui: UiState, actions: CameraActions, onDone: () -> Unit)
 
 @Composable
 private fun SubField(value: String, hint: String, font: FontFamily? = null, size: Int = 14, onChange: (String) -> Unit) {
-    Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Color(0xFF232323)).padding(horizontal = 10.dp, vertical = 9.dp)) {
+    Box(Modifier.fillMaxWidth().clip(Corners.small).background(Color(0xFF232323)).padding(horizontal = 10.dp, vertical = 9.dp)) {
         if (value.isEmpty()) Text(hint, color = Color.White.copy(alpha = 0.3f), fontSize = size.sp, fontFamily = font)
         BasicTextField(
             value = value, onValueChange = onChange, cursorBrush = SolidColor(Accent),
@@ -377,7 +377,7 @@ private fun SubStart(ui: UiState, actions: CameraActions, s: SubtitleSession) {
         s.error?.let { Text(it, color = Color(0xFFFF7A66), fontSize = 12.sp, modifier = Modifier.padding(top = 12.dp)) }
         Spacer(Modifier.height(14.dp))
         Text("Or write them yourself", color = Accent, fontSize = 13.sp,
-            modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable {
+            modifier = Modifier.clip(Corners.medium).clickable {
                 actions.updateSubtitles(SubtitleTrack(listOf(Cue(0, minOf(3000L, s.durationMs.coerceAtLeast(1000L))))))
             }.padding(8.dp))
     }
@@ -394,7 +394,7 @@ private fun ColumnScope.SubEditor(
         SubTab.entries.forEach { t ->
             Text(
                 t.label, color = if (tab == t) Color.Black else Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.weight(1f).clip(RoundedCornerShape(12.dp)).background(if (tab == t) Accent else Panel)
+                modifier = Modifier.weight(1f).clip(Corners.medium).background(if (tab == t) Accent else Panel)
                     .clickable { setTab(t) }.padding(vertical = 8.dp),
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
@@ -443,7 +443,7 @@ private fun SubLines(s: SubtitleSession, track: SubtitleTrack, fonts: FontLibrar
         }
         item {
             Text("+ Add a line at ${subStamp(s.positionMs)}", color = Accent, fontSize = 13.sp,
-                modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable {
+                modifier = Modifier.clip(Corners.medium).clickable {
                     val start = s.positionMs
                     val next = track.cues.firstOrNull { it.startMs > start }?.startMs ?: s.durationMs
                     val cue = Cue(start, minOf(start + 2500, next.coerceAtLeast(start + 500)))
@@ -459,8 +459,8 @@ private fun SubCueRow(
     seek: (Long) -> Unit, onChange: (Cue) -> Unit, setStart: (Long) -> Unit, setEnd: (Long) -> Unit, delete: () -> Unit,
 ) {
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(if (active) Color(0xFF262019) else Panel)
-            .border(1.dp, if (active) Accent.copy(alpha = 0.7f) else Color.Transparent, RoundedCornerShape(14.dp))
+        Modifier.fillMaxWidth().clip(Corners.medium).background(if (active) Color(0xFF1E1E20) else Panel)
+            .border(1.dp, if (active) Accent.copy(alpha = 0.7f) else Color.Transparent, Corners.medium)
             .padding(horizontal = 10.dp, vertical = 8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -489,11 +489,11 @@ private fun SubTime(label: String, ms: Long, modifier: Modifier, seek: () -> Uni
         Text(label, color = Muted, fontSize = 10.sp, modifier = Modifier.padding(start = 4.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             SubRepeat("−") { nudge(-100) }
-            Text(subStamp(ms), color = Color.White, fontSize = 13.sp, fontFamily = FontFamily.Monospace,
-                modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = seek).padding(horizontal = 3.dp, vertical = 4.dp))
+            Text(subStamp(ms), color = Color.White, fontSize = 13.sp, fontFamily = UiType.mono,
+                modifier = Modifier.clip(Corners.small).clickable(onClick = seek).padding(horizontal = 3.dp, vertical = 4.dp))
             SubRepeat("+") { nudge(100) }
             Text("Now", color = Accent, fontSize = 11.sp,
-                modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(onClick = toNow).padding(horizontal = 5.dp, vertical = 5.dp))
+                modifier = Modifier.clip(Corners.small).clickable(onClick = toNow).padding(horizontal = 5.dp, vertical = 5.dp))
         }
     }
 }
@@ -543,7 +543,7 @@ private fun SubStylePanel(track: SubtitleTrack, fonts: FontLibrary?, set: (Subti
         SubLabel("Size")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             SubChip("A−", false) { st { it.copy(size = (it.size - 0.004f).coerceAtLeast(0.022f)) } }
-            Text("${(style.size * 1000).roundToInt()}", color = Color.White, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+            Text("${(style.size * 1000).roundToInt()}", color = Color.White, fontSize = 13.sp, fontFamily = UiType.mono)
             SubChip("A+", false) { st { it.copy(size = (it.size + 0.004f).coerceAtMost(0.12f)) } }
         }
         SubLabel("Text colour")
@@ -591,8 +591,8 @@ private fun SubFontMenu(fonts: FontLibrary, selected: String, telugu: Boolean, p
     val sample = if (telugu) "తెలుగు ఉపశీర్షికలు" else "Subtitles Aa"
     Box {
         Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Panel)
-                .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
+            Modifier.fillMaxWidth().clip(Corners.medium).background(Panel)
+                .border(1.dp, Color.White.copy(alpha = 0.15f), Corners.medium)
                 .clickable { open = true }.padding(horizontal = 12.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -630,8 +630,8 @@ private fun SubPlacePanel(track: SubtitleTrack, set: (SubtitleTrack) -> Unit) {
         Text("Drag the subtitles on the video to put them anywhere, or pick a spot.", color = Muted, fontSize = 12.sp,
             modifier = Modifier.padding(bottom = 10.dp))
         Column(
-            Modifier.width(220.dp).aspectRatio(1.25f).clip(RoundedCornerShape(14.dp)).background(Panel)
-                .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(14.dp)).padding(6.dp),
+            Modifier.width(220.dp).aspectRatio(1.25f).clip(Corners.medium).background(Panel)
+                .border(1.dp, Color.White.copy(alpha = 0.15f), Corners.medium).padding(6.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             rows.forEach { (y, yName) ->
@@ -639,7 +639,7 @@ private fun SubPlacePanel(track: SubtitleTrack, set: (SubtitleTrack) -> Unit) {
                     cols.forEach { (x, align, xName) ->
                         val on = style.align == align && abs(style.x - x) < 0.03f && abs(style.y - y) < 0.04f
                         Box(
-                            Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(9.dp))
+                            Modifier.weight(1f).fillMaxHeight().clip(Corners.small)
                                 .background(if (on) Accent else Color(0xFF242424))
                                 .clickable { set(track.copy(style = style.copy(x = x, y = y, align = align))) },
                             contentAlignment = when (align) {
@@ -648,7 +648,7 @@ private fun SubPlacePanel(track: SubtitleTrack, set: (SubtitleTrack) -> Unit) {
                                 SubAlign.RIGHT -> Alignment.CenterEnd
                             },
                         ) {
-                            Box(Modifier.padding(horizontal = 6.dp).width(26.dp).height(5.dp).clip(RoundedCornerShape(3.dp))
+                            Box(Modifier.padding(horizontal = 6.dp).width(26.dp).height(5.dp).clip(Corners.small)
                                 .background(if (on) Color.Black else Color.White.copy(alpha = 0.6f)))
                         }
                     }
@@ -669,8 +669,8 @@ private fun SubPlacePanel(track: SubtitleTrack, set: (SubtitleTrack) -> Unit) {
 @Composable
 private fun SubAlignChip(icon: androidx.compose.ui.graphics.vector.ImageVector, on: Boolean, onClick: () -> Unit) {
     Box(
-        Modifier.size(40.dp).clip(RoundedCornerShape(12.dp)).background(if (on) Color.White else Panel)
-            .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(12.dp)).clickable(onClick = onClick),
+        Modifier.size(40.dp).clip(Corners.medium).background(if (on) Color.White else Panel)
+            .border(1.dp, Color.White.copy(alpha = 0.15f), Corners.medium).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) { Icon(icon, null, tint = if (on) Color.Black else Color.White, modifier = Modifier.size(20.dp)) }
 }

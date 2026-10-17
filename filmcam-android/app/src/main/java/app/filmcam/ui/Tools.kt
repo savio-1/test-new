@@ -7,7 +7,7 @@ import app.filmcam.film.FilmLook
 import app.filmcam.film.ShutterSpeed
 import kotlin.math.roundToInt
 
-enum class ToolGroup(val label: String) { BASIC("Basic"), LIGHT("Light"), FILM("Film"), LENS("Lens"), MOTION("Motion"), RETRO("Retro") }
+enum class ToolGroup(val label: String) { BASIC("Basic"), LIGHT("Light"), MOTION("Motion"), FILM("Film"), LENS("Lens"), RETRO("Retro") }
 
 /**
  * One adjustment: an icon in the tool row and a ruler. Choices (shutter speed, blur type...)
@@ -88,7 +88,12 @@ object Tools {
         // Motion
         Tool("blurmode", "Blur", Ico.Blur, ToolGroup.MOTION, 0f, BlurMode.entries.lastIndex.toFloat(),
             options = BlurMode.entries.map { it.label },
-            get = { it.blurMode.ordinal.toFloat() }, set = { l, v -> l.copy(blurMode = BlurMode.entries[v.roundToInt()]) }),
+            get = { it.blurMode.ordinal.toFloat() }, set = { l, v ->
+                val mode = BlurMode.entries[v.roundToInt()]
+                // Turning a blur on starts gentle: a quarter strength with a wide sharp centre.
+                if (l.blurMode == BlurMode.NONE && mode != BlurMode.NONE) l.copy(blurMode = mode, blur = 0.25f, blurFocus = 0.75f)
+                else l.copy(blurMode = mode)
+            }),
         Tool("blur", "Amount", Ico.Halation, ToolGroup.MOTION, visible = { it.blurMode != BlurMode.NONE },
             get = { it.blur }, set = { l, v -> l.copy(blur = v) }),
         Tool("blurfocus", "Sharp centre", Ico.Focus, ToolGroup.MOTION, visible = { it.blurMode != BlurMode.NONE },

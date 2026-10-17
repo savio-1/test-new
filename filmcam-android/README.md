@@ -20,51 +20,50 @@ Preview photo: Pietro De Grandi on Unsplash (Unsplash Licence).*
 
 ![FilmCam screens, light and dark](docs/ui.jpg)
 
-The interface stays out of the picture.
-- **Top bar:** flash, the camera name (*Original* and its style, or the look), the gallery and
-  the settings button.
+The interface stays out of the picture. It's styled like a modern editor: black (or white)
+panels with hairline borders, nearly square corners, Inter for text and Space Mono for labels
+and values, with section heads written `/ LIKE THIS`. No colour of its own: the picture is the
+colour.
+- **Motion:** every tap gets a gentle press (the control sinks to 96% and springs back); trays,
+  panels, pages, messages and the look title slide and fade in and out; selections ease between
+  states. All of it is drawn in the draw phase or by Compose's own animations, so it costs no
+  extra layout and the app stays light.
+- **Top bar:** flash, the camera name (the look, or *Original*), the gallery and the settings
+  button.
 - **Chips under it:** the frame shape (`3:4`), photo size (`50 MP`) or video format (`4K · 30`),
   log, the self-timer and bursts. Each opens a small panel over the top of the picture.
-- **Viewfinder:** rounded, the shape of the saved frame, with glass zoom pills (`.5  1×  2  3  10`).
-- **Dock:** five items above the shutter (*Styles*, *Looks*, *Adjust*, *Frame* and *Text*). Each
-  one opens a single tray, never a long panel.
+- **Viewfinder:** the shape of the saved frame, with glass zoom pills (`.5  1×  2  3  10`).
+- **Focus and exposure, as in a phone's own camera:** tap to focus and meter there; a box and a
+  sun on a short line appear beside it. Then drag up or down anywhere on the picture to brighten
+  or darken (the value shows next to the sun). They fade a few seconds after the last touch; a
+  new tap meters afresh. Pinch to zoom.
+- **Dock:** four items above the shutter (*Looks*, *Adjust*, *Frame* and *Text*). Each one opens
+  a single tray, never a long panel.
+- **Looks:** *Favourites*, *All*, then each category (Custom, Genesis, Fujifilm and the rest).
+  With a look on, a heart keeps it in Favourites and an **intensity** slider sits right under
+  the looks (from none of the look to all of it).
 - **Adjust:** pick a group, then a tool, and drag the ruler. *Basic* holds the everyday
   corrections on top of any look or the Original camera: Exposure, Strength (how much of the
   look's colour), Temp, Tint, Contrast, Highlights, Shadows, Saturation, Vibrance, Clarity,
-  Sharpness and Fade. Then come Light, Film, Lens, Motion and Retro.
+  Sharpness and Fade. Then come Light, Motion, Film, Lens and Retro. Turning on a blur in
+  Motion starts gentle: 25% strength with a 75% sharp centre.
   While you drag, everything else fades away so you can judge the picture; only the ruler and
   its value stay. Double-tap the ruler to go back to the camera's own setting. A dot marks the
   tools you've changed.
 - **Closing:** a tap anywhere outside an open tray or panel closes it.
 - **Sounds:** the shutter click and the recording beeps can be turned off in settings, except in
   countries whose law requires them; the app asks Android.
-- **Themes:** light (on a fine dot grid) and dark, or follow the system.
+- **Themes:** dark by default, light, or follow the system; both sit on a fine dot grid.
+- **Gallery and viewer:** swipe left and right through every take. *Shot with* at the top names
+  the look each photo or clip was made with; tap it to put that look on the camera.
 - **Grain:** every camera starts with the same light grain; turn it up per shot in *Adjust*.
 
-## Original and photographic styles
-
-![The sixteen styles](docs/styles.jpg)
+## Original
 
 The app opens as a plain phone camera: **Original**, with nothing applied. It shows the camera's
 own picture through the same stream the system camera app uses. Phones keep some of their
 processing (Samsung's scene optimiser, multi-frame HDR) for their own app, so photos can differ
-slightly from it.
-
-*Styles* works like the iPhone's photographic styles:
-- **Sixteen styles.** Six undertone styles (Amber, Gold, Rose Gold, Neutral, Cool Rose, Cool)
-  that shift white balance and lean on skin tones. Seven mood styles (Vibrant, Natural,
-  Luminous, Dramatic, Quiet, Cozy, Ethereal) and two black-and-white ones (Muted B&W, Stark
-  B&W).
-- **The pad.** The chosen style turns into a dotted pad. Drag up and down for **Tone** (deeper
-  and punchier at the bottom, lifted and softer at the top) and left and right for **Colour**
-  (muted to rich). Double-tap it to centre it.
-- **Palette.** The slider under the pad sets how much of the style's own character is applied.
-- **Skin-aware.** Saturation boosts spare skin and already-strong colours. The tone curve is
-  half hue-preserving, so bright reds don't turn neon and deep ones don't go to mud.
-
-These are an emulation written for this app, tuned by eye against the iPhone's; Apple's own
-processing isn't available to other apps. A look replaces the style. Take it off with *None* in
-*Looks*, or by tapping the chosen look again, and the style comes back.
+slightly from it. (The photographic *Styles* tab has been removed; the looks cover it.)
 
 ## Text overlays
 
@@ -81,8 +80,15 @@ Burn text into video while you record, and into photos.
 - **On the viewfinder:** drag a text to move it (it snaps to the centre lines, with guides), pinch
   to resize, twist to rotate (it snaps to level and to 90°), and double-tap to retype. The red ×
   on the selected text deletes it; so does *Delete* in the tray.
-- **In the tray:** size, rotation, opacity, letter spacing, colour, shadow (off by default),
+- **In the tray:** size, rotation, opacity, letter spacing, line spacing, colour (33 swatches,
+  plus a spectrum and a lightness bar for any other colour), shadow (off by default),
   left/centre/right alignment, and a 3×3 placement grid.
+- **Animate:** text can move in video and the viewfinder: *Wiggle*, *Jiggle* and *Stop-motion*
+  (held poses, 12 or 8 a second, as if moved by hand between shots), *Float*, *Swing*,
+  *Bounce*, *Pulse*, *Spin*, *Flicker* and *Typewriter*. Each tile in the picker previews its
+  own movement. Photos show the text at rest. Poses follow the clip's own clock, so an export
+  matches what the viewfinder showed; the overlay is only redrawn when the pose changes (and
+  at 1280 px instead of 2048 while animating).
 - **Placement:** text is laid out in the upright frame, so it stays put when you turn the phone,
   and it sits above borders (a caption on an instant print works).
 - **Behind the subject (Depth):** set a text *Behind subject* and the subject passes in front of
@@ -592,9 +598,9 @@ Camera2 stream (up to 8K) ──► SurfaceTexture (OES) ─┐
 | `ui/` | Compose UI: theme, icons, ruler, trays, text editor |
 | `film/FrameFx.kt` | Per-frame randomness: weave, slips, flicker, leaks, prism, tape tracking, scratches |
 | `camera/LogCurve.kt` | The S-Log3 and HLG curves, the view assist and the .cube LUTs |
-| `film/PhotoStyle.kt` | The photographic styles and their settings |
+| `film/PhotoStyle.kt` | Photographic styles (kept in the engine; the tab was removed) |
 | `tools/film-lab` | The negative + print model and `stocks.json`; bakes `assets/luts` |
-| `ui/StylesTray.kt` | The style row, the dotted Tone/Colour pad and the Palette slider |
+| `ui/Controls.kt` | The gentle press on every tap, and the slim slider |
 | `record/VideoRecorder.kt` | Codec choice, MP4 muxing, microphone or copied audio |
 | `record/VideoExporter.kt` | Imported clips: preview playback, and developing them frame by frame |
 | `record/Trimmer.kt` | Lossless trimming |

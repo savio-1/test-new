@@ -27,7 +27,7 @@ import app.filmcam.film.StampStyle
 import app.filmcam.film.TextLayer
 
 /** The tray above the shutter. One at a time keeps the screen calm. */
-enum class Dock(val label: String) { NONE(""), STYLES("Styles"), LOOKS("Looks"), ADJUST("Adjust"), FRAME("Frame"), TEXT("Text") }
+enum class Dock(val label: String) { NONE(""), LOOKS("Looks"), ADJUST("Adjust"), FRAME("Frame"), TEXT("Text") }
 
 /** How log is made, best first. */
 enum class LogPath(val words: List<String>) {
@@ -41,6 +41,9 @@ enum class LogPath(val words: List<String>) {
 
 /** The log curve the user prefers when the phone offers both. */
 enum class LogCurveChoice(val label: String) { HLG("HLG 10-bit"), SLOG3("S-Log3") }
+
+/** Which looks the looks tray lists: favourites, every look, or one category. */
+enum class LookShelf { FAVOURITES, ALL, CATEGORY }
 
 /** The small option panels opened from the chips above the viewfinder. */
 enum class Quick { RATIO, SIZE, VIDEO, TIMER, BURST, LOG }
@@ -62,7 +65,10 @@ class EditSession(val uri: android.net.Uri, val video: Boolean, val width: Int, 
 }
 
 /** What the ruler in the text tray changes. */
-enum class TextTool(val label: String) { FONT("Font"), SIZE("Size"), ROTATE("Rotate"), OPACITY("Opacity"), SPACING("Spacing"), COLOR("Colour"), PLACE("Place"), DEPTH("Depth") }
+enum class TextTool(val label: String) {
+    FONT("Font"), SIZE("Size"), ROTATE("Rotate"), OPACITY("Opacity"), SPACING("Spacing"), LINES("Lines"), COLOR("Colour"),
+    PLACE("Place"), DEPTH("Depth"), ANIMATE("Animate"),
+}
 
 /** The subtitle editor's clip: its subtitles once made, and what is happening. */
 class SubtitleSession(val item: MediaItem, val aspect: Float, val durationMs: Long) {
@@ -80,13 +86,16 @@ class SubtitleSession(val item: MediaItem, val aspect: Float, val durationMs: Lo
 class UiState {
     var permissionAsked by mutableStateOf(false)
     var hasCamera by mutableStateOf(false)
-    var theme by mutableStateOf(ThemeMode.SYSTEM)
+    var theme by mutableStateOf(ThemeMode.DARK)
     var mode by mutableStateOf(CaptureMode.PHOTO)
     var camera by mutableStateOf(FilmCameras.byId(null))
     var category by mutableStateOf(CameraCategory.FUJI)
     /** Looks made from imported .cube files (Custom). */
     var userLooks by mutableStateOf<List<app.filmcam.film.FilmCamera>>(emptyList())
     var look by mutableStateOf(FilmCameras.byId(null).look)
+    /** Looks marked as favourites (by id), and whether the looks tray shows only those. */
+    var favourites by mutableStateOf<Set<String>>(emptySet())
+    var lookShelf by mutableStateOf(LookShelf.CATEGORY)
     /** Photographic style of the Original camera (kept while a look is on, for when it comes off). */
     var style by mutableStateOf(app.filmcam.film.StyleSetting())
     /** No look applied: the phone's own picture, with its photographic style. */
@@ -237,7 +246,6 @@ interface CameraActions {
     fun selectCamera(camera: FilmCamera)
     /** Back to the Original camera. */
     fun removeLook()
-    fun setStyle(style: app.filmcam.film.StyleSetting)
     fun updateLook(look: FilmLook)
     fun resetLook()
     fun setFrame(frame: FrameStyle)
@@ -293,6 +301,11 @@ interface CameraActions {
     /** Adds a look from a .cube LUT file. */
     fun importLut()
     fun removeUserLook(id: String)
+    fun toggleFavourite(id: String)
+    /** The look a take was made with: its id ("" for none) and name, if it was recorded. */
+    fun lookOf(item: MediaItem): Pair<String, String>?
+    /** Puts on the look a take was made with and goes back to the camera. */
+    fun useLookOf(item: MediaItem)
     fun openLast()
     fun tapToFocus(x: Float, y: Float, w: Float, h: Float)
     fun zoom(scale: Float)

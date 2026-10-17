@@ -1,6 +1,11 @@
 package app.filmcam.ui
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -47,7 +52,9 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.SolidColor
@@ -73,8 +80,13 @@ import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
+/** Text colours: neutrals, then warm to cool, then pastels and deep tones. */
 private val Swatches = listOf(
-    0xFFFFFFFF, 0xFFF2E6D0, 0xFF111111, 0xFFFF8A3D, 0xFFE5402B, 0xFFFFD45A, 0xFF4FB3A9, 0xFF5B8DEF, 0xFFF2A7C3,
+    0xFFFFFFFF, 0xFFF2E6D0, 0xFFBDBDBD, 0xFF6B6B6B, 0xFF111111,
+    0xFFFFE14D, 0xFFFFD45A, 0xFFFFB627, 0xFFFF8A3D, 0xFFFF5F1F, 0xFFE5402B, 0xFFC81D4E, 0xFFFF4F9A, 0xFFF2A7C3,
+    0xFFB57EDC, 0xFF7B4FD6, 0xFF3B4BD8, 0xFF5B8DEF, 0xFF39B5E0, 0xFF4FB3A9, 0xFF2BB673, 0xFF7ED957, 0xFFC9E265,
+    0xFFFFF1B5, 0xFFFFD6C2, 0xFFCDE8D9, 0xFFC9DDF7, 0xFFE3D5F5,
+    0xFF8B5A2B, 0xFF5C3A21, 0xFF1F3A5F, 0xFF214D3B, 0xFF5B1A2E,
 ).map { it.toInt() }
 
 /**
@@ -264,7 +276,7 @@ fun TextEditorLayer(ui: UiState, actions: CameraActions) {
         if (ui.textLayers.isEmpty()) {
             Text(
                 "Add text with  +  below", color = Color.White, fontSize = 12.sp,
-                modifier = Modifier.align(Alignment.Center).background(Color(0x66000000), RoundedCornerShape(14.dp))
+                modifier = Modifier.align(Alignment.Center).background(Color(0x66000000), Corners.medium)
                     .padding(horizontal = 12.dp, vertical = 6.dp),
             )
         }
@@ -294,7 +306,7 @@ fun TextTray(ui: UiState, actions: CameraActions, chrome: Float) {
                         color = if (sel) p.bg else p.text, fontSize = 13.sp,
                         fontFamily = FontFamily(fonts.typeface(l.font)),
                         modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(Corners.medium)
                             .background(if (sel) p.text else p.surfaceHigh)
                             .clickable { ui.selectedText = if (sel) null else l.id }
                             .padding(horizontal = 12.dp, vertical = 7.dp),
@@ -338,6 +350,8 @@ fun TextTray(ui: UiState, actions: CameraActions, chrome: Float) {
                 item { ToolButton(Ico.Depth, "Depth", ui.textTool == TextTool.DEPTH || layer.behind) { ui.textTool = TextTool.DEPTH } }
                 item { ToolButton(Ico.Opacity, "Opacity", ui.textTool == TextTool.OPACITY) { ui.textTool = TextTool.OPACITY } }
                 item { ToolButton(Ico.Spacing, "Spacing", ui.textTool == TextTool.SPACING) { ui.textTool = TextTool.SPACING } }
+                item { ToolButton(Ico.LineHeight, "Lines", ui.textTool == TextTool.LINES) { ui.textTool = TextTool.LINES } }
+                item { ToolButton(Ico.Motion, "Animate", ui.textTool == TextTool.ANIMATE, changed = layer.anim != app.filmcam.film.TextAnim.NONE) { ui.textTool = TextTool.ANIMATE } }
                 item {
                     val icon = when (layer.align) { TextAlign.LEFT -> Ico.AlignLeft; TextAlign.CENTER -> Ico.AlignCenter; TextAlign.RIGHT -> Ico.AlignRight }
                     ToolButton(icon, "Align", false) {
@@ -362,21 +376,115 @@ fun TextTray(ui: UiState, actions: CameraActions, chrome: Float) {
                 TextTool.SPACING -> TextRuler(ui, "Letter spacing", layer.tracking, -0.1f, 0.6f, 0f, { "%.2f".format(it) }) {
                     replace(ui, actions, layer.copy(tracking = it))
                 }
-                TextTool.COLOR -> LazyRow(contentPadding = PaddingValues(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(Swatches) { c ->
-                        val sel = c == layer.color
-                        Box(
-                            Modifier.size(32.dp).clip(CircleShape)
-                                .border(if (sel) 2.dp else 1.dp, if (sel) p.text else p.line, CircleShape)
-                                .padding(if (sel) 4.dp else 0.dp).clip(CircleShape).background(Color(c))
-                                .clickable { replace(ui, actions, layer.copy(color = c)) },
-                        )
-                    }
+                TextTool.LINES -> TextRuler(ui, "Line spacing", layer.lineSpacing, 0.6f, 2.5f, 1f, { "%.2f×".format(it) }) {
+                    replace(ui, actions, layer.copy(lineSpacing = (it * 20).roundToInt() / 20f))
                 }
+                TextTool.COLOR -> ColourPanel(layer.color) { replace(ui, actions, layer.copy(color = it)) }
+                TextTool.ANIMATE -> AnimatePanel(layer) { replace(ui, actions, layer.copy(anim = it)) }
                 TextTool.PLACE -> PlaceGrid(ui, actions, layer)
                 TextTool.DEPTH -> DepthPanel(ui, actions, layer)
             }
         }
+    }
+}
+
+/** Swatches, and a spectrum bar for any other hue (with a lightness bar under it). */
+@Composable
+private fun ColourPanel(color: Int, onPick: (Int) -> Unit) {
+    val p = LocalPalette.current
+    Column {
+        LazyRow(contentPadding = PaddingValues(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(Swatches) { c ->
+                val sel = c == color
+                val ring by androidx.compose.animation.core.animateDpAsState(if (sel) 4.dp else 0.dp, label = "swatch")
+                Box(
+                    Modifier.size(30.dp).clip(CircleShape)
+                        .border(if (sel) 2.dp else 1.dp, if (sel) p.text else p.line, CircleShape)
+                        .padding(ring).clip(CircleShape).background(Color(c))
+                        .clickable { onPick(c) },
+                )
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        val hsv = FloatArray(3).also { android.graphics.Color.colorToHSV(color, it) }
+        SpectrumBar(
+            Brush.horizontalGradient((0..6).map { Color.hsv(it * 60f % 360f, 1f, 1f) }), hsv[0] / 360f,
+        ) { f -> onPick(android.graphics.Color.HSVToColor(floatArrayOf(f * 359.9f, hsv[1].coerceAtLeast(0.6f), hsv[2].coerceAtLeast(0.6f)))) }
+        Spacer(Modifier.height(8.dp))
+        // Lightness: dark, the pure hue in the middle, then toward white.
+        val hue = Color.hsv(hsv[0], 1f, 1f)
+        val light = if (hsv[1] < 1f && hsv[2] >= 1f) 0.5f + 0.5f * (1f - hsv[1]) else 0.5f * hsv[2]
+        SpectrumBar(Brush.horizontalGradient(listOf(Color.Black, hue, Color.White)), light) { f ->
+            onPick(
+                if (f <= 0.5f) android.graphics.Color.HSVToColor(floatArrayOf(hsv[0], 1f, f * 2f))
+                else android.graphics.Color.HSVToColor(floatArrayOf(hsv[0], 1f - (f - 0.5f) * 2f, 1f)),
+            )
+        }
+    }
+}
+
+/** A gradient bar with a ring marking [value]; tap or drag to pick along it. */
+@Composable
+private fun SpectrumBar(brush: Brush, value: Float, onPick: (Float) -> Unit) {
+    val pick by rememberUpdatedState(onPick)
+    Box(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(22.dp)
+            .pointerInput(Unit) { detectTapGestures { pick((it.x / size.width).coerceIn(0f, 1f)) } }
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures { c, _ ->
+                    c.consume(); pick((c.position.x / size.width).coerceIn(0f, 1f))
+                }
+            },
+    ) {
+        Canvas(Modifier.fillMaxSize()) {
+            val y = size.height / 2
+            val r = 5.dp.toPx()
+            drawRoundRect(brush, Offset(0f, y - r), androidx.compose.ui.geometry.Size(size.width, 2 * r), androidx.compose.ui.geometry.CornerRadius(r))
+            val x = (value.coerceIn(0f, 1f) * size.width).coerceIn(r * 1.6f, size.width - r * 1.6f)
+            drawCircle(Color.Black.copy(alpha = 0.35f), r * 1.75f, Offset(x, y))
+            drawCircle(Color.White, r * 1.6f, Offset(x, y), style = Stroke(2.dp.toPx()))
+        }
+    }
+}
+
+/**
+ * How the text moves in video. Each choice previews itself: the "Aa" in its tile moves the
+ * way the text will.
+ */
+@Composable
+private fun AnimatePanel(layer: TextLayer, onPick: (app.filmcam.film.TextAnim) -> Unit) {
+    val p = LocalPalette.current
+    val clock = androidx.compose.animation.core.rememberInfiniteTransition(label = "animPreview")
+    val t by clock.animateFloat(0f, 12f, infiniteRepeatable(tween(12_000, easing = LinearEasing)), label = "t")
+    Column {
+        LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(app.filmcam.film.TextAnim.entries) { a ->
+                val sel = a == layer.anim
+                val pose = a.pose(t, 7L, 2)
+                Column(
+                    Modifier.size(width = 74.dp, height = 62.dp).clip(Corners.medium)
+                        .background(if (sel) p.text else p.surfaceHigh).clickable { onPick(a) },
+                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+                ) {
+                    Box(Modifier.height(30.dp).fillMaxWidth().clipToBounds(), contentAlignment = Alignment.Center) {
+                        Text(
+                            "Aa".take(pose.chars.coerceAtLeast(0)).ifEmpty { " " }, color = if (sel) p.bg else p.text, fontSize = 19.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.graphicsLayer {
+                                translationX = pose.dx * 19.dp.toPx(); translationY = pose.dy * 19.dp.toPx()
+                                rotationZ = pose.rotation; scaleX = pose.scale; scaleY = pose.scale; alpha = pose.alpha
+                            },
+                        )
+                    }
+                    Text(a.label, color = if (sel) p.bg.copy(alpha = 0.75f) else p.muted, fontSize = 9.sp, maxLines = 1)
+                }
+            }
+        }
+        Text(
+            if (layer.anim == app.filmcam.film.TextAnim.NONE) "Text moves in video; photos show it at rest."
+            else "${layer.anim.label}: plays in video and the viewfinder; photos show it at rest.",
+            color = p.muted, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        )
     }
 }
 
@@ -416,7 +524,7 @@ private fun FontRow(ui: UiState, actions: CameraActions, fonts: FontLibrary, lay
 @Composable
 private fun FontTile(label: String, selected: Boolean, outlined: Boolean = false, onClick: () -> Unit, sample: @Composable () -> Unit) {
     val p = LocalPalette.current
-    val shape = RoundedCornerShape(14.dp)
+    val shape = Corners.medium
     Column(
         Modifier
             .size(width = 74.dp, height = 62.dp)
@@ -463,7 +571,7 @@ private fun DepthPanel(ui: UiState, actions: CameraActions, layer: TextLayer) {
                 )
                 if (ui.subjectLabel != "People") Text(
                     "All people", color = p.accent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable { actions.resetSubject() }
+                    modifier = Modifier.clip(Corners.medium).clickable { actions.resetSubject() }
                         .padding(horizontal = 10.dp, vertical = 6.dp),
                 )
             }
@@ -481,14 +589,14 @@ private fun PlaceGrid(ui: UiState, actions: CameraActions, layer: TextLayer) {
     val ys = listOf(0.12f, 0.5f, 0.88f)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
         Column(
-            Modifier.clip(RoundedCornerShape(14.dp)).background(p.surfaceHigh).padding(6.dp),
+            Modifier.clip(Corners.medium).background(p.surfaceHigh).padding(6.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             for (y in ys) Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                 xs.forEachIndexed { i, x ->
                     val sel = abs(layer.x - x) < 0.01f && abs(layer.y - y) < 0.01f
                     Box(
-                        Modifier.size(width = 30.dp, height = 22.dp).clip(RoundedCornerShape(6.dp))
+                        Modifier.size(width = 30.dp, height = 22.dp).clip(Corners.small)
                             .clickable { replace(ui, actions, layer.copy(x = x, y = y, align = TextAlign.entries[i])) },
                         contentAlignment = Alignment.Center,
                     ) { Box(Modifier.size(if (sel) 8.dp else 5.dp).clip(CircleShape).background(if (sel) p.accent else p.faint)) }
@@ -534,7 +642,7 @@ fun TextEditOverlay(ui: UiState, actions: CameraActions) {
             Text("Text", color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp, modifier = Modifier.weight(1f))
             Text(
                 "Done", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.clip(RoundedCornerShape(16.dp)).background(Color.White).clickable { finish() }
+                modifier = Modifier.clip(Corners.medium).background(Color.White).clickable { finish() }
                     .padding(horizontal = 16.dp, vertical = 8.dp),
             )
         }

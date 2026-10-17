@@ -316,9 +316,12 @@ class FilmEngine {
         renderer.digitalExposure = upright
 
         val src = liveSource(p)
-        // Exports (subtitles on a 4K clip) get text as sharp as the frame; live view stays at 2K.
-        val textSide = if (rec?.offline == true) min(4096, max(p.width, p.height)) else 2048
-        if (turns % 2 == 0) updateText(p.width, p.height, textSide) else updateText(p.height, p.width, textSide)
+        // Exports (subtitles on a 4K clip) get text as sharp as the frame; live view stays at 2K,
+        // or 1280 while text is animating (it is redrawn up to 30 times a second then).
+        val animated = textLayers.any { it.anim != app.filmcam.film.TextAnim.NONE }
+        val textSide = if (rec?.offline == true) min(4096, max(p.width, p.height)) else if (animated) 1280 else 2048
+        val t = (now - timeBaseNs) / 1e9f
+        if (turns % 2 == 0) updateText(p.width, p.height, textSide, t) else updateText(p.height, p.width, textSide, t)
         finishSubject(waitMs = 12L)
         if (disp != null && displayW > 0) {
             GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
@@ -388,10 +391,15 @@ class FilmEngine {
         return if (cropFracW <= 1f) cropFracW to 1f else 1f to 1f / cropFracW
     }
 
-    /** Re-renders the text overlays when the layers or the frame shape change. */
-    private fun updateText(frameW: Int, frameH: Int, maxSide: Int) {
+    /**
+     * Re-renders the text overlays when the layers or the frame shape change, and, for
+     * animated text, when its pose is due to change ([t] seconds in; negative for stills).
+     */
+    private fun updateText(frameW: Int, frameH: Int, maxSide: Int, t: Float = -1f) {
         val layers = textLayers + captionLayers
-        val key = Triple(layers, frameW, frameH)
+        val fps = layers.maxOfOrNull { it.anim.fps } ?: 0
+        val frame = if (fps > 0 && t >= 0f) (t * fps).toLong() else -1L
+        val key = listOf(layers, frameW, frameH, maxSide, frame)
         if (key == textKey) return
         textKey = key
         val f = fonts
@@ -403,7 +411,7 @@ class FilmEngine {
             if (part.isEmpty()) return old
             val bmp = if (old != null && old.width == w && old.height == h) old else { old?.recycle(); createBitmap(w, h) }
             bmp.eraseColor(Color.TRANSPARENT)
-            TextRenderer.draw(Canvas(bmp), part, f, w.toFloat(), h.toFloat())
+            TextRenderer.draw(Canvas(bmp), part, f, w.toFloat(), h.toFloat(), t)
             return bmp
         }
         val front = layers.filter { !it.behind }

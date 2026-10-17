@@ -50,6 +50,10 @@ data class TextLayer(
     val boxColor: Int = DEFAULT_BOX,
     /** An outline around the letters in this colour; 0 for none. */
     val outline: Int = 0,
+    /** Space between lines, as a multiple of the font's own. */
+    val lineSpacing: Float = 1f,
+    /** How the text moves in video (and the viewfinder); stills show it at rest. */
+    val anim: TextAnim = TextAnim.NONE,
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("id", id).put("text", text).put("font", font).put("size", size.toDouble())
@@ -57,6 +61,7 @@ data class TextLayer(
         .put("align", align.name).put("color", color).put("opacity", opacity.toDouble())
         .put("shadow", shadow).put("tracking", tracking.toDouble()).put("behind", behind).put("wrap", wrap.toDouble()).put("box", box)
         .put("boxColor", boxColor).put("outline", outline)
+        .put("lineSpacing", lineSpacing.toDouble()).put("anim", anim.name)
 
     companion object {
         fun fromJson(o: JSONObject) = TextLayer(
@@ -77,6 +82,8 @@ data class TextLayer(
             box = o.optBoolean("box", false),
             boxColor = o.optInt("boxColor", DEFAULT_BOX),
             outline = o.optInt("outline", 0),
+            lineSpacing = o.optDouble("lineSpacing", 1.0).toFloat(),
+            anim = runCatching { TextAnim.valueOf(o.optString("anim")) }.getOrDefault(TextAnim.NONE),
         )
 
         /** Black at 60%: the classic subtitle box. */
@@ -89,6 +96,68 @@ data class TextLayer(
             List(a.length()) { fromJson(a.getJSONObject(it)) }
         }.getOrDefault(emptyList())
     }
+}
+
+/**
+ * Text animations. The stop-motion ones hold each pose for a few frames (12 or 8 a second),
+ * as if moved by hand between shots; the others move smoothly. [fps] is how often the pose
+ * changes, so the overlay is only redrawn that often.
+ */
+enum class TextAnim(val label: String, val fps: Int) {
+    NONE("None", 0),
+    WIGGLE("Wiggle", 12),
+    JIGGLE("Jiggle", 12),
+    STOP_MOTION("Stop-motion", 8),
+    FLOAT("Float", 30),
+    SWING("Swing", 30),
+    BOUNCE("Bounce", 30),
+    PULSE("Pulse", 30),
+    SPIN("Spin", 30),
+    FLICKER("Flicker", 12),
+    TYPEWRITER("Typewriter", 12);
+
+    /**
+     * Where the text is at [t] seconds: an offset (in text heights), extra rotation (degrees),
+     * scale, opacity and how many characters show. [seed] keeps two layers out of step.
+     * A negative [t] is the rest pose (stills).
+     */
+    fun pose(t: Float, seed: Long, length: Int): TextPose {
+        if (this == NONE || t < 0f) return TextPose.REST
+        val twoPi = (2 * Math.PI).toFloat()
+        fun rnd(k: Long, salt: Int): Float {
+            // A small hash: the same frame always gets the same pose, so playback is stable.
+            var h = (k * 0x9E3779B97F4A7C15uL.toLong()) xor (seed * 0xBF58476D1CE4E5B9uL.toLong()) xor salt.toLong()
+            h = (h xor (h ushr 31)) * 0x94D049BB133111EBuL.toLong()
+            h = h xor (h ushr 29)
+            return ((h ushr 11).toDouble() / (1L shl 53).toDouble()).toFloat() * 2f - 1f
+        }
+        val k = (t * fps).toLong()
+        return when (this) {
+            WIGGLE -> TextPose(rnd(k, 1) * 0.04f, rnd(k, 2) * 0.04f, rnd(k, 3) * 4f)
+            JIGGLE -> TextPose(rnd(k, 1) * 0.05f, rnd(k, 2) * 0.05f, rnd(k, 3) * 1.5f, 1f + rnd(k, 4) * 0.06f)
+            STOP_MOTION -> TextPose(rnd(k, 1) * 0.025f, rnd(k, 2) * 0.025f, rnd(k, 3) * 2f, 1f + rnd(k, 4) * 0.02f)
+            FLOAT -> TextPose(0f, 0.18f * kotlin.math.sin(twoPi * t / 2.6f), 1.5f * kotlin.math.sin(twoPi * t / 3.9f))
+            SWING -> TextPose(0f, 0f, 9f * kotlin.math.sin(twoPi * t / 2.2f))
+            BOUNCE -> TextPose(0f, -0.35f * kotlin.math.abs(kotlin.math.sin(Math.PI.toFloat() * t / 0.9f)))
+            PULSE -> TextPose(scale = 1f + 0.07f * kotlin.math.sin(twoPi * t / 1.4f))
+            SPIN -> TextPose(rotation = (t / 4f % 1f) * 360f)
+            FLICKER -> TextPose(alpha = if (rnd(k, 5) > 0.82f) 0.25f else 0.75f + 0.25f * rnd(k, 6))
+            TYPEWRITER -> {
+                val step = 0.09f
+                val cycle = length * step + 1.6f
+                TextPose(chars = ((t % cycle) / step).toInt().coerceAtMost(length))
+            }
+            NONE -> TextPose.REST
+        }
+    }
+}
+
+/** One moment of a text animation (see [TextAnim.pose]). */
+data class TextPose(
+    val dx: Float = 0f, val dy: Float = 0f, val rotation: Float = 0f, val scale: Float = 1f,
+    val alpha: Float = 1f, val chars: Int = Int.MAX_VALUE,
+) {
+    companion object { val REST = TextPose() }
 }
 
 /** A typeface the user can pick, and which scripts it has its own letters for. */
@@ -228,16 +297,21 @@ object TextRenderer {
         if (layer.shadow) setShadowLayer(textSize * 0.09f, 0f, textSize * 0.035f, Color.argb((150 * layer.opacity).toInt(), 0, 0, 0))
     }
 
-    private fun layout(layer: TextLayer, p: TextPaint, frameW: Float): StaticLayout {
+    private fun layout(layer: TextLayer, p: TextPaint, frameW: Float, fixedWidth: Int = 0): StaticLayout {
         val text = layer.text.ifEmpty { " " }
         val desired = ceil(text.lines().maxOf { StaticLayout.getDesiredWidth(it, p) }).toInt().coerceAtLeast(1) + 2
-        val width = if (layer.wrap > 0f) min(desired, max(1, (layer.wrap * frameW).toInt())) else desired
+        val width = when {
+            fixedWidth > 0 -> fixedWidth
+            layer.wrap > 0f -> min(desired, max(1, (layer.wrap * frameW).toInt()))
+            else -> desired
+        }
         val align = when (layer.align) {
             TextAlign.LEFT -> Layout.Alignment.ALIGN_NORMAL
             TextAlign.CENTER -> Layout.Alignment.ALIGN_CENTER
             TextAlign.RIGHT -> Layout.Alignment.ALIGN_OPPOSITE
         }
         return StaticLayout.Builder.obtain(text, 0, text.length, p, width).setAlignment(align).setIncludePad(false)
+            .setLineSpacing(0f, layer.lineSpacing.coerceIn(0.5f, 3f))
             .setBreakStrategy(android.graphics.text.LineBreaker.BREAK_STRATEGY_BALANCED).build()
     }
 
@@ -253,16 +327,24 @@ object TextRenderer {
         return l.width + 2 * px to l.height + 2 * py
     }
 
-    /** Draws all layers onto [canvas] covering a [w]x[h] frame. */
-    fun draw(canvas: Canvas, layers: List<TextLayer>, fonts: FontLibrary, w: Float, h: Float) {
+    /**
+     * Draws all layers onto [canvas] covering a [w]x[h] frame, each posed for [t] seconds into
+     * its animation (negative: at rest, as in stills).
+     */
+    fun draw(canvas: Canvas, layers: List<TextLayer>, fonts: FontLibrary, w: Float, h: Float, t: Float = -1f) {
         for (layer in layers) {
             if (layer.text.isBlank()) continue
+            val pose = layer.anim.pose(t, layer.id, layer.text.length)
             val p = paint(layer, fonts, min(w, h))
-            val l = layout(layer, p, w)
+            if (pose.alpha < 1f) p.alpha = (p.alpha * pose.alpha).toInt()
+            val full = layout(layer, p, w)
+            // Typewriter: the letters so far, laid out in the same block as the whole text.
+            val l = if (pose.chars < layer.text.length) layout(layer.copy(text = layer.text.take(pose.chars)), p, w, full.width) else full
             canvas.save()
-            canvas.translate(layer.x * w, layer.y * h)
-            canvas.rotate(layer.rotation)
-            canvas.translate(-l.width / 2f, -l.height / 2f)
+            canvas.translate(layer.x * w + pose.dx * p.textSize, layer.y * h + pose.dy * p.textSize)
+            canvas.rotate(layer.rotation + pose.rotation)
+            if (pose.scale != 1f) canvas.scale(pose.scale, pose.scale)
+            canvas.translate(-full.width / 2f, -full.height / 2f)
             if (layer.box) {
                 val (px, py) = boxPad(p)
                 // The box hugs the lines actually used, not the full wrap width.

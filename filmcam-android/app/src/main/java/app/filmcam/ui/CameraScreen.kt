@@ -2,7 +2,17 @@ package app.filmcam.ui
 
 import android.view.TextureView
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.scaleIn
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -94,71 +104,106 @@ fun CameraScreen(ui: UiState, actions: CameraActions) {
                 PermissionPrompt(ui, actions)
                 return@Box
             }
-            when (ui.screen) {
-                Screen.GALLERY -> { GalleryScreen(ui, actions); return@Box }
-                Screen.VIEWER -> { ViewerScreen(ui, actions); return@Box }
-                Screen.SUBTITLES -> { SubtitleScreen(ui, actions); return@Box }
-                Screen.CAMERA -> Unit
+            // Pages cross-fade with a slight settle, so moving between them feels continuous.
+            AnimatedContent(
+                ui.screen,
+                transitionSpec = {
+                    (fadeIn(tween(220, delayMillis = 40)) + scaleIn(tween(260), initialScale = 0.985f)) togetherWith fadeOut(tween(140))
+                },
+                label = "screen",
+            ) { screen ->
+                when (screen) {
+                    Screen.GALLERY -> GalleryScreen(ui, actions)
+                    Screen.VIEWER -> ViewerScreen(ui, actions)
+                    Screen.SUBTITLES -> SubtitleScreen(ui, actions)
+                    Screen.CAMERA -> CameraPage(ui, actions, chrome)
+                }
             }
-            val iconRotation by animateFloatAsState(
-                when (ui.frameTurns and 3) { 1 -> -90f; 2 -> 180f; 3 -> 90f; else -> 0f },
-                tween(260), label = "iconRotation",
-            )
+            // Messages show over whichever page is open.
+            Toast(ui, Modifier.align(Alignment.Center))
+        }
+    }
+}
 
-            Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
-                TopBar(ui, actions, iconRotation, Modifier.alpha(chrome))
-                QuickBar(ui, actions, Modifier.alpha(chrome))
-                Box(
-                    Modifier.weight(1f).fillMaxWidth().padding(horizontal = 10.dp)
-                        // A tap anywhere outside a tray or panel closes it.
-                        .pointerInput(Unit) { detectTapGestures { ui.dock = Dock.NONE; ui.quick = null } },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Viewfinder(ui, actions, chrome, iconRotation)
-                    ui.quick?.let { q ->
-                        QuickPanel(q, ui, actions, Modifier.align(Alignment.TopCenter).padding(top = 6.dp).alpha(chrome))
-                    }
-                    AnimatedContent(
-                        targetState = if ((ui.recording && ui.dock != Dock.TEXT) || ui.logActive) Dock.NONE else ui.dock,
-                        transitionSpec = {
-                            (fadeIn(tween(180)) + slideInVertically(tween(220)) { it / 4 }) togetherWith
-                                (fadeOut(tween(120)) + slideOutVertically(tween(160)) { it / 4 })
-                        },
-                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp),
-                        label = "tray",
-                    ) { dock ->
-                        when (dock) {
-                            Dock.STYLES -> StylesTray(ui, actions, chrome)
-                            Dock.LOOKS -> LooksTray(ui, actions, chrome)
-                            Dock.ADJUST -> AdjustTray(ui, actions, chrome)
-                            Dock.FRAME -> FrameTray(ui, actions, chrome)
-                            Dock.TEXT -> TextTray(ui, actions, chrome)
-                            Dock.NONE -> Spacer(Modifier.height(0.dp))
-                        }
+@Composable
+private fun CameraPage(ui: UiState, actions: CameraActions, chrome: Float) {
+    val p = LocalPalette.current
+    Box(Modifier.fillMaxSize()) {
+        val iconRotation by animateFloatAsState(
+            when (ui.frameTurns and 3) { 1 -> -90f; 2 -> 180f; 3 -> 90f; else -> 0f },
+            tween(260), label = "iconRotation",
+        )
+
+        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+            TopBar(ui, actions, iconRotation, Modifier.alpha(chrome))
+            QuickBar(ui, actions, Modifier.alpha(chrome))
+            Box(
+                Modifier.weight(1f).fillMaxWidth().padding(horizontal = 10.dp)
+                    // A tap anywhere outside a tray or panel closes it.
+                    .pointerInput(Unit) { detectTapGestures { ui.dock = Dock.NONE; ui.quick = null } },
+                contentAlignment = Alignment.Center,
+            ) {
+                Viewfinder(ui, actions, chrome, iconRotation)
+                AnimatedContent(
+                    ui.quick,
+                    transitionSpec = {
+                        (fadeIn(tween(160)) + scaleIn(tween(200), initialScale = 0.96f, transformOrigin = TransformOrigin(0.5f, 0f))) togetherWith
+                            fadeOut(tween(110))
+                    },
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 6.dp).alpha(chrome),
+                    label = "quick",
+                ) { q -> if (q != null) QuickPanel(q, ui, actions, Modifier) else Spacer(Modifier.height(0.dp)) }
+                AnimatedContent(
+                    targetState = if ((ui.recording && ui.dock != Dock.TEXT) || ui.logActive) Dock.NONE else ui.dock,
+                    transitionSpec = {
+                        (fadeIn(tween(180)) + slideInVertically(tween(220)) { it / 4 }) togetherWith
+                            (fadeOut(tween(120)) + slideOutVertically(tween(160)) { it / 4 })
+                    },
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp),
+                    label = "tray",
+                ) { dock ->
+                    when (dock) {
+                        Dock.LOOKS -> LooksTray(ui, actions, chrome)
+                        Dock.ADJUST -> AdjustTray(ui, actions, chrome)
+                        Dock.FRAME -> FrameTray(ui, actions, chrome)
+                        Dock.TEXT -> TextTray(ui, actions, chrome)
+                        Dock.NONE -> Spacer(Modifier.height(0.dp))
                     }
                 }
-                DockBar(ui, Modifier.alpha(chrome))
-                if (ui.edit != null) EditLabel(ui, Modifier.alpha(chrome)) else ModeSwitch(ui, actions, Modifier.alpha(chrome))
-                ShutterRow(ui, actions, iconRotation, Modifier.alpha(chrome))
             }
-
-            if (ui.progress >= 0f) ProgressVeil(ui)
-            if (ui.settingsOpen) SettingsSheet(ui, actions)
-            if (ui.editingText) TextEditOverlay(ui, actions)
-
-            ui.message?.let { msg ->
-                LaunchedEffect(msg) { delay(2600); ui.message = null }
-                Text(
-                    msg, color = p.text, fontSize = 13.sp,
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .padding(32.dp)
-                        .background(p.surface, RoundedCornerShape(14.dp))
-                        .border(1.dp, p.line, RoundedCornerShape(14.dp))
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                )
-            }
+            DockBar(ui, Modifier.alpha(chrome))
+            if (ui.edit != null) EditLabel(ui, Modifier.alpha(chrome)) else ModeSwitch(ui, actions, Modifier.alpha(chrome))
+            ShutterRow(ui, actions, iconRotation, Modifier.alpha(chrome))
         }
+
+        if (ui.progress >= 0f) ProgressVeil(ui)
+        AnimatedVisibility(ui.settingsOpen, enter = fadeIn(tween(180)), exit = fadeOut(tween(160))) { SettingsSheet(ui, actions) }
+        AnimatedVisibility(ui.editingText, enter = fadeIn(tween(160)), exit = fadeOut(tween(140))) { TextEditOverlay(ui, actions) }
+    }
+}
+
+/** A short message, faded and lifted in, then out. */
+@Composable
+private fun Toast(ui: UiState, modifier: Modifier) {
+    val p = LocalPalette.current
+    var shown by remember { mutableStateOf("") }
+    ui.message?.let { msg ->
+        shown = msg
+        LaunchedEffect(msg) { delay(2600); ui.message = null }
+    }
+    AnimatedVisibility(
+        ui.message != null, modifier,
+        enter = fadeIn(tween(180)) + slideInVertically(tween(240)) { it / 3 },
+        exit = fadeOut(tween(200)) + slideOutVertically(tween(220)) { -it / 4 },
+    ) {
+        Text(
+            shown, color = p.text, fontSize = 13.sp,
+            modifier = Modifier
+                .padding(32.dp)
+                .background(p.surface, Corners.small)
+                .border(1.dp, p.line, Corners.small)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+        )
     }
 }
 
@@ -184,7 +229,7 @@ private fun PermissionPrompt(ui: UiState, actions: CameraActions) {
     ) {
         Icon(Ico.Film, null, tint = p.text, modifier = Modifier.size(36.dp))
         Spacer(Modifier.height(18.dp))
-        Text("FilmCam", color = p.text, fontSize = 38.sp, fontFamily = SerifDisplay)
+        Text("FilmCam", color = p.text, fontSize = 38.sp, fontFamily = UiType.sans)
         Spacer(Modifier.height(10.dp))
         Text(
             "Photos and video through a live film emulsion. It needs the camera, and the microphone for sound.",
@@ -215,23 +260,26 @@ private fun TopBar(ui: UiState, actions: CameraActions, iconRotation: Float, mod
         }
         Column(
             Modifier
-                .clip(RoundedCornerShape(12.dp))
+                .clip(Corners.medium)
                 .clickable(enabled = !ui.recording && !ui.logActive) {
-                    val d = if (ui.isOriginal) Dock.STYLES else Dock.LOOKS
-                    ui.dock = if (ui.dock == d) Dock.NONE else d
+                    ui.dock = if (ui.dock == Dock.LOOKS) Dock.NONE else Dock.LOOKS
                 }
                 .padding(horizontal = 10.dp, vertical = 2.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text(if (ui.logActive) "Log" else ui.camera.name, color = p.text, fontSize = 21.sp, fontFamily = SerifDisplay, maxLines = 1)
+            AnimatedContent(if (ui.logActive) "Log" else ui.camera.name, transitionSpec = {
+                (fadeIn(tween(200)) + slideInVertically(tween(240)) { it / 3 }) togetherWith (fadeOut(tween(120)) + slideOutVertically(tween(160)) { -it / 3 })
+            }, label = "title") { name ->
+                Text(name, color = p.text, fontSize = 18.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+            }
             val sub = when {
                 ui.logActive -> ui.logSummary
-                ui.isOriginal && edit == null -> listOf(ui.style.style.label, if (ui.mode == CaptureMode.VIDEO) "Video" else "Photo")
+                ui.isOriginal && edit == null -> listOf("No look", if (ui.mode == CaptureMode.VIDEO) "Video" else "Photo")
                 edit != null -> listOf("Developing", ui.look.stock.name)
                 else -> listOf(ui.look.stock.name, ui.look.shutter.label) +
                     if (ui.mode == CaptureMode.VIDEO && ui.look.frameRate != FilmFrameRate.NATIVE) listOf("${ui.look.frameRate.label}fps") else emptyList()
             }
-            Text(sub.joinToString("  ·  ").uppercase(), color = p.muted, fontSize = 9.sp, letterSpacing = 1.2.sp, maxLines = 1)
+            Text(sub.joinToString("  ·  ").uppercase(), color = p.muted, fontSize = 9.sp, letterSpacing = 1.2.sp, maxLines = 1, fontFamily = UiType.mono)
         }
         Row(Modifier.weight(1f), horizontalArrangement = Arrangement.End) {
             if (edit == null) IconCircle(Ico.Gallery, rotation = iconRotation, enabled = !ui.recording) { actions.openGallery() }
@@ -283,7 +331,7 @@ fun clipLabel(ms: Long): String { val s = (ms + 500) / 1000; return "%d:%02d".fo
 private fun QuickChip(ui: UiState, quick: Quick?, icon: ImageVector?, text: String, active: Boolean = false) {
     val p = LocalPalette.current
     val open = quick != null && ui.quick == quick
-    val shape = RoundedCornerShape(10.dp)
+    val shape = Corners.small
     Row(
         Modifier
             .clip(shape)
@@ -298,7 +346,7 @@ private fun QuickChip(ui: UiState, quick: Quick?, icon: ImageVector?, text: Stri
             Icon(icon, null, tint = tint, modifier = Modifier.size(14.dp))
             Spacer(Modifier.width(5.dp))
         }
-        Text(text, color = tint, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace, maxLines = 1)
+        Text(text, color = tint, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, fontFamily = UiType.mono, maxLines = 1)
     }
 }
 
@@ -306,10 +354,10 @@ private fun QuickChip(ui: UiState, quick: Quick?, icon: ImageVector?, text: Stri
 @Composable
 private fun ToggleChip(text: String, on: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
     val p = LocalPalette.current
-    val shape = RoundedCornerShape(10.dp)
+    val shape = Corners.small
     Text(
         text, color = if (on && enabled) p.bg else p.text, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
-        fontFamily = FontFamily.Monospace,
+        fontFamily = UiType.mono,
         modifier = Modifier
             .alpha(if (enabled) 1f else 0.35f)
             .clip(shape)
@@ -330,13 +378,13 @@ private fun ProgressVeil(ui: UiState) {
         contentAlignment = Alignment.Center,
     ) {
         Column(
-            Modifier.width(220.dp).background(p.surface, RoundedCornerShape(18.dp)).border(1.dp, p.line, RoundedCornerShape(18.dp))
+            Modifier.width(220.dp).background(p.surface, Corners.small).border(1.dp, p.line, Corners.small)
                 .padding(18.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text("${ui.progressLabel}  ${(ui.progress * 100).roundToInt()}%", color = p.text, fontSize = 14.sp)
             Spacer(Modifier.height(12.dp))
-            Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(p.surfaceHigh)) {
+            Box(Modifier.fillMaxWidth().height(3.dp).clip(Corners.small).background(p.surfaceHigh)) {
                 Box(Modifier.fillMaxWidth(ui.progress.coerceIn(0f, 1f)).height(3.dp).background(p.accent))
             }
         }
@@ -388,9 +436,9 @@ fun Pill(text: String, filled: Boolean = false, enabled: Boolean = true, onClick
         text, color = if (filled) p.bg else p.text, fontSize = 13.sp, fontWeight = FontWeight.Medium,
         modifier = Modifier
             .alpha(if (enabled) 1f else 0.35f)
-            .clip(RoundedCornerShape(20.dp))
+            .clip(Corners.small)
             .background(if (filled) p.text else Color.Transparent)
-            .border(1.dp, if (filled) p.text else p.line, RoundedCornerShape(20.dp))
+            .border(1.dp, if (filled) p.text else p.line, Corners.small)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 18.dp, vertical = 10.dp),
     )
@@ -403,6 +451,7 @@ private fun Viewfinder(ui: UiState, actions: CameraActions, chrome: Float, iconR
     val aspect = ui.frameAspect
     var focus by remember { mutableStateOf<Offset?>(null) }
     var focusKey by remember { mutableLongStateOf(0L) }
+    var exposureActive by remember { mutableStateOf(false) }
     val flash = remember { Animatable(0f) }
     LaunchedEffect(ui.flashPulse) {
         if (ui.flashPulse > 0) {
@@ -414,7 +463,7 @@ private fun Viewfinder(ui: UiState, actions: CameraActions, chrome: Float, iconR
     Box(
         Modifier
             .aspectRatio(aspect)
-            .clip(RoundedCornerShape(22.dp))
+            .clip(Corners.large)
             .background(Color.Black),
     ) {
         val still = LocalViewfinderStill.current
@@ -431,27 +480,63 @@ private fun Viewfinder(ui: UiState, actions: CameraActions, chrome: Float, iconR
         } else if (ui.edit != null) {
             Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { ui.quick = null; ui.dock = Dock.NONE } })
         } else {
+            val look by rememberUpdatedState(ui.look)
             Box(
                 Modifier
                     .fillMaxSize()
                     .pointerInput(Unit) {
-                        detectTapGestures { pos ->
-                            // With a tray or panel open, a tap on the picture closes it rather than focusing.
-                            if (ui.quick != null || ui.dock != Dock.NONE) {
-                                ui.quick = null; ui.dock = Dock.NONE
-                                return@detectTapGestures
+                        // One gesture handler, like a phone's own camera: tap to focus and meter
+                        // there; then drag up or down to brighten or darken; pinch to zoom.
+                        awaitEachGesture {
+                            val down = awaitFirstDown()
+                            var moved = false
+                            var pinch = false
+                            var exposing = false
+                            val startEv = look.exposureEv
+                            do {
+                                val ev = awaitPointerEvent()
+                                if (ev.changes.size > 1) {
+                                    pinch = true
+                                    val z = ev.calculateZoom()
+                                    if (z != 1f) actions.zoom(z)
+                                    ev.changes.forEach { it.consume() }
+                                } else if (!pinch) {
+                                    val c = ev.changes[0]
+                                    val d = c.position - down.position
+                                    if (!moved && d.getDistance() > viewConfiguration.touchSlop) moved = true
+                                    if (moved && focus != null && (exposing || abs(d.y) > abs(d.x))) {
+                                        exposing = true
+                                        exposureActive = true
+                                        focusKey = System.nanoTime()
+                                        // Half the frame's height spans the whole range.
+                                        val span = (ui.evMax - ui.evMin)
+                                        val v = (startEv - d.y / (size.height * 0.5f) * span / 2f).coerceIn(ui.evMin, ui.evMax)
+                                        val stepped = (v * 10).roundToInt() / 10f
+                                        if (stepped != look.exposureEv) actions.updateLook(look.copy(exposureEv = stepped))
+                                        c.consume()
+                                    }
+                                }
+                            } while (ev.changes.any { it.pressed })
+                            exposureActive = false
+                            if (!moved && !pinch) {
+                                // With a tray or panel open, a tap on the picture closes it rather than focusing.
+                                if (ui.quick != null || ui.dock != Dock.NONE) {
+                                    ui.quick = null; ui.dock = Dock.NONE
+                                } else {
+                                    focus = down.position
+                                    focusKey = System.nanoTime()
+                                    actions.tapToFocus(down.position.x, down.position.y, size.width.toFloat(), size.height.toFloat())
+                                    // A new spot meters afresh.
+                                    if (look.exposureEv != 0f) actions.updateLook(look.copy(exposureEv = 0f))
+                                }
                             }
-                            focus = pos
-                            focusKey = System.nanoTime()
-                            actions.tapToFocus(pos.x, pos.y, size.width.toFloat(), size.height.toFloat())
                         }
-                    }
-                    .pointerInput(Unit) {
-                        detectTransformGestures { _, _, zoom, _ -> if (zoom != 1f) actions.zoom(zoom) }
                     },
             )
         }
-        focus?.let { pos -> FocusRing(pos, focusKey) { focus = null } }
+        focus?.let { pos ->
+            FocusRing(pos, focusKey, ui.look.exposureEv, ui.evMin, ui.evMax, exposureActive, iconRotation) { focus = null }
+        }
         if (flash.value > 0f) Box(Modifier.fillMaxSize().background(Color.White.copy(alpha = flash.value)))
 
         Box(Modifier.fillMaxSize().alpha(chrome)) {
@@ -464,14 +549,14 @@ private fun Viewfinder(ui: UiState, actions: CameraActions, chrome: Float, iconR
                 Text(
                     line, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center,
                     modifier = Modifier.align(Alignment.BottomCenter).padding(start = 24.dp, end = 24.dp, bottom = 70.dp)
-                        .background(Color(0x99000000), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 5.dp),
+                        .background(Color(0x99000000), Corners.small).padding(horizontal = 10.dp, vertical = 5.dp),
                 )
             }
             if (ui.captionsFor != null && !ui.recording && !ui.savingVideo && ui.edit == null) {
                 Text(
                     "Edit live subtitles  ›", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 70.dp).clip(RoundedCornerShape(18.dp))
-                        .background(Color(0xFFFFB347)).clickable { actions.editLiveSubtitles() }
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 70.dp).clip(Corners.small)
+                        .background(Color.White).clickable { actions.editLiveSubtitles() }
                         .padding(horizontal = 16.dp, vertical = 9.dp),
                 )
             }
@@ -497,7 +582,7 @@ private fun Viewfinder(ui: UiState, actions: CameraActions, chrome: Float, iconR
                 Modifier.align(Alignment.Center).size(132.dp).background(Glass, CircleShape).rotate(iconRotation),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("${ui.countdown}", color = Color.White, fontSize = 76.sp, fontFamily = SerifDisplay)
+                Text("${ui.countdown}", color = Color.White, fontSize = 76.sp, fontFamily = UiType.sans)
             }
         }
     }
@@ -508,7 +593,7 @@ private fun GlassText(text: String, modifier: Modifier, big: Boolean = false) {
     Text(
         text, color = Color.White, fontSize = if (big) 15.sp else 12.sp, fontWeight = FontWeight.SemiBold,
         modifier = modifier
-            .background(Glass, RoundedCornerShape(14.dp))
+            .background(Glass, Corners.medium)
             .padding(horizontal = 12.dp, vertical = 6.dp),
     )
 }
@@ -527,7 +612,7 @@ private fun StatusPill(ui: UiState, modifier: Modifier) {
         else -> null
     } ?: return
     Row(
-        modifier.background(Glass, RoundedCornerShape(14.dp)).padding(horizontal = 10.dp, vertical = 6.dp),
+        modifier.background(Glass, Corners.medium).padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         CircularProgressIndicator(Modifier.size(11.dp), color = Color.White, strokeWidth = 1.5.dp)
@@ -536,25 +621,63 @@ private fun StatusPill(ui: UiState, modifier: Modifier) {
     }
 }
 
+/**
+ * Where the camera focuses and meters, with the exposure beside it: a sun on a short line that
+ * moves as the picture is brightened or darkened (drag up or down anywhere on the picture).
+ * It settles in, waits while in use and fades away a few seconds after the last touch.
+ */
 @Composable
-private fun FocusRing(pos: Offset, key: Long, onDone: () -> Unit) {
-    val anim = remember(key) { Animatable(1.4f) }
-    LaunchedEffect(key) {
-        anim.animateTo(1f, tween(220))
-        delay(900)
+private fun FocusRing(
+    pos: Offset, key: Long, ev: Float, evMin: Float, evMax: Float, active: Boolean, rotation: Float, onDone: () -> Unit,
+) {
+    val settle = remember(pos) { Animatable(1.35f) }
+    val fade = remember(pos) { Animatable(1f) }
+    LaunchedEffect(pos) { settle.animateTo(1f, spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMediumLow)) }
+    LaunchedEffect(key, active) {
+        if (active) { fade.snapTo(1f); return@LaunchedEffect }
+        fade.snapTo(1f)
+        delay(2600)
+        fade.animateTo(0f, tween(400))
         onDone()
     }
-    val sizePx = with(LocalDensity.current) { 70.dp.toPx() }
-    Canvas(
+    val box = 74.dp
+    val density = LocalDensity.current
+    val boxPx = with(density) { box.toPx() }
+    val gold = Color(0xFFFFD27A)
+    Box(
         Modifier
-            .offset { IntOffset((pos.x - sizePx / 2).roundToInt(), (pos.y - sizePx / 2).roundToInt()) }
-            .size(70.dp),
+            .offset { IntOffset((pos.x - boxPx / 2).roundToInt(), (pos.y - boxPx / 2).roundToInt()) }
+            .alpha(fade.value),
     ) {
-        val s = size.minDimension / anim.value * 0.8f
-        drawRoundRect(
-            Color.White, Offset((size.width - s) / 2, (size.height - s) / 2), Size(s, s),
-            CornerRadius(s * 0.18f), style = Stroke(1.2.dp.toPx()),
-        )
+        Canvas(Modifier.size(box)) {
+            val s = size.minDimension * 0.78f / settle.value
+            drawRoundRect(
+                gold, Offset((size.width - s) / 2, (size.height - s) / 2), Size(s, s),
+                CornerRadius(s * 0.08f), style = Stroke(1.2.dp.toPx()),
+            )
+        }
+        // The exposure line, to the right of the box: the sun sits at the current value.
+        val f = ((ev - evMin) / (evMax - evMin)).coerceIn(0f, 1f)
+        Canvas(Modifier.offset(x = box + 4.dp).size(22.dp, box)) {
+            val x = size.width / 2
+            val sunY = size.height * (1f - f)
+            val r = 5.dp.toPx()
+            if (sunY - r * 1.8f > 0f) drawLine(gold.copy(alpha = 0.7f), Offset(x, 0f), Offset(x, sunY - r * 1.8f), 1.dp.toPx())
+            if (sunY + r * 1.8f < size.height) drawLine(gold.copy(alpha = 0.7f), Offset(x, sunY + r * 1.8f), Offset(x, size.height), 1.dp.toPx())
+            drawCircle(gold, r * 0.62f, Offset(x, sunY))
+            for (k in 0 until 8) {
+                val a = k * Math.PI / 4
+                val c = Offset(x, sunY)
+                val d = Offset(kotlin.math.cos(a).toFloat(), kotlin.math.sin(a).toFloat())
+                drawLine(gold, c + d * (r * 0.95f), c + d * (r * 1.4f), 1.dp.toPx())
+            }
+        }
+        if (active || ev != 0f) {
+            Text(
+                "%+.1f".format(ev), color = gold, fontSize = 11.sp, fontFamily = UiType.mono,
+                modifier = Modifier.offset(x = box + 28.dp, y = box / 2 - 8.dp).rotate(rotation),
+            )
+        }
     }
 }
 
@@ -565,19 +688,19 @@ private fun CaptionToggle(ui: UiState, actions: CameraActions, modifier: Modifie
         val on = ui.liveCaptions
         Text(
             "CC", color = if (on) Color.Black else Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold,
-            modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(if (on) Color(0xFFFFB347) else Glass)
+            modifier = Modifier.clip(Corners.small).background(if (on) Color.White else Glass)
                 .clickable { actions.setLiveCaptions(!on) }.padding(horizontal = 10.dp, vertical = 6.dp),
         )
         if (on) Text(
             if (ui.captionLanguage == "te") "తెలుగు" else "English", color = Color.White, fontSize = 12.sp,
-            modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(Glass)
+            modifier = Modifier.clip(Corners.small).background(Glass)
                 .clickable { actions.setCaptionLanguage(if (ui.captionLanguage == "te") "en" else "te") }
                 .padding(horizontal = 10.dp, vertical = 6.dp),
         )
         // What the recognizer is doing, so a silent failure can't pass for "nobody spoke".
         if (on && ui.recording && ui.captionState.isNotEmpty()) Text(
             ui.captionState, color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp, maxLines = 2,
-            modifier = Modifier.widthIn(max = 180.dp).clip(RoundedCornerShape(10.dp)).background(Glass)
+            modifier = Modifier.widthIn(max = 180.dp).clip(Corners.small).background(Glass)
                 .padding(horizontal = 8.dp, vertical = 6.dp),
         )
     }
@@ -592,14 +715,14 @@ private fun RecordingBadge(ui: UiState, modifier: Modifier) {
     val secs = ((now - ui.recordStartMs) / 1000).coerceAtLeast(0)
     val blink = (now / 500) % 2 == 0L
     Row(
-        modifier.background(Glass, RoundedCornerShape(14.dp)).padding(horizontal = 12.dp, vertical = 6.dp),
+        modifier.background(Glass, Corners.medium).padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(7.dp).clip(CircleShape).background(if (blink) Color(0xFFF0553D) else Color(0x55F0553D)))
         Spacer(Modifier.width(8.dp))
-        Text("%02d:%02d".format(secs / 60, secs % 60), color = Color.White, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+        Text("%02d:%02d".format(secs / 60, secs % 60), color = Color.White, fontSize = 12.sp, fontFamily = UiType.mono)
         if (ui.encoderInfo.isNotEmpty()) {
-            Text("   ${ui.encoderInfo}", color = Color.White.copy(alpha = 0.6f), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+            Text("   ${ui.encoderInfo}", color = Color.White.copy(alpha = 0.6f), fontSize = 10.sp, fontFamily = UiType.mono)
         }
     }
 }
@@ -610,17 +733,18 @@ private fun ZoomPills(ui: UiState, actions: CameraActions, iconRotation: Float, 
     if (stops.size < 2) return
     val active = stops.filter { it <= ui.zoom * 1.001f }.maxOrNull() ?: stops.first()
     Row(
-        modifier.background(Glass, RoundedCornerShape(20.dp)).padding(3.dp),
+        modifier.background(Glass, Corners.small).padding(3.dp),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         for (z in stops) {
             val sel = z == active
             val shown = if (sel && abs(ui.zoom - z) > 0.05f) ui.zoom else z
+            val ground by animateColorAsState(if (sel) Color.White.copy(alpha = 0.18f) else Color.White.copy(alpha = 0f), tween(180), label = "zoom")
             Box(
                 Modifier
                     .size(34.dp)
                     .clip(CircleShape)
-                    .background(if (sel) Color.White.copy(alpha = 0.18f) else Color.Transparent)
+                    .background(ground)
                     .clickable { actions.setZoom(z) }
                     .rotate(iconRotation),
                 contentAlignment = Alignment.Center,
@@ -648,24 +772,29 @@ private fun DockBar(ui: UiState, modifier: Modifier) {
         modifier.fillMaxWidth().padding(top = 4.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
     ) {
-        for (d in listOf(Dock.STYLES, Dock.LOOKS, Dock.ADJUST, Dock.FRAME, Dock.TEXT)) {
+        for (d in listOf(Dock.LOOKS, Dock.ADJUST, Dock.FRAME, Dock.TEXT)) {
             val sel = ui.dock == d
             val icon = when (d) {
-                Dock.STYLES -> Ico.Styles; Dock.LOOKS -> Ico.Film; Dock.ADJUST -> Ico.Adjust; Dock.FRAME -> Ico.Frame; else -> Ico.Text
+                Dock.LOOKS -> Ico.Film; Dock.ADJUST -> Ico.Adjust; Dock.FRAME -> Ico.Frame; else -> Ico.Text
             }
+            // The chosen dock sits in a hairline box on a slightly lifted ground, as in an editor's rail.
+            val ink by animateColorAsState(if (sel) p.text else p.muted, tween(180), label = "dockInk")
+            val frame by animateColorAsState(if (sel) p.text.copy(alpha = 0.55f) else p.line.copy(alpha = 0f), tween(200), label = "dockFrame")
+            val ground by animateColorAsState(if (sel) p.surfaceHigh else p.surfaceHigh.copy(alpha = 0f), tween(200), label = "dockGround")
             Column(
                 Modifier
-                    .clip(RoundedCornerShape(14.dp))
+                    .width(72.dp)
+                    .clip(Corners.small)
+                    .background(ground)
+                    .border(1.dp, frame, Corners.small)
                     .alpha(if (ui.logActive) 0.35f else 1f)
                     .clickable(enabled = (!ui.recording || d == Dock.TEXT) && !ui.logActive) { ui.dock = if (sel) Dock.NONE else d }
-                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                    .padding(vertical = 7.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Icon(icon, null, tint = if (sel) p.text else p.muted, modifier = Modifier.size(21.dp))
-                Spacer(Modifier.height(3.dp))
-                Text(d.label, color = if (sel) p.text else p.muted, fontSize = 10.sp, letterSpacing = 0.4.sp)
-                Spacer(Modifier.height(3.dp))
-                Box(Modifier.size(3.dp).clip(CircleShape).background(if (sel) p.accent else Color.Transparent))
+                Icon(icon, null, tint = ink, modifier = Modifier.size(21.dp))
+                Spacer(Modifier.height(4.dp))
+                Text(d.label, color = ink, fontSize = 11.sp)
             }
         }
     }
@@ -677,12 +806,13 @@ private fun ModeSwitch(ui: UiState, actions: CameraActions, modifier: Modifier) 
     Row(modifier.fillMaxWidth().padding(top = 2.dp), horizontalArrangement = Arrangement.Center) {
         for (m in CaptureMode.entries) {
             val sel = ui.mode == m
+            val ink by animateColorAsState(if (sel) p.text else p.faint, tween(200), label = "mode")
             Text(
                 if (m == CaptureMode.PHOTO) "PHOTO" else "VIDEO",
-                color = if (sel) p.text else p.faint,
-                fontSize = 11.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 2.4.sp,
+                color = ink, fontFamily = UiType.mono,
+                fontSize = 11.sp, letterSpacing = 2.4.sp,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(Corners.small)
                     .clickable(enabled = !ui.recording) { actions.setMode(m) }
                     .padding(horizontal = 14.dp, vertical = 6.dp),
             )
@@ -701,9 +831,9 @@ private fun ShutterRow(ui: UiState, actions: CameraActions, iconRotation: Float,
             Modifier
                 .size(46.dp)
                 .rotate(iconRotation)
-                .clip(RoundedCornerShape(13.dp))
+                .clip(Corners.medium)
                 .background(p.surfaceHigh)
-                .border(1.dp, p.line, RoundedCornerShape(13.dp))
+                .border(1.dp, p.line, Corners.medium)
                 .clickable(enabled = !ui.recording) { actions.openLast() },
             contentAlignment = Alignment.Center,
         ) {
@@ -715,7 +845,7 @@ private fun ShutterRow(ui: UiState, actions: CameraActions, iconRotation: Float,
         ShutterButton(ui) { actions.shutter() }
         Spacer(Modifier.weight(1f))
         Box(
-            Modifier.size(46.dp).clip(CircleShape).background(p.surfaceHigh).border(1.dp, p.line, CircleShape)
+            Modifier.size(46.dp).clip(Corners.small).background(p.surfaceHigh).border(1.dp, p.line, Corners.small)
                 .clickable(enabled = !ui.recording) { if (ui.edit != null) actions.importMedia() else actions.switchFacing() },
             contentAlignment = Alignment.Center,
         ) {
@@ -736,7 +866,7 @@ private fun ShutterButton(ui: UiState, onClick: () -> Unit) {
             .size(74.dp)
             .clip(CircleShape)
             .clickable(
-                interactionSource = remember { MutableInteractionSource() }, indication = null,
+                interactionSource = remember { MutableInteractionSource() }, indication = GentlePress,
                 enabled = !ui.savingVideo && !ui.sampling && ui.progress < 0f, onClick = onClick,
             ),
         contentAlignment = Alignment.Center,
@@ -763,8 +893,9 @@ fun TrayCard(chrome: Float, content: @Composable BoxScope.() -> Unit) {
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 8.dp)
-            .clip(RoundedCornerShape(22.dp))
-            .background(p.surface.copy(alpha = 0.95f * chrome))
+            .clip(Corners.large)
+            .background(p.surface.copy(alpha = 0.96f * chrome))
+            .border(1.dp, p.line.copy(alpha = chrome), Corners.large)
             // The card keeps its own taps, so only taps outside it close it.
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
             .padding(vertical = 12.dp),

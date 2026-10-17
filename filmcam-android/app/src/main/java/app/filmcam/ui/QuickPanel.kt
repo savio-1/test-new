@@ -29,7 +29,7 @@ import app.filmcam.camera.VideoResolution
 @Composable
 fun QuickPanel(q: Quick, ui: UiState, actions: CameraActions, modifier: Modifier = Modifier) {
     val p = LocalPalette.current
-    val shape = RoundedCornerShape(20.dp)
+    val shape = Corners.small
     Column(
         modifier
             .fillMaxWidth()

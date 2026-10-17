@@ -6,7 +6,20 @@ import android.net.Uri
 import android.util.LruCache
 import android.util.Size
 import android.widget.VideoView
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -101,9 +114,9 @@ fun GalleryScreen(ui: UiState, actions: CameraActions) {
         Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             IconCircle(Ico.Back) { actions.closeGallery() }
             Spacer(Modifier.width(6.dp))
-            Text("Gallery", color = p.text, fontSize = 26.sp, fontFamily = SerifDisplay, modifier = Modifier.weight(1f))
+            Text("Gallery", color = p.text, fontSize = 20.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
             Row(
-                Modifier.clip(RoundedCornerShape(20.dp)).background(p.text).clickable { actions.importMedia() }
+                Modifier.clip(Corners.small).background(p.text).clickable { actions.importMedia() }
                     .padding(horizontal = 14.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -116,7 +129,7 @@ fun GalleryScreen(ui: UiState, actions: CameraActions) {
             Column(Modifier.fillMaxSize().padding(36.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(Ico.Gallery, null, tint = p.muted, modifier = Modifier.size(30.dp))
                 Spacer(Modifier.height(14.dp))
-                Text("Nothing here yet", color = p.text, fontSize = 22.sp, fontFamily = SerifDisplay)
+                Text("Nothing here yet", color = p.text, fontSize = 18.sp, fontWeight = FontWeight.Medium)
                 Spacer(Modifier.height(8.dp))
                 Text(
                     "Photos and clips you shoot appear here. Import brings in any photo or video from your phone to develop with a look.",
@@ -134,19 +147,22 @@ fun GalleryScreen(ui: UiState, actions: CameraActions) {
             items(ui.gallery, key = { it.uri.toString() }) { item ->
                 val thumb = rememberThumb(item.uri)
                 Box(
-                    Modifier.aspectRatio(1f).clip(RoundedCornerShape(6.dp)).background(p.surfaceHigh)
+                    Modifier.animateItem().aspectRatio(1f).clip(Corners.small).background(p.surfaceHigh)
                         .clickable { actions.openItem(item) },
                 ) {
-                    if (thumb != null) Image(thumb, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                    // Thumbnails fade in as they load rather than popping.
+                    androidx.compose.animation.AnimatedVisibility(thumb != null, enter = fadeIn(tween(220))) {
+                        thumb?.let { Image(it, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
+                    }
                     if (item.video) {
                         Row(
-                            Modifier.align(Alignment.BottomEnd).padding(5.dp).background(Color(0x88000000), RoundedCornerShape(8.dp))
+                            Modifier.align(Alignment.BottomEnd).padding(5.dp).background(Color(0x88000000), Corners.small)
                                 .padding(horizontal = 6.dp, vertical = 2.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Icon(Ico.Play, null, tint = Color.White, modifier = Modifier.size(10.dp))
                             Spacer(Modifier.width(3.dp))
-                            Text(clipLabel(item.durationMs), color = Color.White, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                            Text(clipLabel(item.durationMs), color = Color.White, fontSize = 10.sp, fontFamily = UiType.mono)
                         }
                     }
                 }
@@ -157,21 +173,59 @@ fun GalleryScreen(ui: UiState, actions: CameraActions) {
 
 // ------------------------------------------------------------------ viewer
 
-/** One photo or clip, full screen: play, trim, share, develop again or delete. */
+/**
+ * One photo or clip, full screen: play, trim, share, develop again or delete. Swipe left and
+ * right for the next and previous take; the look each was made with sits at the top.
+ */
 @Composable
 fun ViewerScreen(ui: UiState, actions: CameraActions) {
-    val item = ui.viewing ?: return
-    var trimming by remember(item.uri) { mutableStateOf(false) }
-    var confirmDelete by remember(item.uri) { mutableStateOf(false) }
+    val current = ui.viewing ?: return
+    // Everything in the gallery, or just this take until the gallery has loaded.
+    val items = remember(ui.gallery, current.uri) {
+        if (ui.gallery.any { it.uri == current.uri }) ui.gallery else listOf(current)
+    }
+    val index = items.indexOfFirst { it.uri == current.uri }.coerceAtLeast(0)
+    val pager = rememberPagerState(index) { items.size }
+    var trimming by remember(current.uri) { mutableStateOf(false) }
+    var confirmDelete by remember(current.uri) { mutableStateOf(false) }
+    var zoomed by remember { mutableStateOf(false) }
+    // The list can arrive after the viewer opens: keep showing the same take.
+    LaunchedEffect(items) { if (pager.currentPage != index) pager.scrollToPage(index) }
+    LaunchedEffect(pager) {
+        snapshotFlow { pager.settledPage }.collect { page -> items.getOrNull(page)?.let { if (it.uri != ui.viewing?.uri) ui.viewing = it } }
+    }
+    val item = items.getOrNull(pager.settledPage) ?: current
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
             Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 DarkIcon(Ico.Back) { actions.closeViewer() }
                 Spacer(Modifier.weight(1f))
+                if (items.size > 1) {
+                    Text("${pager.currentPage + 1} / ${items.size}", color = Color.White.copy(alpha = 0.55f), fontSize = 11.sp,
+                        fontFamily = UiType.mono, letterSpacing = 1.sp)
+                }
+                Spacer(Modifier.weight(1f))
                 DarkIcon(Ico.Gallery) { actions.openGallery() }
             }
-            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                if (item.video) VideoPlayer(item, trimming, actions) { trimming = false } else PhotoView(item)
+            ShotLook(item, actions)
+            HorizontalPager(
+                pager, Modifier.weight(1f).fillMaxWidth(),
+                userScrollEnabled = !trimming && !zoomed, beyondViewportPageCount = 1,
+                key = { items[it].uri.toString() },
+            ) { page ->
+                val it = items[page]
+                // Only the take in view plays; its neighbours show their still frame.
+                Box(Modifier.fillMaxSize().graphicsLayer {
+                    val off = ((pager.currentPage - page) + pager.currentPageOffsetFraction).let { o -> kotlin.math.abs(o) }.coerceIn(0f, 1f)
+                    alpha = 1f - 0.5f * off
+                    scaleX = 1f - 0.06f * off; scaleY = scaleX
+                }, contentAlignment = Alignment.Center) {
+                    when {
+                        it.video && page == pager.settledPage -> VideoPlayer(it, trimming, actions) { trimming = false }
+                        it.video -> rememberThumb(it.uri, 720)?.let { t -> Image(t, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) }
+                        else -> PhotoView(it, onZoom = { z -> if (page == pager.settledPage) zoomed = z })
+                    }
+                }
             }
             if (!trimming) {
                 Row(
@@ -191,9 +245,34 @@ fun ViewerScreen(ui: UiState, actions: CameraActions) {
         if (ui.progress >= 0f) {
             Text(
                 "${ui.progressLabel}  ${(ui.progress * 100).roundToInt()}%", color = Color.White, fontSize = 14.sp,
-                modifier = Modifier.align(Alignment.Center).background(Color(0xCC000000), RoundedCornerShape(14.dp))
+                modifier = Modifier.align(Alignment.Center).background(Color(0xCC000000), Corners.medium)
                     .padding(horizontal = 18.dp, vertical = 12.dp),
             )
+        }
+    }
+}
+
+/** The look a take was made with; tapping it puts that look on the camera. */
+@Composable
+private fun ShotLook(item: MediaItem, actions: CameraActions) {
+    val look = remember(item.uri) { actions.lookOf(item) }
+    AnimatedContent(look, transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(140)) }, label = "shotLook",
+        modifier = Modifier.fillMaxWidth().height(40.dp), contentAlignment = Alignment.Center) { l ->
+        if (l == null) return@AnimatedContent
+        val (id, name) = l
+        Row(
+            Modifier.clip(Corners.small).border(1.dp, Color.White.copy(alpha = 0.16f), Corners.small)
+                .clickable(enabled = id.isNotEmpty()) { actions.useLookOf(item) }
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("SHOT WITH", color = Color.White.copy(alpha = 0.5f), fontSize = 9.sp, fontFamily = UiType.mono, letterSpacing = 1.4.sp)
+            Spacer(Modifier.width(8.dp))
+            Text(name, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+            if (id.isNotEmpty()) {
+                Spacer(Modifier.width(10.dp))
+                Text("USE  ›", color = Color.White.copy(alpha = 0.7f), fontSize = 9.sp, fontFamily = UiType.mono, letterSpacing = 1.4.sp)
+            }
         }
     }
 }
@@ -209,7 +288,7 @@ private fun DarkIcon(icon: ImageVector, onClick: () -> Unit) {
 private fun ViewerAction(icon: ImageVector, label: String, danger: Boolean = false, onClick: () -> Unit) {
     val tint = if (danger) Color(0xFFF0553D) else Color.White
     Column(
-        Modifier.width(64.dp).clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick).padding(vertical = 6.dp),
+        Modifier.width(64.dp).clip(Corners.medium).clickable(onClick = onClick).padding(vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(icon, null, tint = tint, modifier = Modifier.size(22.dp))
@@ -219,7 +298,7 @@ private fun ViewerAction(icon: ImageVector, label: String, danger: Boolean = fal
 }
 
 @Composable
-private fun PhotoView(item: MediaItem) {
+private fun PhotoView(item: MediaItem, onZoom: (Boolean) -> Unit = {}) {
     val ctx = LocalContext.current
     val image by produceState<ImageBitmap?>(Thumbs.cache.get(item.uri), item.uri) {
         value = withContext(Dispatchers.IO) {
@@ -242,12 +321,22 @@ private fun PhotoView(item: MediaItem) {
         Modifier
             .fillMaxSize()
             .pointerInput(item.uri) {
-                detectTapGestures(onDoubleTap = { if (scale > 1f) { scale = 1f; offset = Offset.Zero } else scale = 2.5f })
+                detectTapGestures(onDoubleTap = { if (scale > 1f) { scale = 1f; offset = Offset.Zero; onZoom(false) } else { scale = 2.5f; onZoom(true) } })
             }
             .pointerInput(item.uri) {
-                detectTransformGestures { _, pan, zoom, _ ->
-                    scale = (scale * zoom).coerceIn(1f, 6f)
-                    offset = if (scale == 1f) Offset.Zero else offset + pan
+                // Pinch to zoom; once zoomed, one finger pans. A one-finger swipe on an
+                // unzoomed photo is left for the pager (next / previous take).
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    do {
+                        val ev = awaitPointerEvent()
+                        if (ev.changes.size > 1 || scale > 1f) {
+                            scale = (scale * ev.calculateZoom()).coerceIn(1f, 6f)
+                            offset = if (scale == 1f) Offset.Zero else offset + ev.calculatePan()
+                            ev.changes.forEach { c -> if (c.positionChanged()) c.consume() }
+                        }
+                    } while (ev.changes.any { it.pressed })
+                    onZoom(scale > 1f)
                 }
             }
             .graphicsLayer { scaleX = scale; scaleY = scale; translationX = offset.x; translationY = offset.y },
@@ -319,13 +408,13 @@ private fun VideoPlayer(item: MediaItem, trimming: Boolean, actions: CameraActio
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("Cancel", color = Color.White, fontSize = 14.sp,
-                    modifier = Modifier.clip(RoundedCornerShape(18.dp)).clickable { start = 0; end = duration; onTrimDone() }
+                    modifier = Modifier.clip(Corners.small).clickable { start = 0; end = duration; onTrimDone() }
                         .padding(horizontal = 14.dp, vertical = 9.dp))
                 Spacer(Modifier.weight(1f))
-                Text("${clipLabel(end - start)} kept", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                Text("${clipLabel(end - start)} kept", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp, fontFamily = UiType.mono)
                 Spacer(Modifier.weight(1f))
                 Text("Save clip", color = Color.Black, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.clip(RoundedCornerShape(18.dp)).background(Color.White)
+                    modifier = Modifier.clip(Corners.small).background(Color.White)
                         .clickable { actions.trimItem(item, start, end); onTrimDone() }
                         .padding(horizontal = 16.dp, vertical = 9.dp))
             }
@@ -339,7 +428,7 @@ private fun VideoPlayer(item: MediaItem, trimming: Boolean, actions: CameraActio
 @Composable
 private fun Scrubber(duration: Long, position: Long, onSeek: (Long) -> Unit) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(clipLabel(position), color = Color.White, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+        Text(clipLabel(position), color = Color.White, fontSize = 11.sp, fontFamily = UiType.mono)
         BoxWithConstraints(Modifier.weight(1f).height(32.dp).padding(horizontal = 10.dp)) {
             val w = constraints.maxWidth.toFloat()
             val f = (position.toFloat() / duration).coerceIn(0f, 1f)
@@ -358,7 +447,7 @@ private fun Scrubber(duration: Long, position: Long, onSeek: (Long) -> Unit) {
                 }
             }
         }
-        Text(clipLabel(duration), color = Color.White.copy(alpha = 0.6f), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+        Text(clipLabel(duration), color = Color.White.copy(alpha = 0.6f), fontSize = 11.sp, fontFamily = UiType.mono)
     }
 }
 
@@ -393,7 +482,7 @@ private fun TrimBar(item: MediaItem, duration: Long, start: Long, end: Long, pos
         val minGap = (500L).coerceAtMost(duration / 2)
         fun xOf(t: Long) = t.toFloat() / duration * wPx
         fun tOf(x: Float) = (x / wPx * duration).toLong().coerceIn(0L, duration)
-        Row(Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp)).background(Color(0xFF222222))) {
+        Row(Modifier.fillMaxSize().clip(Corners.small).background(Color(0xFF222222))) {
             frames.forEach { Image(it, null, Modifier.weight(1f).fillMaxSize(), contentScale = ContentScale.Crop) }
         }
         Canvas(Modifier.fillMaxSize()) {
@@ -414,9 +503,9 @@ private fun TrimBar(item: MediaItem, duration: Long, start: Long, end: Long, pos
                 Modifier
                     .offset { IntOffset(x.roundToInt(), 0) }
                     .size(handleW, 56.dp)
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(Corners.small)
                     .background(Color(0xFFFFD27A))
-                    .border(1.dp, Color(0x33000000), RoundedCornerShape(4.dp))
+                    .border(1.dp, Color(0x33000000), Corners.small)
                     .pointerInput(isStart, duration) {
                         detectHorizontalDragGestures { ev, drag ->
                             ev.consume()

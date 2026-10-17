@@ -86,13 +86,25 @@ class ScreenshotTest {
         edit = EditSession(android.net.Uri.EMPTY, video = false, width = 3000, height = 4000); dock = Dock.LOOKS
     })
     @Test fun galleryEmptyDark() = shot(state(ThemeMode.DARK) { screen = Screen.GALLERY })
-    @Test fun stylesDark() = shot(state(ThemeMode.DARK) {
-        camera = FilmCameras.ORIGINAL; look = camera.look; dock = Dock.STYLES
-        style = app.filmcam.film.StyleSetting(app.filmcam.film.PhotoStyle.DRAMATIC, tone = -0.3f, color = 0.45f, palette = 0.7f)
+    @Test fun looksFavouritesDark() = shot(state(ThemeMode.DARK) {
+        dock = Dock.LOOKS; lookShelf = app.filmcam.ui.LookShelf.FAVOURITES
+        favourites = setOf("classic35", "gn_vision3", "cu_onelut", "fx_classicchrome")
     })
-    @Test fun stylesLight() = shot(state(ThemeMode.LIGHT) {
-        camera = FilmCameras.ORIGINAL; look = camera.look; dock = Dock.STYLES
-        style = app.filmcam.film.StyleSetting(app.filmcam.film.PhotoStyle.GOLD, tone = 0.4f, color = -0.2f)
+    @Test fun looksAllLight() = shot(state(ThemeMode.LIGHT) { dock = Dock.LOOKS; lookShelf = app.filmcam.ui.LookShelf.ALL; favourites = setOf("classic35") })
+    @Test fun textAnimateDark() = shot(state(ThemeMode.DARK) {
+        dock = Dock.TEXT; textTool = app.filmcam.ui.TextTool.ANIMATE
+        textLayers = listOf(TextLayer(id = 1, text = "Summer '26", y = 0.8f, anim = app.filmcam.film.TextAnim.WIGGLE))
+        selectedText = 1
+    })
+    @Test fun textColourDark() = shot(state(ThemeMode.DARK) {
+        dock = Dock.TEXT; textTool = app.filmcam.ui.TextTool.COLOR
+        textLayers = listOf(TextLayer(id = 1, text = "Summer\n'26", y = 0.7f, color = 0xFFFF8A3D.toInt(), lineSpacing = 0.8f))
+        selectedText = 1
+    })
+    @Test fun viewerDark() = shot(state(ThemeMode.DARK) {
+        screen = Screen.VIEWER
+        val items = (0 until 3).map { app.filmcam.util.MediaItem(android.net.Uri.parse("content://x/$it"), false, 0L) }
+        gallery = items; viewing = items[1]
     })
     @Test fun originalLooksLight() = shot(state(ThemeMode.LIGHT) { camera = FilmCameras.ORIGINAL; look = camera.look; dock = Dock.LOOKS })
     @Test fun logHlgDark() = shot(state(ThemeMode.DARK) {

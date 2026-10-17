@@ -1,6 +1,13 @@
 package app.filmcam.ui
 
 import android.app.Activity
+import android.content.res.AssetManager
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -36,38 +43,69 @@ data class Palette(
     val dots: Color,
 )
 
+// An editor's palette: near-black panels with hairline borders (white paper in light), text
+// in one ink, and no colour of its own: the picture is the colour. Changed values are marked
+// in a soft white rather than a hue.
 val LightPalette = Palette(
     dark = false,
-    bg = Color(0xFFEDECE8),
+    bg = Color(0xFFF6F6F5),
     surface = Color(0xFFFFFFFF),
-    surfaceHigh = Color(0xFFF5F4F1),
-    line = Color(0xFFDDDBD5),
-    text = Color(0xFF141414),
-    muted = Color(0xFF85837E),
-    faint = Color(0xFFB9B6AF),
-    accent = Color(0xFFC9771E),
+    surfaceHigh = Color(0xFFF0F0EF),
+    line = Color(0xFFE2E2E0),
+    text = Color(0xFF0B0B0B),
+    muted = Color(0xFF7A7A78),
+    faint = Color(0xFFB4B4B1),
+    accent = Color(0xFF0B0B0B),
     danger = Color(0xFFE0442E),
-    dots = Color(0x14000000),
+    dots = Color(0x16000000),
 )
 
 val DarkPalette = Palette(
     dark = true,
-    bg = Color(0xFF0A0A0B),
-    surface = Color(0xFF17171A),
-    surfaceHigh = Color(0xFF222226),
-    line = Color(0xFF2B2B30),
-    text = Color(0xFFF3F2EE),
-    muted = Color(0xFF8C8A85),
-    faint = Color(0xFF55534F),
-    accent = Color(0xFFEDAA45),
+    bg = Color(0xFF000000),
+    surface = Color(0xFF0B0B0C),
+    surfaceHigh = Color(0xFF161618),
+    line = Color(0xFF242427),
+    text = Color(0xFFF4F4F2),
+    muted = Color(0xFF8E8E8A),
+    faint = Color(0xFF4E4E4C),
+    accent = Color(0xFFF4F4F2),
     danger = Color(0xFFF0553D),
-    dots = Color(0x0FFFFFFF),
+    dots = Color(0x1AFFFFFF),
 )
 
 val LocalPalette = staticCompositionLocalOf { DarkPalette }
 
-/** Display serif for names and titles; everything else is the system sans. */
-val SerifDisplay = FontFamily(Font(app.filmcam.R.font.instrument_serif))
+/**
+ * The app's two faces: Inter for everything you read, and Space Mono for labels, values and
+ * section heads (small, upper case, spaced out). Loaded once from the bundled fonts.
+ */
+object UiType {
+    var sans: FontFamily = FontFamily.Default
+        private set
+    var mono: FontFamily = FontFamily.Monospace
+        private set
+    private var ready = false
+
+    fun init(assets: AssetManager) {
+        if (ready) return
+        ready = true
+        sans = FontFamily(
+            Font("fonts/Inter.ttf", assets, FontWeight.Normal),
+            Font("fonts/Inter.ttf", assets, FontWeight.Medium),
+            Font("fonts/InterBold.ttf", assets, FontWeight.SemiBold),
+            Font("fonts/InterBold.ttf", assets, FontWeight.Bold),
+        )
+        mono = FontFamily(Font("fonts/SpaceMono.ttf", assets))
+    }
+}
+
+/** Shapes: crisp, nearly square corners, as in an editor. */
+object Corners {
+    val small = RoundedCornerShape(3.dp)
+    val medium = RoundedCornerShape(6.dp)
+    val large = RoundedCornerShape(10.dp)
+}
 
 @Composable
 fun FilmTheme(mode: ThemeMode, content: @Composable () -> Unit) {
@@ -86,5 +124,11 @@ fun FilmTheme(mode: ThemeMode, content: @Composable () -> Unit) {
             isAppearanceLightNavigationBars = !dark
         }
     }
-    CompositionLocalProvider(LocalPalette provides palette, content = content)
+    UiType.init(context.assets)
+    CompositionLocalProvider(
+        LocalPalette provides palette,
+        LocalIndication provides GentlePress,
+        LocalTextStyle provides LocalTextStyle.current.merge(TextStyle(fontFamily = UiType.sans, color = palette.text)),
+        content = content,
+    )
 }

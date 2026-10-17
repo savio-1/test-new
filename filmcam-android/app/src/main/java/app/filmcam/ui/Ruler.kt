@@ -80,10 +80,10 @@ fun Ruler(
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             if (discrete) options!![shown.roundToInt().coerceIn(0, options.lastIndex)] else format(shown),
-            color = p.text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.Monospace,
+            color = p.text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, fontFamily = UiType.mono,
             modifier = Modifier
-                .border(1.dp, p.accent, RoundedCornerShape(10.dp))
-                .background(p.surface.copy(alpha = 0.92f), RoundedCornerShape(10.dp))
+                .border(1.dp, p.accent, Corners.small)
+                .background(p.surface.copy(alpha = 0.92f), Corners.small)
                 .padding(horizontal = 10.dp, vertical = 3.dp),
         )
         Box(Modifier.fillMaxWidth().height(10.dp), contentAlignment = Alignment.Center) {
@@ -148,7 +148,7 @@ fun Ruler(
                     val near = abs(i - shown) < 0.5f
                     drawLine(if (near) p.text else p.faint, Offset(x, 0f), Offset(x, 14.dp.toPx()),
                         strokeWidth = 1.5.dp.toPx(), cap = StrokeCap.Round)
-                    val t = measurer.measure(label, TextStyle(fontSize = 11.sp, color = if (near) p.text else p.muted, fontFamily = FontFamily.Monospace))
+                    val t = measurer.measure(label, TextStyle(fontSize = 11.sp, color = if (near) p.text else p.muted, fontFamily = UiType.mono))
                     drawText(t, topLeft = Offset(x - t.size.width / 2f, 20.dp.toPx()))
                 }
             } else {

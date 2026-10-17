@@ -124,11 +124,11 @@ data class FilmLook(
     val flash: Float = 0f,
     // blur
     val blurMode: BlurMode = BlurMode.NONE,
-    val blur: Float = 0.5f,
+    val blur: Float = 0.25f,
     /** Direction of motion blur in degrees (0 = horizontal in the upright frame). */
     val blurAngle: Float = 0f,
     /** Size of the sharp centre that zoom, spin and motion blur leave alone (0 = none). */
-    val blurFocus: Float = 0.3f,
+    val blurFocus: Float = 0.75f,
     // projection
     val gateWeave: Float = 0f,
     /** Occasional vertical slip showing the frame line. */

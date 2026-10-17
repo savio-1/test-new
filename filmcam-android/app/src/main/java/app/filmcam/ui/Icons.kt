@@ -39,6 +39,11 @@ object Ico {
     val Moon = icon("moon", "M19.5 14.5A8 8 0 1 1 9.5 4.5a6.5 6.5 0 0 0 10 10z")
     val Auto = icon("auto", c(12f, 12f, 8f), fills = listOf("M12 4a8 8 0 0 0 0 16z"))
     val Chevron = icon("chevron", "M6 9l6 6 6-6")
+    val Heart = icon("heart", "M12 19.5s-7.5-4.6-7.5-10.2A4.2 4.2 0 0 1 12 7a4.2 4.2 0 0 1 7.5 2.3c0 5.6-7.5 10.2-7.5 10.2z")
+    val HeartFilled = icon("heartFilled", "M12 19.5s-7.5-4.6-7.5-10.2A4.2 4.2 0 0 1 12 7a4.2 4.2 0 0 1 7.5 2.3c0 5.6-7.5 10.2-7.5 10.2z",
+        fills = listOf("M12 19.5s-7.5-4.6-7.5-10.2A4.2 4.2 0 0 1 12 7a4.2 4.2 0 0 1 7.5 2.3c0 5.6-7.5 10.2-7.5 10.2z"))
+    val LineHeight = icon("lineHeight", "M10 6h10", "M10 12h10", "M10 18h10", "M5 5v14", "M3.3 7L5 5l1.7 2", "M3.3 17L5 19l1.7-2")
+    val Motion = icon("motion", "M4 16c2-6 4-6 6 0s4 6 6 0", "M18.5 5.5l1 2 2 1-2 1-1 2-1-2-2-1 2-1z")
 
     // ---- docks
     val Film = icon("film", "M4.5 4h15v16h-15z", "M8.5 4v16", "M15.5 4v16", "M4.5 8h4", "M4.5 12h4", "M4.5 16h4", "M15.5 8h4", "M15.5 12h4", "M15.5 16h4")
