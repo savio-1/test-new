@@ -224,6 +224,27 @@ The **Custom** tab holds creators' grades and your own LUTs.
     PowerGrade.
   - **Exactly his:** his LUT files (Rec.709 versions for phones are in his pack) import as
     they are through Import LUT below; these two looks are the measured approximation.
+- **The One LUT:** the ARRI Alexa look of The One LUT (onelut.io), which turns iPhone Apple Log
+  into Rec.709 "matched to ARRI's official Alexa K1S1 Rec 709 LUT"
+  (`tools/film-lab/onelutlab.py`).
+  - **Measured from its own frame:** the site shows one frame both as the Apple Log recording
+    and through the LUT, pixel for pixel. Apple publishes the Apple Log curve, so the log side
+    is decoded to the scene light it recorded, and the LUT is fitted to what it does to that
+    light, first as an ARRI-style rendering (a matrix, ARRI LogC3, one S-curve per channel:
+    how K1S1 itself is built, so it holds for colours the frame doesn't show), then refined
+    on the frame's own pixels. On the half of the frame left out of the fit it lands at a
+    median ΔE of 0.48 (0.67 for the ARRI-style rendering alone); below about 1 is
+    invisible.
+  - **On a phone picture:** the phone's picture is taken back to scene light (the inverse of
+    a filmic display curve with 18% grey kept at 18%), then rendered through the fitted LUT.
+    Two things the frame can't say are set as K1S1 sets them: the published frame was
+    brightened before the LUT (it's a dusk shot), so exposure is anchored with the phone's
+    18% grey at 0.43; and its dusk white balance is taken out so greys stay grey. The result
+    is softer contrast, a long highlight roll-off (phone white still reaches 0.98), gentler
+    saturation and natural skin.
+  - **No texture added:** an Alexa image has no grain, halation or vignette.
+  - **Exactly theirs:** their .cube is made for Apple Log footage; it imports through Import
+    LUT, but it expects log, not a phone's normal picture.
 - **Any plugin's looks, exactly (Hald image):** Import LUT also takes a *Hald CLUT* image:
   `tools/hald/hald-identity-512.png` (every colour, 64 steps per channel) put through a grade
   and saved as PNG. That captures any look you can run, exactly: every FilmBox look (Video

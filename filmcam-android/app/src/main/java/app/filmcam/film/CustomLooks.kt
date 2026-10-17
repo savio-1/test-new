@@ -18,6 +18,8 @@ object CustomLooks {
             halationColor = Rgb(1f, 0.42f, 0.16f)),
         FilmStock(id = "cu_dehancer500t", name = "Dehancer 500T", colorGrain = 0.1f, monochrome = false, swatch = 0xFF5E6676,
             halationColor = Rgb(1f, 0.2f, 0.02f)),
+        // Digital cinema: no grain or halation of its own.
+        FilmStock(id = "cu_onelut", name = "The One LUT", colorGrain = 0f, monochrome = false, swatch = 0xFFCB9177),
         FilmStock(id = "cu_nolanontherun", name = "On The Run", colorGrain = 0.1f, monochrome = false, swatch = 0xFF9A8466,
             halationColor = Rgb(1f, 0.38f, 0.12f)),
         FilmStock(id = "cu_nolanontherunteal", name = "On The Run Teal", colorGrain = 0.1f, monochrome = false, swatch = 0xFF4E8288,
@@ -57,6 +59,15 @@ object CustomLooks {
                 CameraCategory.CUSTOM, FilmLook(
                     stock = FilmStocks.byId("cu_nolanontherunteal"), halation = 0.5f, halationSize = 0.4f, bloom = 0.15f,
                     diffusion = 0.1f, vignette = 0.2f, aberration = 0f, grain = 0.35f, grainSize = 1.3f, softness = 0f,
+                )),
+            // The One LUT (onelut.io): Apple Log to the ARRI Alexa's K1S1 Rec.709 look. Fitted to
+            // its published Apple Log / graded frame through an ARRI-style rendering (LogC3 and
+            // per-channel curves), then carried to the phone's picture (tools/film-lab/onelutlab.py).
+            // An Alexa image has no grain, halation or vignette, so neither does this.
+            FilmCamera("cu_onelut", "The One LUT", "The ARRI Alexa look: natural colour, true skin, soft highlight roll-off",
+                CameraCategory.CUSTOM, FilmLook(
+                    stock = FilmStocks.byId("cu_onelut"), halation = 0f, bloom = 0f,
+                    vignette = 0f, aberration = 0f, grain = 0f, softness = 0f,
                 )),
             // Dehancer Pro. Colour: fitted to Dehancer's own before/after frames, with the film
             // lab's cine stocks filling in colours those frames don't show. Effects: matched to
