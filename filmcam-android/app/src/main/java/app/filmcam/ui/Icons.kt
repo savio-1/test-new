@@ -121,4 +121,5 @@ object Ico {
     val Sharpness = icon("sharpness", "M12 3.5l8 15H4z", "M12 9.5v4.5")
     val Play = icon("play", fills = listOf("M8 5.5v13l10.5-6.5z"))
     val Pause = icon("pause", fills = listOf("M7 5h3.5v14H7z", "M13.5 5H17v14h-3.5z"))
+    val Fullscreen = icon("fullscreen", "M4 9V4h5", "M15 4h5v5", "M20 15v5h-5", "M9 20H4v-5")
 }

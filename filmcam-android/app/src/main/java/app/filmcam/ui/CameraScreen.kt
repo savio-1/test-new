@@ -34,6 +34,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -454,8 +456,24 @@ private fun Viewfinder(ui: UiState, actions: CameraActions, chrome: Float, iconR
 
         Box(Modifier.fillMaxSize().alpha(chrome)) {
             if (ui.recording) RecordingBadge(ui, Modifier.align(Alignment.TopCenter).padding(top = 12.dp))
-            if (ui.mode == CaptureMode.VIDEO && ui.edit == null && !ui.logActive) {
+            if (ui.mode == CaptureMode.VIDEO && ui.edit == null) {
                 CaptionToggle(ui, actions, Modifier.align(Alignment.TopStart).padding(12.dp))
+            }
+            // Live subtitles show here only: they are kept with the clip to edit and burn in later.
+            ui.liveCaption?.let { line ->
+                Text(
+                    line, color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center,
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(start = 24.dp, end = 24.dp, bottom = 70.dp)
+                        .background(Color(0x99000000), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 5.dp),
+                )
+            }
+            if (ui.captionsFor != null && !ui.recording && !ui.savingVideo && ui.edit == null) {
+                Text(
+                    "Edit live subtitles  ›", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 70.dp).clip(RoundedCornerShape(18.dp))
+                        .background(Color(0xFFFFB347)).clickable { actions.editLiveSubtitles() }
+                        .padding(horizontal = 16.dp, vertical = 9.dp),
+                )
             }
             StatusPill(ui, Modifier.align(Alignment.TopEnd).padding(12.dp))
             if (ui.halfFramePending) {
@@ -555,6 +573,12 @@ private fun CaptionToggle(ui: UiState, actions: CameraActions, modifier: Modifie
             modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(Glass)
                 .clickable { actions.setCaptionLanguage(if (ui.captionLanguage == "te") "en" else "te") }
                 .padding(horizontal = 10.dp, vertical = 6.dp),
+        )
+        // What the recognizer is doing, so a silent failure can't pass for "nobody spoke".
+        if (on && ui.recording && ui.captionState.isNotEmpty()) Text(
+            ui.captionState, color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp, maxLines = 2,
+            modifier = Modifier.widthIn(max = 180.dp).clip(RoundedCornerShape(10.dp)).background(Glass)
+                .padding(horizontal = 8.dp, vertical = 6.dp),
         )
     }
 }

@@ -68,6 +68,63 @@ class SubtitlesTest {
         assertTrue(t.layersAt(2500, 1f, null).isEmpty())
     }
 
+    @Test fun placesTheBlockByItsEdgeOrCentre() {
+        fun track(x: Float, align: app.filmcam.film.TextAlign) =
+            SubtitleTrack(listOf(Cue(0, 2000, english = "Hello")), SubtitleStyle(x = x, y = 0.5f, align = align))
+        // Without fonts a line is taken as 0.6 of the frame wide.
+        val left = track(0.05f, app.filmcam.film.TextAlign.LEFT).layersAt(500, 1f, null).single()
+        assertEquals(0.05f, left.x - 0.3f, 1e-4f)                     // left edge on the anchor
+        assertEquals(app.filmcam.film.TextAlign.LEFT, left.align)
+        val right = track(0.95f, app.filmcam.film.TextAlign.RIGHT).layersAt(500, 1f, null).single()
+        assertEquals(0.95f, right.x + 0.3f, 1e-4f)                    // right edge on the anchor
+        assertEquals(0.5f, track(0.5f, app.filmcam.film.TextAlign.CENTER).layersAt(500, 1f, null).single().x, 1e-4f)
+        // Dragged past the edge, the block stays inside the frame.
+        val off = SubtitleTrack(listOf(Cue(0, 2000, english = "Hello")), SubtitleStyle(x = 1f, y = 0f)).layersAt(500, 1f, null).single()
+        assertTrue(off.x + 0.3f <= 1f && off.y - 0.045f * 1.4f / 2 >= 0f)
+    }
+
+    @Test fun backgroundsBecomeBoxOutlineOrShadow() {
+        fun layer(b: SubtitleBackground) = SubtitleTrack(listOf(Cue(0, 2000, english = "Hi")),
+            SubtitleStyle(background = b, backColor = 0xFF102030.toInt(), backOpacity = 0.5f, color = 0xFFFFE14D.toInt())).layersAt(0, 1f, null).single()
+        val box = layer(SubtitleBackground.BOX)
+        assertTrue(box.box && !box.shadow && box.outline == 0)
+        assertEquals(0x7F102030, box.boxColor)                        // the colour at half opacity
+        assertEquals(0xFFFFE14D.toInt(), box.color)
+        val outline = layer(SubtitleBackground.OUTLINE)
+        assertTrue(!outline.box && outline.outline == 0xFF102030.toInt())
+        assertTrue(layer(SubtitleBackground.SHADOW).shadow)
+        val none = layer(SubtitleBackground.NONE)
+        assertTrue(!none.box && !none.shadow && none.outline == 0)
+    }
+
+    @Test fun stylesSurviveSavingAndOldTracksLoad() {
+        val st = SubtitleStyle(language = SubtitleLanguage.TELUGU, x = 0.2f, y = 0.3f, align = app.filmcam.film.TextAlign.LEFT,
+            color = 0xFF4DD9FF.toInt(), background = SubtitleBackground.OUTLINE, backColor = 0xFF7A2BD9.toInt(), backOpacity = 0.9f, size = 0.06f)
+        assertEquals(st, SubtitleStyle.fromJson(st.toJson()))
+        // Saved before there was a choice of background: a box flag.
+        assertEquals(SubtitleBackground.SHADOW, SubtitleStyle.fromJson(org.json.JSONObject("""{"box":false,"y":0.12}""")).background)
+        val old = SubtitleStyle.fromJson(org.json.JSONObject("""{"box":true,"y":0.12}"""))
+        assertEquals(SubtitleBackground.BOX, old.background)
+        assertEquals(0.5f, old.x)
+        assertEquals(0.12f, old.y, 1e-6f)
+    }
+
+    @Test fun decimatesTo16k() {
+        val d = Decimator(48_000, 16_000)
+        // 480 samples (10 ms) of a constant level, split across two blocks.
+        val pcm = java.nio.ByteBuffer.allocate(960).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        repeat(480) { pcm.putShort(1000) }
+        val a = d.process(pcm, 0, 302)        // an odd split point: 151 samples
+        val b = d.process(pcm, 302, 658)      // the other 329
+        val all = java.nio.ByteBuffer.wrap(a + b).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        assertEquals(160, (a.size + b.size) / 2)
+        repeat(160) { assertEquals(1000.toShort(), all.short) }
+        // 44.1 kHz comes down too.
+        val d2 = Decimator(44_100, 16_000)
+        val n = d2.process(java.nio.ByteBuffer.allocate(882 * 2), 0, 882 * 2).size / 2
+        assertTrue(n in 319..321)
+    }
+
     @Test fun adtsHeader() {
         // AAC-LC, 44.1 kHz (index 4), stereo, 371-byte frame: the canonical header.
         val h = AudioExtract.adtsHeader(371, objectType = 2, freqIndex = 4, channels = 2)

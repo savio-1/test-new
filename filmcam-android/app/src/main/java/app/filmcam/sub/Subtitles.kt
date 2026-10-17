@@ -6,6 +6,7 @@ import app.filmcam.film.TextLayer
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.roundToLong
 
 /** One subtitle: when it shows, and its line in each language. */
@@ -30,6 +31,9 @@ data class Cue(
 /** Which language the subtitles show. */
 enum class SubtitleLanguage(val label: String) { ENGLISH("English"), TELUGU("తెలుగు"), BOTH("Both") }
 
+/** What sits behind the letters so they read over any picture. */
+enum class SubtitleBackground(val label: String) { NONE("None"), SHADOW("Shadow"), OUTLINE("Outline"), BOX("Box") }
+
 /** How subtitles look in the video. */
 data class SubtitleStyle(
     val language: SubtitleLanguage = SubtitleLanguage.ENGLISH,
@@ -37,13 +41,23 @@ data class SubtitleStyle(
     val teluguFont: String = FontLibrary.SUBTITLE_TELUGU,
     /** Text size as a fraction of the frame's short side. */
     val size: Float = 0.045f,
-    /** Centre of the subtitle block, 0..1 from the top. */
+    /**
+     * Where the block sits, 0..1 (y from the top). [x] is the block's left edge, centre or
+     * right edge as [align] is LEFT, CENTER or RIGHT; [y] is its centre.
+     */
+    val x: Float = 0.5f,
     val y: Float = 0.86f,
-    val box: Boolean = true,
+    val align: TextAlign = TextAlign.CENTER,
     val color: Int = 0xFFFFFFFF.toInt(),
+    val background: SubtitleBackground = SubtitleBackground.BOX,
+    /** Colour of the box or outline (opaque), and the box's opacity. */
+    val backColor: Int = 0xFF000000.toInt(),
+    val backOpacity: Float = 0.6f,
 ) {
     fun toJson(): JSONObject = JSONObject().put("language", language.name).put("latinFont", latinFont)
-        .put("teluguFont", teluguFont).put("size", size.toDouble()).put("y", y.toDouble()).put("box", box).put("color", color)
+        .put("teluguFont", teluguFont).put("size", size.toDouble()).put("x", x.toDouble()).put("y", y.toDouble())
+        .put("align", align.name).put("color", color).put("background", background.name)
+        .put("backColor", backColor).put("backOpacity", backOpacity.toDouble())
 
     companion object {
         fun fromJson(o: JSONObject?) = if (o == null) SubtitleStyle() else SubtitleStyle(
@@ -51,9 +65,16 @@ data class SubtitleStyle(
             latinFont = o.optString("latinFont", FontLibrary.SUBTITLE_LATIN),
             teluguFont = o.optString("teluguFont", FontLibrary.SUBTITLE_TELUGU),
             size = o.optDouble("size", 0.045).toFloat(),
+            x = o.optDouble("x", 0.5).toFloat(),
             y = o.optDouble("y", 0.86).toFloat(),
-            box = o.optBoolean("box", true),
+            align = runCatching { TextAlign.valueOf(o.optString("align")) }.getOrDefault(TextAlign.CENTER),
             color = o.optInt("color", 0xFFFFFFFF.toInt()),
+            // Tracks saved before backgrounds had a choice kept a box flag.
+            background = runCatching { SubtitleBackground.valueOf(o.optString("background")) }.getOrElse {
+                if (o.optBoolean("box", true)) SubtitleBackground.BOX else SubtitleBackground.SHADOW
+            },
+            backColor = o.optInt("backColor", 0xFF000000.toInt()),
+            backOpacity = o.optDouble("backOpacity", 0.6).toFloat(),
         )
     }
 }
@@ -65,10 +86,13 @@ data class SubtitleTrack(val cues: List<Cue>, val style: SubtitleStyle = Subtitl
 
     /**
      * Text layers for the moment [timeMs], in a frame of aspect [aspect] (width / height).
-     * Both languages stack: Telugu above, English below, the pair centred on [SubtitleStyle.y].
+     * Both languages stack: Telugu above, English below, the pair centred on [SubtitleStyle.y]
+     * and lined up on [SubtitleStyle.x] by [SubtitleStyle.align], kept inside the frame.
      */
-    fun layersAt(timeMs: Long, aspect: Float, fonts: FontLibrary?): List<TextLayer> {
-        val cue = at(timeMs) ?: return emptyList()
+    fun layersAt(timeMs: Long, aspect: Float, fonts: FontLibrary?): List<TextLayer> =
+        at(timeMs)?.let { layersFor(it, aspect, fonts) } ?: emptyList()
+
+    fun layersFor(cue: Cue, aspect: Float, fonts: FontLibrary?): List<TextLayer> {
         val s = style
         val lines = when (s.language) {
             SubtitleLanguage.ENGLISH -> listOf(cue.english to s.latinFont)
@@ -76,22 +100,40 @@ data class SubtitleTrack(val cues: List<Cue>, val style: SubtitleStyle = Subtitl
             SubtitleLanguage.BOTH -> listOf(cue.telugu to s.teluguFont, cue.english to s.latinFont)
         }.filter { it.first.isNotBlank() }
         if (lines.isEmpty()) return emptyList()
+        val margin = 0.03f
+        // Room for a line: from the anchor to the edge it grows towards.
+        val room = when (s.align) {
+            TextAlign.LEFT -> 1f - margin - s.x
+            TextAlign.RIGHT -> s.x - margin
+            TextAlign.CENTER -> 2f * min(s.x, 1f - s.x) - 2 * margin
+        }.coerceIn(0.35f, 0.9f)
+        val alpha = (s.backOpacity.coerceIn(0f, 1f) * 255).toInt()
         val base = lines.map { (text, font) ->
-            TextLayer(id = 0L, text = text.trim(), font = font, size = s.size, color = s.color, align = TextAlign.CENTER,
-                shadow = !s.box, wrap = 0.86f, box = s.box)
+            TextLayer(
+                id = 0L, text = text.trim(), font = font, size = s.size, color = s.color, align = s.align,
+                shadow = s.background == SubtitleBackground.SHADOW, wrap = room,
+                box = s.background == SubtitleBackground.BOX, boxColor = (s.backColor and 0xFFFFFF) or (alpha shl 24),
+                outline = if (s.background == SubtitleBackground.OUTLINE) s.backColor or (0xFF shl 24) else 0,
+            )
         }
-        // Heights in units of the frame height, so the block can be stacked and kept on screen.
+        // Sizes as fractions of the frame, so the block can be stacked and kept on screen.
         val w = 1000f * max(aspect, 0.01f)
         val h = 1000f
-        val heights = base.map { l -> fonts?.let { app.filmcam.film.TextRenderer.blockSize(l, it, w, h).second / h } ?: (s.size * 1.4f) }
+        val sizes = base.map { l -> fonts?.let { app.filmcam.film.TextRenderer.blockSize(l, it, w, h) }?.let { it.first / w to it.second / h } ?: (0.6f to s.size * 1.4f) }
         val gap = 0.008f
-        val total = heights.sum() + gap * (heights.size - 1)
-        val centre = s.y.coerceIn(total / 2 + 0.02f, 1f - total / 2 - 0.02f)
+        val total = sizes.sumOf { it.second.toDouble() }.toFloat() + gap * (sizes.size - 1)
+        val centre = s.y.coerceIn(min(0.5f, total / 2 + margin), max(0.5f, 1f - total / 2 - margin))
         var top = centre - total / 2
         return base.mapIndexed { i, l ->
-            val y = top + heights[i] / 2
-            top += heights[i] + gap
-            l.copy(id = i.toLong() + 1, x = 0.5f, y = y)
+            val (bw, bh) = sizes[i]
+            val cx = when (s.align) {
+                TextAlign.LEFT -> s.x + bw / 2
+                TextAlign.RIGHT -> s.x - bw / 2
+                TextAlign.CENTER -> s.x
+            }.coerceIn(min(0.5f, bw / 2 + margin / 2), max(0.5f, 1f - bw / 2 - margin / 2))
+            val y = top + bh / 2
+            top += bh + gap
+            l.copy(id = i.toLong() + 1, x = cx, y = y)
         }
     }
 

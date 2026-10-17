@@ -152,6 +152,11 @@ class UiState {
     /** Live subtitles while recording video, and their language ("en" or "te"). */
     var liveCaptions by mutableStateOf(false)
     var captionLanguage by mutableStateOf("en")
+    /** Live subtitles: the line heard now (on screen only), and what the recognizer is doing. */
+    var liveCaption by mutableStateOf<String?>(null)
+    var captionState by mutableStateOf("")
+    /** The clip just recorded with live subtitles, offered for editing. */
+    var captionsFor by mutableStateOf<android.net.Uri?>(null)
     /** Gemini API key and model for subtitles (the person's own). */
     var geminiKey by mutableStateOf("")
     var geminiModel by mutableStateOf(GeminiTranscriber.DEFAULT_MODEL)
@@ -274,6 +279,8 @@ interface CameraActions {
     /** Live subtitles on/off; works mid-recording. */
     fun setLiveCaptions(on: Boolean)
     fun setCaptionLanguage(lang: String)
+    /** Opens the subtitles heard live in the last clip, to fix, style and burn in. */
+    fun editLiveSubtitles()
     /** Edited subtitles (kept with the clip). */
     fun updateSubtitles(track: SubtitleTrack)
     /** Saves a copy of the clip with the subtitles burnt in. */

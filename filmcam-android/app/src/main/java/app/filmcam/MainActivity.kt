@@ -58,6 +58,7 @@ import app.filmcam.film.FontLibrary
 import app.filmcam.film.TextLayer
 import app.filmcam.seg.SubjectMasker
 import app.filmcam.sub.AudioExtract
+import app.filmcam.sub.Cue
 import app.filmcam.sub.LiveCaptioner
 import app.filmcam.sub.GeminiTranscriber
 import app.filmcam.sub.SubtitleLanguage
@@ -899,8 +900,12 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         return java.io.File(java.io.File(filesDir, "subtitles").apply { mkdirs() }, "$id.json")
     }
 
+    /** Where closing the subtitle editor goes back to (the viewer, or the camera after a take). */
+    private var subtitlesReturn = Screen.VIEWER
+
     override fun openSubtitles(item: MediaItem) {
         if (!item.video) return
+        subtitlesReturn = if (ui.screen == Screen.SUBTITLES) subtitlesReturn else ui.screen
         io.execute {
             val info = MediaLibrary.videoInfo(this, item.uri)
             val saved = runCatching { SubtitleTrack.fromJson(org.json.JSONObject(subtitleFile(item.uri).readText())) }.getOrNull()
@@ -916,7 +921,8 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
 
     override fun closeSubtitles() {
         ui.subtitles = null
-        ui.screen = Screen.VIEWER
+        if (subtitlesReturn == Screen.CAMERA || (subtitlesReturn == Screen.VIEWER && ui.viewing == null)) backToCamera()
+        else ui.screen = subtitlesReturn
     }
 
     override fun setGemini(key: String, model: String) {
@@ -985,6 +991,13 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         }
         i.getStringExtra("test_shoot")?.toLongOrNull()?.let { ms -> main.postDelayed({ shutter() }, ms) }
         i.getStringExtra("test_seg")?.let { path -> debugSegment(path, i.getStringExtra("test_seg_pick")) }
+        i.getStringExtra("test_burn")?.let { u ->
+            openSubtitles(MediaItem(Uri.parse(u), true, 0L))
+            main.postDelayed({
+                ui.subtitles?.track = SubtitleTrack(listOf(Cue(0, 600_000, english = "Subtitle test")))
+                burnSubtitles()
+            }, 4000)
+        }
     }
 
     /** Debug: cuts the subject out of a picture file and writes the matte next to it. */
@@ -1024,29 +1037,47 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
 
     private var captioner: LiveCaptioner? = null
 
-    private fun captionLayers(text: String?): List<TextLayer> {
-        if (text.isNullOrBlank()) return emptyList()
-        val te = ui.captionLanguage == "te"
-        return listOf(TextLayer(id = 9_000_001L, text = text, font = if (te) FontLibrary.SUBTITLE_TELUGU else FontLibrary.SUBTITLE_LATIN,
-            size = 0.045f, x = 0.5f, y = 0.86f, box = true, wrap = 0.86f))
-    }
+    /** The clip being recorded, and when it started (elapsedRealtime): live lines are timed on it. */
+    private var recordingUri: Uri? = null
+    private var recordingStartedAt = 0L
 
-    /** Starts listening to the recording's own sound (GPU-path recordings: the 10-bit direct path can't take text). */
+    /**
+     * Starts listening to the recording's own sound. Lines show on screen only; they are kept
+     * with the clip as subtitles to fix, style and burn in afterwards.
+     */
     private fun startCaptions() {
-        if (!ui.recording || directActive != null) return
+        if (!ui.recording) return
         val c = captioner ?: LiveCaptioner(this).also { cap ->
             captioner = cap
-            cap.onCaption = { t -> engine.captionLayers = captionLayers(t) }
+            cap.onCaption = { t -> ui.liveCaption = t }
+            cap.onState = { st -> ui.captionState = st }
             cap.onProblem = { msg -> ui.message = msg }
         }
         AudioPump.tap = { b, o, l -> c.feed(b, o, l) }
-        c.start(if (ui.captionLanguage == "te") "te-IN" else "en-IN", AudioPump.SAMPLE_RATE)
+        c.start(if (ui.captionLanguage == "te") "te-IN" else "en-IN", AudioPump.SAMPLE_RATE, recordingStartedAt)
     }
 
-    private fun stopCaptions() {
+    /** Stops listening (captions turned off, or the take ended); the lines so far are kept. */
+    private fun stopCaptions(): List<Cue> {
         AudioPump.tap = null
-        captioner?.stop()
-        engine.captionLayers = emptyList()
+        val cues = captioner?.stop() ?: emptyList()
+        ui.liveCaption = null
+        ui.captionState = ""
+        return cues
+    }
+
+    /** The take ended: its live lines become the clip's subtitles, ready to edit. */
+    private fun keepCaptions(uri: Uri?) {
+        val cues = stopCaptions()
+        captioner?.reset()
+        if (uri == null || cues.isEmpty()) return
+        val te = cues.any { it.language == "te" }
+        val en = cues.any { it.language != "te" }
+        val language = if (te && en) SubtitleLanguage.BOTH else if (te) SubtitleLanguage.TELUGU else SubtitleLanguage.ENGLISH
+        val json = SubtitleTrack(cues, SubtitleStyle(language = language)).toJson().toString()
+        val file = subtitleFile(uri)
+        io.execute { runCatching { file.writeText(json) } }
+        ui.captionsFor = uri
     }
 
     override fun setLiveCaptions(on: Boolean) {
@@ -1059,10 +1090,18 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         if (on) startCaptions() else stopCaptions()
     }
 
+    override fun editLiveSubtitles() {
+        val uri = ui.captionsFor ?: return
+        if (ui.recording || ui.savingVideo) return
+        ui.captionsFor = null
+        leaveCamera(Screen.CAMERA)
+        openSubtitles(MediaItem(uri, true, System.currentTimeMillis()))
+    }
+
     override fun setCaptionLanguage(lang: String) {
         ui.captionLanguage = lang
         prefs.edit { putString("captionLanguage", lang) }
-        if (ui.liveCaptions && ui.recording) startCaptions()
+        if (ui.liveCaptions && ui.recording) { stopCaptions(); startCaptions() }
     }
 
     override fun cancelSubtitles() {
@@ -1200,7 +1239,9 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
     private fun startPreviewPlayer(e: EditSession) {
         stopPreviewPlayer()
         val info = MediaLibrary.videoInfo(this, e.uri) ?: return
-        engine.openCameraInput(info.width, info.height, info.rotation) { surface ->
+        // The decoder turns the picture upright itself (the clip's rotation-degrees reaches the
+        // SurfaceTexture transform), so the engine adds no turn of its own.
+        engine.openCameraInput(info.width, info.height, 0) { surface ->
             runOnUiThread {
                 if (ui.edit !== e || exporter != null) return@runOnUiThread
                 previewPlayer = PreviewPlayer(this, e.uri, surface).also { it.start() }
@@ -1464,6 +1505,9 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         ui.recording = true
         ui.dock = app.filmcam.ui.Dock.NONE
         ui.recordStartMs = System.currentTimeMillis()
+        recordingUri = uri
+        recordingStartedAt = android.os.SystemClock.elapsedRealtime()
+        ui.captionsFor = null
         if (ui.liveCaptions) startCaptions()
     }
 
@@ -1495,10 +1539,16 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         ui.recording = true
         ui.dock = app.filmcam.ui.Dock.NONE
         ui.recordStartMs = System.currentTimeMillis()
+        recordingUri = uri
+        recordingStartedAt = android.os.SystemClock.elapsedRealtime()
+        ui.captionsFor = null
+        if (ui.liveCaptions) startCaptions()
     }
 
     private fun stopRecording(immediately: Boolean = false) {
         if (!ui.recording) return
+        keepCaptions(recordingUri)
+        recordingUri = null
         val direct = directActive
         if (direct != null) {
             camera?.setDirectRecording(false)
@@ -1509,7 +1559,6 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
             ui.savingVideo = true
             return
         }
-        stopCaptions()
         engine.stopRecording(immediately)
         click(MediaActionSound.STOP_VIDEO_RECORDING)
         ui.recording = false
@@ -1533,6 +1582,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
                     if (thumb != null) ui.thumbnail = thumb
                 } else {
                     ui.message = "Video couldn't be saved"
+                    if (ui.captionsFor == uri) ui.captionsFor = null
                 }
                 refreshAvailability()
             }

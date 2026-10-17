@@ -9,6 +9,13 @@
     <!-- Subtitles: the clip's sound goes to the Gemini API (only when asked). -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Live subtitles: Android 11+ only shows the speech recognizers an app asks for. -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="true"
         android:largeHeap="true"

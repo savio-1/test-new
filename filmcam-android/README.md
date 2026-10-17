@@ -69,9 +69,14 @@ processing isn't available to other apps. A look replaces the style. Take it off
 ## Text overlays
 
 Burn text into video while you record, and into photos.
-- **Fonts:** ten bundled fonts (Inter and Inter Bold, Instrument Serif, DM Serif, Playfair, Bebas,
-  Space Mono, a typewriter, a VHS face and a handwritten one), the system fonts, and any
-  `.ttf`/`.otf` you import. The picker shows each one in a tile of the same size.
+- **Fonts:** bundled fonts (Inter and Inter Bold, Instrument Serif, DM Serif, Playfair, Bebas,
+  Space Mono, a typewriter, a VHS face, a handwritten one, Montserrat, Poppins, Oswald, Anton,
+  Archivo Black, Nunito, Rubik, Lora, Bangers, Righteous, Lobster and Pacifico), twenty Telugu
+  faces (Noto Sans and Serif Telugu, Hind Guntur, Anek Telugu, Baloo Tammudu, Ramabhadra,
+  Mandali, Gurajada, Tenali Ramakrishna, NTR, Suravaram, Ponnala, Mallanna, Gidugu, Dhurjati,
+  Timmana, Sree Krushnadevaraya, Peddana, Lakki Reddy), the system fonts, and any
+  `.ttf`/`.otf` you import. All bundled fonts are under the SIL Open Font Licence
+  (`assets/fonts/licenses`). The picker shows each one in a tile of the same size.
 - **New text** starts in the middle of the frame, with no shadow.
 - **On the viewfinder:** drag a text to move it (it snaps to the centre lines, with guides), pinch
   to resize, twist to rotate (it snaps to level and to 90°), and double-tap to retype. The red ×
@@ -102,26 +107,36 @@ Burn text into video while you record, and into photos.
 
 ## Subtitles
 
-After a clip is shot, open it and tap **Subtitles**.
+After a clip is shot, open it and tap **Subtitles** (or, after a take with live subtitles,
+tap *Edit live subtitles* on the camera screen). The editor has three tabs over the clip.
 - **Generate:** the clip's speech is written out as timed subtitle lines, in English and in
   Telugu (Telugu script). It handles speech in either language, and Telugu with English words
   mixed in. The language spoken in most lines decides which one shows first.
-- **Fix anything:** every line is a text field for each language, so you can retype a wrong
-  word.
-  - Tap a line's time to jump there.
-  - *In* / *Out* set when the line starts and ends, at the playhead.
-  - Delete a line, or *+ Add a line* at the playhead.
   - *Or write them yourself* starts with an empty line, with no transcription at all.
-- **Style:** English, తెలుగు or Both (stacked: Telugu above English). Choose the size, top
-  or bottom, a box or a shadow, a Latin font and a Telugu font. The Telugu fonts are Noto Sans
-  Telugu (regular and bold), Ramabhadra, Mandali, Gurajada and Tenali Ramakrishna, all under the
-  SIL Open Font Licence. The preview over the clip is drawn by the same code that burns them in.
+- **Lines:** every line, in order of time, with a text field for each language, so you can
+  retype a wrong word.
+  - *Start* and *End*: − / + move them by a tenth of a second (hold to keep going), *Now*
+    sets them to the playhead, and tapping a time jumps there.
+  - Delete a line, or *+ Add a line* at the playhead.
+- **Style:** English, తెలుగు or Both (stacked: Telugu above English).
+  - Fonts from a drop-down, each shown in its own face, one list for English and one for
+    Telugu (a font only appears where it has that script's letters).
+  - Size, text colour (ten swatches), and the background: none, shadow, outline or box,
+    with the outline or box colour and the box's opacity.
+- **Position:** drag the subtitles on the video to put them anywhere (the centre snaps, and
+  thirds guides show while placing), or tap one of nine spots: top, middle or bottom by left,
+  centre or right. *Line up* sets left, centre or right alignment. The block always stays
+  inside the frame.
+- **Preview:** the full-screen button (or *Preview*) plays the clip full screen with its
+  subtitles, with play/pause and a scrubber, and *Burn into video* right there.
 - **Save:**
-  - *Burn into video* saves a copy of the clip with the subtitles in the picture. The
-    original sound is copied untouched, and the picture goes through the plain Original look,
-    so no grain or grading is added.
-  - *Save .srt* writes a subtitle file to Downloads.
+  - *Burn in* saves a copy of the clip with the subtitles in the picture. The original sound
+    is copied untouched, and the picture goes through the plain Original look, so no grain or
+    grading is added. Portrait clips stay portrait (the decoder already stands them upright,
+    so the engine doesn't turn them again).
+  - *.srt* writes a subtitle file to Downloads.
   - Edits are kept with the clip until you come back.
+  - The preview over the clip is drawn by the same code that burns them in.
 - **How it's transcribed:**
   - The clip's sound (copied as AAC, or converted to 16 kHz WAV) goes to Google's Gemini API
     with your own key. It is free from aistudio.google.com/apikey; enter it with the key icon.
@@ -134,16 +149,17 @@ After a clip is shot, open it and tap **Subtitles**.
     answers in a few seconds; *Best* is the default.
 - **Live, while you speak:** in video mode, the **CC** pill at the top left turns live
   subtitles on and off, and the chip next to it picks English or తెలుగు. While you record,
-  what is said appears at the bottom of the frame as it is heard, burnt into the video, and
-  clears a couple of seconds after the speaker stops. You can turn it on or off mid-clip.
-  - It uses the phone's own speech recogniser (Google's), fed the same microphone sound the
-    clip records, so it never takes the mic from the video.
+  what is said shows on screen as it is heard (not in the video), with what the recogniser is
+  doing next to the pill (*Listening*, *Hearing you*, or what went wrong). You can turn it on
+  or off mid-clip.
+  - When the take ends, the lines are kept with the clip, timed to it. *Edit live subtitles*
+    opens them in the editor above to fix, style and place before burning them in.
+  - It uses the phone's own speech recogniser (Google's where installed), fed the same
+    microphone sound the clip records at 16 kHz, so it never takes the mic from the video.
+    It works with every video setting, 10-bit HLG included.
   - It needs Android 13 or newer and Google's speech services. Telugu usually needs an
     internet connection; English works offline on many phones. If a language isn't
     available, the app says so.
-  - Live lines are quick and rough. For a clean, editable set, use *Subtitles* after
-    recording.
-  - Not with the 10-bit HLG video setting, which skips the film passes that draw text.
 
 ## Fujifilm simulations and recipes
 

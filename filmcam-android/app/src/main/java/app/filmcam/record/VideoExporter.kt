@@ -156,7 +156,10 @@ class VideoExporter(
             // Decoder -> engine input surface.
             val surfaceReady = Semaphore(0)
             var input: Surface? = null
-            engine.openCameraInput(info.width, info.height, info.rotation) { s -> input = s; surfaceReady.release() }
+            // The decoder applies the clip's rotation to the frames it renders (it shows in the
+            // SurfaceTexture transform), so the engine adds none: turning it again laid portrait
+            // clips on their side and cropped them.
+            engine.openCameraInput(info.width, info.height, 0) { s -> input = s; surfaceReady.release() }
             if (!surfaceReady.tryAcquire(3, TimeUnit.SECONDS)) throw IllegalStateException("no input surface")
             val frameDone = Semaphore(0)
             engine.startExport(rec, if (portrait) 1 else 0) { frameDone.release() }
