@@ -161,6 +161,27 @@ tap *Edit live subtitles* on the camera screen). The editor has three tabs over 
     internet connection; English works offline on many phones. If a language isn't
     available, the app says so.
 
+## Custom looks
+
+The **Custom** tab holds creators' grades and your own LUTs.
+- **Sleepy Charlie:** the look of Sleepy Charlie's *Cinecell 02* film-emulation PowerGrade
+  (sleepycharlie.com): dense colour, cream-amber highlights, lifted navy blacks, fine grain
+  and an orange halo round lights.
+  - **How it was made:** the creator publishes eight frames as plain Rec.709 and graded.
+    Every pixel pair says where one colour goes, so `tools/film-lab/customlab.py` fits a
+    33³ LUT to all of them (smooth, with a bounded fallback for colours the frames never
+    show). Grain and halation were measured from the same frames; there is no vignette.
+  - **How close:** each frame predicted from a fit to the other seven lands at a median
+    colour error of about 2.7 (OKLab ΔE×100; around 2 is barely visible), against 6.2 for
+    the ungraded frame. It is not exact: the PowerGrade also adjusts exposure and white
+    balance per shot, and its own LUT files aren't public.
+- **Import LUT (.cube):** the last card in Custom adds any 3D `.cube` LUT as a look: one you
+  bought (Cinecell 02's Look LUT gives its colour exactly), or your own grade from Resolve,
+  Premiere or Lightroom. It is resampled to the app's 33³ LUT and applied to the picture as
+  it comes from the phone (Rec.709 / sRGB), live, in video and photos. Any size and
+  `DOMAIN_MIN`/`DOMAIN_MAX` are read; 1D LUTs aren't. The selected imported look has a ×
+  to remove it.
+
 ## Fujifilm simulations and recipes
 
 The first two groups develop the picture the way a Fujifilm camera makes a JPEG, from

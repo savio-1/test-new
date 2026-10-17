@@ -142,16 +142,21 @@ fun LooksTray(ui: UiState, actions: CameraActions, chrome: Float) {
             Spacer(Modifier.height(8.dp))
             // Looks sit on top of the Original camera: "None" takes the look off, and so does
             // tapping the chosen look again.
-            val cams = FilmCameras.ALL.filter { it.category == category }
-            val start = (cams.indexOf(ui.camera) + 1).coerceAtLeast(0)
+            val cams = (FilmCameras.ALL + ui.userLooks).filter { it.category == category }
+            val start = (cams.indexOfFirst { it.id == ui.camera.id } + 1).coerceAtLeast(0)
             val state = rememberLazyListState(start)
-            LaunchedEffect(ui.category) { state.scrollToItem((cams.indexOf(ui.camera) + 1).coerceAtLeast(0)) }
+            LaunchedEffect(ui.category) { state.scrollToItem((cams.indexOfFirst { it.id == ui.camera.id } + 1).coerceAtLeast(0)) }
             LazyRow(state = state, contentPadding = PaddingValues(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 item(key = "none") { NoLookCard(ui.isOriginal) { actions.removeLook() } }
                 items(cams, key = { it.id }) { cam ->
                     val sel = cam.id == ui.camera.id
-                    LookCard(cam, sel) { if (sel) actions.removeLook() else actions.selectCamera(cam) }
+                    val imported = cam.id.startsWith(app.filmcam.film.CustomLooks.USER_PREFIX)
+                    LookCard(cam, sel, onRemove = if (sel && imported) ({ actions.removeUserLook(cam.id) }) else null) {
+                        if (sel) actions.removeLook() else actions.selectCamera(cam)
+                    }
                 }
+                // Custom: any .cube LUT (a creator's look you bought, or your own grade).
+                if (category == CameraCategory.CUSTOM) item(key = "import") { ImportLutCard { actions.importLut() } }
             }
         }
     }
@@ -177,7 +182,28 @@ private fun NoLookCard(selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun LookCard(cam: FilmCamera, selected: Boolean, onClick: () -> Unit) {
+private fun ImportLutCard(onClick: () -> Unit) {
+    val p = LocalPalette.current
+    Column(
+        Modifier.width(64.dp).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(
+            Modifier.size(width = 62.dp, height = 64.dp).border(1.dp, p.line, RoundedCornerShape(14.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Ico.Plus, null, tint = p.text, modifier = Modifier.size(20.dp))
+                Text(".cube", color = p.muted, fontSize = 9.sp)
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+        Text("Import LUT", color = p.muted, fontSize = 10.sp, maxLines = 1)
+    }
+}
+
+@Composable
+private fun LookCard(cam: FilmCamera, selected: Boolean, onRemove: (() -> Unit)? = null, onClick: () -> Unit) {
     val p = LocalPalette.current
     val thumb = rememberLookThumb(cam.id)
     Column(
@@ -193,6 +219,13 @@ private fun LookCard(cam: FilmCamera, selected: Boolean, onClick: () -> Unit) {
                 .background(Brush.verticalGradient(listOf(Color(cam.look.stock.swatch), Color(cam.look.stock.swatch).copy(alpha = 0.4f)))),
         ) {
             if (thumb != null) Image(thumb, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            if (onRemove != null) {
+                Box(
+                    Modifier.align(Alignment.TopEnd).padding(2.dp).size(20.dp).clip(CircleShape)
+                        .background(Color(0xCC000000)).clickable(onClick = onRemove),
+                    contentAlignment = Alignment.Center,
+                ) { Icon(Ico.Close, null, tint = Color.White, modifier = Modifier.size(12.dp)) }
+            }
         }
         Spacer(Modifier.height(4.dp))
         Text(cam.name, color = if (selected) p.text else p.muted, fontSize = 10.sp, maxLines = 1,
@@ -205,6 +238,8 @@ private fun rememberLookThumb(id: String): ImageBitmap? {
     val ctx = LocalContext.current
     return remember(id) {
         runCatching { ctx.assets.open("looks/$id.jpg").use { BitmapFactory.decodeStream(it)?.asImageBitmap() } }.getOrNull()
+            // Imported LUTs keep their tile with the app's files.
+            ?: runCatching { BitmapFactory.decodeFile(java.io.File(ctx.filesDir, "looks/$id.jpg").path)?.asImageBitmap() }.getOrNull()
     }
 }
 

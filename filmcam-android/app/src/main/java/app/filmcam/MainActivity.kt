@@ -57,6 +57,7 @@ import app.filmcam.film.StampStyle
 import app.filmcam.film.FontLibrary
 import app.filmcam.film.TextLayer
 import app.filmcam.seg.SubjectMasker
+import app.filmcam.film.CustomLooks
 import app.filmcam.sub.AudioExtract
 import app.filmcam.sub.Cue
 import app.filmcam.sub.LiveCaptioner
@@ -122,6 +123,10 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         }
     }
 
+    private val lutPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) importLutFrom(uri)
+    }
+
     private val permissionLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         ui.permissionAsked = true
         onPermissionsChanged()
@@ -131,7 +136,13 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         engine = FilmEngine()
-        engine.lutSource = { id -> runCatching { assets.open("luts/$id.png").use { BitmapFactory.decodeStream(it) } }.getOrNull() }
+        engine.lutSource = { id ->
+            runCatching {
+                if (id.startsWith(CustomLooks.USER_PREFIX)) BitmapFactory.decodeFile(java.io.File(filesDir, "luts/$id.png").path)
+                else assets.open("luts/$id.png").use { BitmapFactory.decodeStream(it) }
+            }.getOrNull()
+        }
+        loadUserLooks()
         fonts = FontLibrary(this)
         ui.fonts = fonts
         engine.fonts = fonts
@@ -486,6 +497,90 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
     override fun resetSubject() {
         subjects?.reset()
         ui.subjectLabel = "People"
+    }
+
+    // ------------------------------------------------------------------ imported LUTs
+
+    /** Imported .cube looks, as saved: [{id, name}]. */
+    private fun loadUserLooks() {
+        val list = runCatching {
+            val a = org.json.JSONArray(prefs.getString("userLuts", "[]"))
+            List(a.length()) { a.getJSONObject(it) }.map { CustomLooks.importedCamera(it.getString("id"), it.getString("name")) }
+        }.getOrDefault(emptyList()).filter { java.io.File(filesDir, "luts/${it.id}.png").exists() }
+        setUserLooks(list)
+    }
+
+    private fun setUserLooks(list: List<FilmCamera>) {
+        CustomLooks.imported = list
+        ui.userLooks = list
+        val a = org.json.JSONArray()
+        list.forEach { a.put(org.json.JSONObject().put("id", it.id).put("name", it.name)) }
+        prefs.edit { putString("userLuts", a.toString()) }
+    }
+
+    override fun importLut() {
+        lutPicker.launch(arrayOf("*/*"))
+    }
+
+    /** Reads a .cube, bakes it into the app's 33^3 strip and a tile, and selects it. */
+    private fun importLutFrom(uri: Uri) {
+        io.execute {
+            val result = runCatching {
+                val name = contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                    if (c.moveToFirst()) c.getString(0) else null
+                }?.substringBeforeLast('.')?.take(24) ?: "Imported"
+                val text = contentResolver.openInputStream(uri)?.use { input ->
+                    val bytes = input.readBytes()
+                    if (bytes.size > 64 * 1024 * 1024) throw app.filmcam.film.CubeException("That file is too large for a LUT")
+                    String(bytes, Charsets.UTF_8)
+                } ?: throw app.filmcam.film.CubeException("Couldn't open the file")
+                val cube = app.filmcam.film.CubeLut.parse(text)
+                val id = CustomLooks.USER_PREFIX + System.currentTimeMillis()
+                val strip = Bitmap.createBitmap(33 * 33, 33, Bitmap.Config.ARGB_8888)
+                strip.setPixels(cube.toStrip(), 0, 33 * 33, 0, 0, 33 * 33, 33)
+                val lutDir = java.io.File(filesDir, "luts").apply { mkdirs() }
+                java.io.FileOutputStream(java.io.File(lutDir, "$id.png")).use { strip.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                strip.recycle()
+                // Its tile: the Provia tile (close to a phone's own picture) through the LUT.
+                runCatching {
+                    val base = assets.open("looks/fx_provia.jpg").use { BitmapFactory.decodeStream(it) }
+                    val px = IntArray(base.width * base.height)
+                    base.getPixels(px, 0, base.width, 0, 0, base.width, base.height)
+                    val o = FloatArray(3)
+                    for (i in px.indices) {
+                        val c = px[i]
+                        cube.sample(((c shr 16) and 255) / 255f, ((c shr 8) and 255) / 255f, (c and 255) / 255f, o)
+                        px[i] = (0xFF shl 24) or ((o[0] * 255 + 0.5f).toInt() shl 16) or ((o[1] * 255 + 0.5f).toInt() shl 8) or (o[2] * 255 + 0.5f).toInt()
+                    }
+                    val tile = Bitmap.createBitmap(px, base.width, base.height, Bitmap.Config.ARGB_8888)
+                    val dir = java.io.File(filesDir, "looks").apply { mkdirs() }
+                    java.io.FileOutputStream(java.io.File(dir, "$id.jpg")).use { tile.compress(Bitmap.CompressFormat.JPEG, 88, it) }
+                }
+                CustomLooks.importedCamera(id, name.ifBlank { cube.title.ifBlank { "Imported" } })
+            }
+            runOnUiThread {
+                result.onSuccess { cam ->
+                    setUserLooks(ui.userLooks + cam)
+                    ui.category = app.filmcam.film.CameraCategory.CUSTOM
+                    selectCamera(cam)
+                    ui.message = "Added ${cam.name}"
+                }.onFailure { e ->
+                    Log.w("FilmCam", "import LUT", e)
+                    ui.message = (e as? app.filmcam.film.CubeException)?.message ?: "That file isn't a .cube LUT this app can read"
+                }
+            }
+        }
+    }
+
+    override fun removeUserLook(id: String) {
+        val cam = ui.userLooks.firstOrNull { it.id == id } ?: return
+        if (ui.camera.id == id) removeLook()
+        setUserLooks(ui.userLooks - cam)
+        io.execute {
+            java.io.File(filesDir, "luts/$id.png").delete()
+            java.io.File(filesDir, "looks/$id.jpg").delete()
+        }
+        ui.message = "Removed ${cam.name}"
     }
 
     override fun importFont() {

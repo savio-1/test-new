@@ -50,3 +50,20 @@ The pipeline:
 
 The recipes, with their Fuji X Weekly settings, are in `recipes.json`. Grain Effect, Clarity
 and Sharpness map onto the look's shader settings (see `look_args`).
+
+## Creators' grades (`customlab.py`)
+
+```bash
+python3 customlab.py fetch                                 # the published before/after pairs, into .custom-cache/
+python3 customlab.py check                                 # each pair predicted from the others (ΔE)
+python3 customlab.py luts ../../app/src/main/assets/luts   # luts/cu_<look>.png
+python3 customlab.py preview out/                          # before | fitted | published
+```
+
+A grade published with before/after frames is measured, not guessed: every pixel pair is a
+sample of the colour transform, and a 33³ lattice is fitted to all of them (trilinear, as the
+shader reads it). Second differences keep it smooth; where no sample reaches, it leans on a
+fit made of smooth 1D curves per channel (bounded, so saturated colours stay sane; a free 3D
+polynomial turned pure greens black). Crowded colours (sky, walls) are down-weighted so rare
+ones (skin, signs) count as much. Grain and halation are spatial and set on the look.
+

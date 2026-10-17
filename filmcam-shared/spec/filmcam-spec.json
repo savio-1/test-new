@@ -1641,6 +1641,48 @@
       "swatch": "#FF7BB0E0"
     },
     {
+      "id": "cu_sleepycharlie",
+      "name": "Sleepy Charlie",
+      "temperature": 0,
+      "tint": 0,
+      "saturation": 1,
+      "satShadows": 0.85,
+      "satHighlights": 0.8,
+      "contrast": 1.1,
+      "fade": 0,
+      "highlightRolloff": 0.04,
+      "gamma": {
+        "r": 1,
+        "g": 1,
+        "b": 1
+      },
+      "hueShift": {
+        "r": 0,
+        "g": 0,
+        "b": 0
+      },
+      "shadowTint": {
+        "r": 0,
+        "g": 0,
+        "b": 0
+      },
+      "highlightTint": {
+        "r": 0,
+        "g": 0,
+        "b": 0
+      },
+      "mixer": [1, 0, 0, 0, 1, 0, 0, 0, 1],
+      "monochrome": false,
+      "bleach": 0,
+      "halationColor": {
+        "r": 1,
+        "g": 0.32,
+        "b": 0.12
+      },
+      "colorGrain": 0.08,
+      "swatch": "#FF89836E"
+    },
+    {
       "id": "fx_provia",
       "name": "Provia",
       "temperature": 0,
@@ -2747,6 +2789,68 @@
         "streak": 0,
         "grain": 0,
         "grainSize": 1.2,
+        "fade": 0,
+        "warmth": 0,
+        "lightLeak": 0,
+        "prism": 0,
+        "diffusion": 0,
+        "vignette": 0,
+        "aberration": 0,
+        "softness": 0,
+        "cornerBlur": 0,
+        "distortion": 0,
+        "circleMask": false,
+        "anaglyph": 0,
+        "flash": 0,
+        "blurMode": "NONE",
+        "blur": 0.5,
+        "blurAngle": 0,
+        "blurFocus": 0.3,
+        "gateWeave": 0,
+        "frameSlip": 0,
+        "flicker": 0,
+        "colorFlicker": 0,
+        "dust": 0,
+        "vhs": 0,
+        "interlace": 0,
+        "lowRes": 0,
+        "rollBurn": false,
+        "shutter": "S125",
+        "frameRate": "NATIVE",
+        "frame": "NONE",
+        "stamp": "NONE",
+        "multiShot": "SINGLE",
+        "exposureEv": 0,
+        "style": {
+          "style": "STANDARD",
+          "tone": 0,
+          "color": 0,
+          "palette": 1
+        },
+        "intensity": 1,
+        "tint": 0,
+        "contrast": 0,
+        "saturation": 0,
+        "vibrance": 0,
+        "highlights": 0,
+        "shadows": 0,
+        "clarity": 0,
+        "sharpness": 0
+      }
+    },
+    {
+      "id": "cu_sleepycharlie",
+      "name": "Sleepy Charlie",
+      "subtitle": "Cinecell 02 film look: dense colour, warm cream highlights, navy blacks",
+      "category": "CUSTOM",
+      "look": {
+        "stock": "cu_sleepycharlie",
+        "halation": 0.3,
+        "halationSize": 0.35,
+        "bloom": 0.08,
+        "streak": 0,
+        "grain": 0.22,
+        "grainSize": 0.9,
         "fade": 0,
         "warmth": 0,
         "lightLeak": 0,
@@ -8381,6 +8485,10 @@
     {
       "id": "ORIGINAL",
       "label": "Original"
+    },
+    {
+      "id": "CUSTOM",
+      "label": "Custom"
     },
     {
       "id": "FUJI",

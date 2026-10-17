@@ -84,6 +84,8 @@ class UiState {
     var mode by mutableStateOf(CaptureMode.PHOTO)
     var camera by mutableStateOf(FilmCameras.byId(null))
     var category by mutableStateOf(CameraCategory.FUJI)
+    /** Looks made from imported .cube files (Custom). */
+    var userLooks by mutableStateOf<List<app.filmcam.film.FilmCamera>>(emptyList())
     var look by mutableStateOf(FilmCameras.byId(null).look)
     /** Photographic style of the Original camera (kept while a look is on, for when it comes off). */
     var style by mutableStateOf(app.filmcam.film.StyleSetting())
@@ -288,6 +290,9 @@ interface CameraActions {
     fun saveSrt()
     fun setGemini(key: String, model: String)
     fun importFont()
+    /** Adds a look from a .cube LUT file. */
+    fun importLut()
+    fun removeUserLook(id: String)
     fun openLast()
     fun tapToFocus(x: Float, y: Float, w: Float, h: Float)
     fun zoom(scale: Float)

@@ -175,6 +175,8 @@ data class FilmLook(
 enum class CameraCategory(val label: String) {
     /** The no-filter camera. Pinned first in every row rather than given a tab. */
     ORIGINAL("Original"),
+    /** Creators' grades and imported .cube LUTs. */
+    CUSTOM("Custom"),
     FUJI("Fujifilm"),
     FUJI_RECIPE("Fuji Recipes"),
     FILM("35mm"),
@@ -219,7 +221,7 @@ object FilmCameras {
 
     val ALL: List<FilmCamera> = listOf(
         ORIGINAL,
-    ) + FujiRecipes.CAMERAS + listOf(
+    ) + CustomLooks.CAMERAS + FujiRecipes.CAMERAS + listOf(
         // ------------------------------------------------------------ classic film stocks, straight
         cam("portra", "Portrait 400", "Warm portrait negative · creamy skin", CameraCategory.FILM,
             FilmLook(stock = FilmStocks.PORTRAIT_400, halation = 0.3f, bloom = 0.15f, vignette = 0.18f, aberration = 0.05f)),
@@ -451,5 +453,5 @@ object FilmCameras {
     )
 
     /** The Original camera is the default: no look until you pick one. */
-    fun byId(id: String?): FilmCamera = ALL.firstOrNull { it.id == id } ?: ORIGINAL
+    fun byId(id: String?): FilmCamera = ALL.firstOrNull { it.id == id } ?: CustomLooks.imported.firstOrNull { it.id == id } ?: ORIGINAL
 }
