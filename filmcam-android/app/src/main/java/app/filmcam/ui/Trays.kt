@@ -296,7 +296,9 @@ private fun LookCard(
 ) {
     val p = LocalPalette.current
     val thumb = rememberLookThumb(cam.id)
+    // The spring overshoots on the way back to 0: padding can't go below zero, so clamp it.
     val inset by animateDpAsState(if (selected) 3.dp else 0.dp, spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMedium), label = "lookInset")
+    val pad = inset.coerceAtLeast(0.dp)
     Column(
         modifier.width(64.dp).clickable(interactionSource = remember { MutableInteractionSource() }, indication = GentlePress, onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -305,7 +307,7 @@ private fun LookCard(
             Modifier
                 .size(width = 62.dp, height = 64.dp)
                 .border(if (selected) 1.5.dp else 1.dp, if (selected) p.text else p.line, Corners.medium)
-                .padding(inset)
+                .padding(pad)
                 .clip(if (selected) Corners.small else Corners.medium)
                 .background(Brush.verticalGradient(listOf(Color(cam.look.stock.swatch), Color(cam.look.stock.swatch).copy(alpha = 0.4f)))),
         ) {

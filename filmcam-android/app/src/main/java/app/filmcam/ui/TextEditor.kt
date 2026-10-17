@@ -400,7 +400,7 @@ private fun ColourPanel(color: Int, onPick: (Int) -> Unit) {
                 Box(
                     Modifier.size(30.dp).clip(CircleShape)
                         .border(if (sel) 2.dp else 1.dp, if (sel) p.text else p.line, CircleShape)
-                        .padding(ring).clip(CircleShape).background(Color(c))
+                        .padding(ring.coerceAtLeast(0.dp)).clip(CircleShape).background(Color(c))
                         .clickable { onPick(c) },
                 )
             }
