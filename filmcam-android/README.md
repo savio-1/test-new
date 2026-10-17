@@ -1,4 +1,11 @@
-# FilmCam (Android)
+# SavioCam (Android)
+
+*Formerly FilmCam.* The app is called **SavioCam** on the phone, with its own icon: a bold
+geometric S in a white square, with a thin + in its upper counter, on black (a vector adaptive
+icon, with a monochrome layer for themed icons). New photos and clips go to `Pictures/SavioCam`
+and `Movies/SavioCam`; the gallery still shows everything saved under the old `FilmCam` albums.
+The package id stays `app.filmcam`, so it installs over the old app and keeps its settings,
+favourites and imported looks.
 
 A camera app that is first a normal phone camera and then, one tap away, a film camera.
 **Original** shows the phone's own picture, with iPhone-style photographic styles. A **look**

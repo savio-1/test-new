@@ -740,7 +740,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
             val hlg = ui.logPath == app.filmcam.ui.LogPath.HLG10
             val name = if (hlg) "FilmCam HLG to Rec709.cube" else "FilmCam S-Log3 to Rec709.cube"
             val uri = MediaSaver.saveDownload(this, name, "application/octet-stream", LogCurve.cube(hlg))
-            runOnUiThread { ui.message = if (uri != null) "LUT saved to Download/FilmCam" else "Couldn't save the LUT" }
+            runOnUiThread { ui.message = if (uri != null) "LUT saved to Download/SavioCam" else "Couldn't save the LUT" }
         }
     }
 

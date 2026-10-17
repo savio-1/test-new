@@ -1,17 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- A film canister: amber body, dark lid and a strip of film leader. -->
+<!-- SavioCam: a bold geometric S in a white square, with a thin + in its upper counter. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- leader -->
-    <path android:fillColor="#3A2A1E" android:pathData="M58,46h22v22h-22z" />
-    <path android:fillColor="#F2E6D0" android:pathData="M61,48h4v3h-4zM69,48h4v3h-4zM77,48h3v3h-3zM61,63h4v3h-4zM69,63h4v3h-4zM77,63h3v3h-3z" />
-    <!-- canister body -->
-    <path android:fillColor="#E8A33D" android:pathData="M34,38h26v40h-26z" />
-    <path android:fillColor="#C9441F" android:pathData="M34,52h26v12h-26z" />
-    <!-- lids -->
-    <path android:fillColor="#2B2522" android:pathData="M32,34h30v6h-30zM32,76h30v6h-30z" />
-    <path android:fillColor="#2B2522" android:pathData="M43,30h8v4h-8z" />
+    <group android:scaleX="1.12" android:scaleY="1.12" android:pivotX="54" android:pivotY="54">
+        <path android:fillColor="#FFFFFF" android:pathData="M34,34h40v40h-40z" />
+        <path android:fillColor="#000000" android:pathData="M72.5,35.5H46.5A11,11 0 0 0 35.5,46.5V54.5H46.5V45H72.5ZM35.5,54.5H72.5V61.5A11,11 0 0 1 61.5,72.5H35.5V63.7H61.5V62.5H35.5Z" />
+        <path android:fillColor="#000000" android:pathData="M50.5,49.45H57.45V46.9H58.55V49.45H66V50.55H58.55V53.1H57.45V50.55H50.5Z" />
+    </group>
 </vector>

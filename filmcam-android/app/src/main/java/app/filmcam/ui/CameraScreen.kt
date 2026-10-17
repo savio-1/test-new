@@ -229,7 +229,7 @@ private fun PermissionPrompt(ui: UiState, actions: CameraActions) {
     ) {
         Icon(Ico.Film, null, tint = p.text, modifier = Modifier.size(36.dp))
         Spacer(Modifier.height(18.dp))
-        Text("FilmCam", color = p.text, fontSize = 38.sp, fontFamily = UiType.sans)
+        Text("SavioCam", color = p.text, fontSize = 32.sp, fontWeight = FontWeight.Medium)
         Spacer(Modifier.height(10.dp))
         Text(
             "Photos and video through a live film emulsion. It needs the camera, and the microphone for sound.",

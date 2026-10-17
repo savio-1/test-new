@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The same mark for themed icons: the square, with the S and + cut out (even-odd). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group android:scaleX="1.12" android:scaleY="1.12" android:pivotX="54" android:pivotY="54">
+        <path android:fillColor="#FFFFFF" android:fillType="evenOdd" android:pathData="M34,34h40v40h-40zM72.5,35.5H46.5A11,11 0 0 0 35.5,46.5V54.5H46.5V45H72.5ZM35.5,54.5H72.5V61.5A11,11 0 0 1 61.5,72.5H35.5V63.7H61.5V62.5H35.5ZM50.5,49.45H57.45V46.9H58.55V49.45H66V50.55H58.55V53.1H57.45V50.55H50.5Z" />
+    </group>
+</vector>
