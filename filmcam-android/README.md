@@ -172,7 +172,7 @@ The **Custom** tab holds creators' grades and your own LUTs.
     33³ LUT to all of them (smooth, with a bounded fallback for colours the frames never
     show). Grain and halation were measured from the same frames; there is no vignette.
   - **How close:** each frame predicted from a fit to the other seven lands at a median
-    colour error of about 2.7 (OKLab ΔE×100; around 2 is barely visible), against 6.2 for
+    colour error of about 2.5 (OKLab ΔE×100; around 2 is barely visible), against 6.2 for
     the ungraded frame. It is not exact: the PowerGrade also adjusts exposure and white
     balance per shot, and its own LUT files aren't public.
 - **Import LUT (.cube):** the last card in Custom adds any 3D `.cube` LUT as a look: one you
