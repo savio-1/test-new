@@ -238,6 +238,41 @@ The **Custom** tab holds creators' grades and your own LUTs.
   `DOMAIN_MIN`/`DOMAIN_MAX` are read; 1D LUTs aren't. The selected imported look has a ×
   to remove it.
 
+## Genesis
+
+A tab of its own (**Looks → Genesis**) with the film stocks of *Genesis*, Cullen Kelly's film
+emulation for DaVinci Resolve (made with film chemist Dr. Mitch Bogdanowicz and
+cinematographer Steve Yedlin). One look per stock its page shows:
+
+- **Kodak negatives** (each with the print Genesis pairs it with): Vision3 5203 + 2383,
+  Vision2 5229 + 2393, Vision 5279 + 2383, EXR 5287 + 5386, ECN-II 5247 + 5384, ECN-I
+  5248 + 5382.
+- **Fujifilm negatives:** Eterna Vivid 8547 + 3523, Super-F 8532 + 3513, Reala 8592 + 3523,
+  Fujicolor-A 8518 + 3523.
+- **Kodak prints:** 2383, 2393, 5386, 5384 (1992), 5380, 5384 (1982), 5381 (1972), 5385 (1962),
+  5382 (1952), 5381 (1950).
+- **Fujifilm prints:** Eterna-CP 3523XD, 3513.
+- **Bleach Bypass**, Genesis's lab process.
+
+How it's made (`tools/film-lab/genesislab.py`):
+- **Colour:** cullenkellycolor.com/genesis shows each stock on a before/after slider: one frame
+  as Genesis's *Base* rendering and the same frame through the stock. The two are
+  pixel-aligned, so each look's LUT is fitted to its pair the way the Custom looks are. A
+  single frame holds only its own colours, so the fit leans, where its frame says nothing,
+  on a lattice fitted to all 22 stocks' frames pooled (the density, tone and colour
+  separation Genesis's stocks share), moved toward what this stock does differently.
+- **How close:** each half of each frame, predicted from a fit to the other half (with the
+  prior pooled from the other stocks only), lands at ACCURACY.
+- **Texture:** Genesis's default 35 mm grain, measured from its Base / 35 mm frames (grain
+  0.3 here), and its gentle halation ("felt, not seen"), plus a touch of bloom. Adjust them
+  per shot under Looks → Adjust.
+- **What it can't know:** Genesis models the whole film process from the camera's log, with
+  printer lights, push/pull and per-stock exposure behaviour. These looks start from the
+  phone's finished picture and reproduce each stock's colour as Genesis rendered it on its
+  sample frame; colours far from anything in the frames come from the pooled fit. Genesis's
+  own LUT export (Indie and Pro) is the exact answer: export a 33-point Rec.709 LUT and
+  bring it in with Looks → Custom → Import LUT.
+
 ## Fujifilm simulations and recipes
 
 The first two groups develop the picture the way a Fujifilm camera makes a JPEG, from

@@ -177,6 +177,8 @@ enum class CameraCategory(val label: String) {
     ORIGINAL("Original"),
     /** Creators' grades and imported .cube LUTs. */
     CUSTOM("Custom"),
+    /** Genesis film emulation (Cullen Kelly): its negative and print stocks. */
+    GENESIS("Genesis"),
     FUJI("Fujifilm"),
     FUJI_RECIPE("Fuji Recipes"),
     FILM("35mm"),
@@ -221,7 +223,7 @@ object FilmCameras {
 
     val ALL: List<FilmCamera> = listOf(
         ORIGINAL,
-    ) + CustomLooks.CAMERAS + FujiRecipes.CAMERAS + listOf(
+    ) + CustomLooks.CAMERAS + GenesisLooks.CAMERAS + FujiRecipes.CAMERAS + listOf(
         // ------------------------------------------------------------ classic film stocks, straight
         cam("portra", "Portrait 400", "Warm portrait negative · creamy skin", CameraCategory.FILM,
             FilmLook(stock = FilmStocks.PORTRAIT_400, halation = 0.3f, bloom = 0.15f, vignette = 0.18f, aberration = 0.05f)),

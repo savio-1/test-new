@@ -200,7 +200,7 @@ def fit(x, y, smooth=4.0, prior=0.02, reach=2.0, stock=None):
     fitted to what the samples do differently (so a few frames of one film still give the
     whole colour space a film's behaviour, with the measured look's tone and balance)."""
     import scipy.sparse as sp
-    from scipy.sparse.linalg import spsolve
+    from scipy.sparse.linalg import factorized
     # Even out how much each region of colour counts: crowded colours (sky, walls) would
     # otherwise outvote the rare ones (skin, signs) that matter as much.
     cell = np.clip((x * 15.999).astype(int), 0, 15)
@@ -215,7 +215,7 @@ def fit(x, y, smooth=4.0, prior=0.02, reach=2.0, stock=None):
     if stock is None:
         base = additive_features(lattice_points()) @ fit_additive(x, y, w)
     else:
-        P = prior_lut(stock)
+        P = prior_lut(stock) if isinstance(stock, str) else stock
         from fujilab import trilinear
         px = trilinear(P.reshape(N, N, N, 3), x)
         base = P + additive_features(lattice_points()) @ fit_additive(x, y - px, w, smooth=8.0)
@@ -225,10 +225,11 @@ def fit(x, y, smooth=4.0, prior=0.02, reach=2.0, stock=None):
     mass = A.T @ w
     pull = prior + reach * np.exp(-mass / (0.05 * scale))
     M = (A.T @ W @ A + smooth * scale * (D.T @ D) + scale * sp.diags(pull)).tocsc()
+    solve = factorized(M)                      # one factorisation, three channels
     out = np.zeros((N ** 3, 3))
     for c in range(3):
         rhs = A.T @ (w * y[:, c]) + scale * pull * base[:, c]
-        out[:, c] = spsolve(M, rhs)
+        out[:, c] = solve(rhs)
     return np.clip(out, 0, 1)
 
 def apply(lut, a):

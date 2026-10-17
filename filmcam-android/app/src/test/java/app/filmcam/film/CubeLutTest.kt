@@ -104,4 +104,14 @@ class CubeLutTest {
         assertEquals("cu_sleepycharlie", cam.look.stock.id)
         assertTrue(FilmStocks.ALL.any { it.id == "cu_sleepycharlie" })
     }
+
+    @Test fun genesisLooksHaveTheirOwnTabAndLuts() {
+        val cams = FilmCameras.ALL.filter { it.category == CameraCategory.GENESIS }
+        assertTrue("expected the Genesis stocks, got ${cams.size}", cams.size >= 20)
+        for (cam in cams) {
+            assertEquals(cam.id, cam.look.stock.id)
+            // Unit tests run in the module directory.
+            assertTrue("no LUT for ${cam.id}", java.io.File("src/main/assets/luts/${cam.id}.png").exists())
+        }
+    }
 }
