@@ -1,9 +1,9 @@
 """FilmCam custom lab: a creator's published grade, measured from their own before/after frames.
 
     python3 customlab.py fetch                       # the published sample pairs (not in git)
-    python3 customlab.py check                       # leave-one-out accuracy of the fit
-    python3 customlab.py luts <out dir>              # assets/luts/cu_<look>.png
-    python3 customlab.py preview <out dir>           # before | fitted | published, per pair
+    python3 customlab.py check [look ...]            # accuracy on frames (or halves) left out of the fit
+    python3 customlab.py luts <out dir> [look ...]   # assets/luts/cu_<look>.png
+    python3 customlab.py preview <out dir> [look ...]   # before | fitted | published, per pair
 
 A grade like Sleepy Charlie's Cinecell 02 (a DaVinci Resolve PowerGrade) is published with
 before/after pairs: the same frame as a plain Rec.709 picture and as the graded result. Each
@@ -29,62 +29,106 @@ CACHE = os.path.join(HERE, '.custom-cache')
 # the grade's name; which file is which was read from the pictures (the graded one is denser,
 # warmer in the highlights and cooler in the shadows).
 SC = 'https://images.squarespace-cdn.com/content/69d190076c619b20024053f0/'
+DH = 'https://cdn-images.dehancer.com/'
+
+def sc(u):
+    return SC + u + '?format=2500w'
+
+# Each look: its sample pairs as (before URL, after URL, crop box or None), and optionally a
+# film-lab stock whose LUT stands in where the samples say nothing (see fit()).
 LOOKS = {
     'sleepycharlie': dict(
         name='Sleepy Charlie',
         source='Cinecell 02 by Sleepy Charlie (sleepycharlie.com), from its published Rec.709 / graded pairs',
+        # The pages label them "Rec.709" and the grade's name; which file is which was read from
+        # the pictures (the graded one is denser, warmer in the highlights, cooler in the shadows).
         pairs=[
-            ('800ed95e-ed19-456c-9c51-909b92eaa93e/1.47.2_1.47.2.jpg', 'cb98bf77-93f1-4996-937c-8a073304bb44/1.47.1_1.47.1.jpg'),
-            ('425aac75-e522-405c-a544-ff4c599846ef/1.10.2_1.10.2.jpg', 'ebb43567-9050-4fe5-aa8c-b142010d90d3/1.10.1_1.10.1.jpg'),
-            ('e220275e-e8e8-43fc-b062-b22bfe7083dd/1.3.2_1.3.2.jpg', '21e7e519-520e-4721-8bbb-43a67ef07ad0/1.3.1_1.3.1.jpg'),
-            ('1c310154-979f-4139-aba9-a5dd885139fd/1.48.2_1.48.2.jpg', '45448c1c-906c-4a36-bceb-7699ab8fa6a1/1.48.1_1.48.1.jpg'),
-            ('e93edb21-92f9-4b02-8f40-2c7b64599bfc/1.5.1_1.5.1.jpg', '8e4e09fc-f6c4-4f18-81d3-5cbbcf747ff2/1.5.2_1.5.2.jpg'),
-            ('857ee515-1721-4643-88f2-c5df9a0f8237/1.9.2_1.9.2.jpg', '028dd51e-0204-454a-a071-0fe2943deca5/1.9.1_1.9.1.jpg'),
-            ('35b8b748-86f3-4422-89e7-26284f12283b/1.49.2_1.49.2.jpg', '3d7f8e0a-be68-4653-b20d-69f0066181a0/1.49.1_1.49.1.jpg'),
-            ('c7260b08-2a6e-4870-9392-b24637e404fd/1.17.2_1.17.2.jpg', '7ea87a75-db1d-46f2-abc6-b82feaf2e6fb/1.17.1_1.17.1.jpg'),
+            (sc('800ed95e-ed19-456c-9c51-909b92eaa93e/1.47.2_1.47.2.jpg'), sc('cb98bf77-93f1-4996-937c-8a073304bb44/1.47.1_1.47.1.jpg'), None),
+            (sc('425aac75-e522-405c-a544-ff4c599846ef/1.10.2_1.10.2.jpg'), sc('ebb43567-9050-4fe5-aa8c-b142010d90d3/1.10.1_1.10.1.jpg'), None),
+            (sc('e220275e-e8e8-43fc-b062-b22bfe7083dd/1.3.2_1.3.2.jpg'), sc('21e7e519-520e-4721-8bbb-43a67ef07ad0/1.3.1_1.3.1.jpg'), None),
+            (sc('1c310154-979f-4139-aba9-a5dd885139fd/1.48.2_1.48.2.jpg'), sc('45448c1c-906c-4a36-bceb-7699ab8fa6a1/1.48.1_1.48.1.jpg'), None),
+            (sc('e93edb21-92f9-4b02-8f40-2c7b64599bfc/1.5.1_1.5.1.jpg'), sc('8e4e09fc-f6c4-4f18-81d3-5cbbcf747ff2/1.5.2_1.5.2.jpg'), None),
+            (sc('857ee515-1721-4643-88f2-c5df9a0f8237/1.9.2_1.9.2.jpg'), sc('028dd51e-0204-454a-a071-0fe2943deca5/1.9.1_1.9.1.jpg'), None),
+            (sc('35b8b748-86f3-4422-89e7-26284f12283b/1.49.2_1.49.2.jpg'), sc('3d7f8e0a-be68-4653-b20d-69f0066181a0/1.49.1_1.49.1.jpg'), None),
+            (sc('c7260b08-2a6e-4870-9392-b24637e404fd/1.17.2_1.17.2.jpg'), sc('7ea87a75-db1d-46f2-abc6-b82feaf2e6fb/1.17.1_1.17.1.jpg'), None),
+        ],
+    ),
+    # Dehancer Pro (dehancer.com): its default stock, Kodak Vision3 250D. The plugin screenshot
+    # shows one frame with only the camera input converted (right of the split line) and with
+    # the 250D profile (Film Developer: contrast 15, gamma 10, colour separation 100, boost 10).
+    'dehancer250d': dict(
+        name='Dehancer 250D',
+        source='Dehancer Pro, Kodak Vision3 250D: the input-only and 250D frames of its plugin screenshots',
+        prior='cine250d',
+        pairs=[
+            (DH + 'ahlUtgeQX7-eWa9__1.png', DH + 'ahlUtgeQX7-eWa-A_2.png', (1173, 40, 1540, 1030)),
+        ],
+    ),
+    # Dehancer's "Film Developer" article, example 4: a Rec.709 source and the finished frame on
+    # Kodak Vision3 500T with print, grain and bloom.
+    'dehancer500t': dict(
+        name='Dehancer 500T',
+        source='Dehancer Pro, Kodak Vision3 500T: example 4 of its Film Developer article (Rec.709 source, finished frame)',
+        prior='kino500t',
+        pairs=[
+            (DH + 'Zpo6hB5LeNNTxTMO_28-web.jpg', 'https://images.prismic.io/dehancer-v2/Zpo6hh5LeNNTxTMQ_31-web-1.jpg', None),
         ],
     ),
 }
 
 # ----------------------------------------------------------------------------- samples
 def local(url):
-    return os.path.join(CACHE, url.replace('/', '_'))
+    import re
+    return os.path.join(CACHE, re.sub(r'[^A-Za-z0-9._-]', '_', url.split('?')[0].split('://')[-1]))
 
 def fetch():
     os.makedirs(CACHE, exist_ok=True)
     for look in LOOKS.values():
         for pair in look['pairs']:
-            for u in pair:
+            for u in pair[:2]:
                 p = local(u)
                 if os.path.exists(p):
                     continue
-                with urllib.request.urlopen(SC + u + '?format=2500w', timeout=60) as r:
+                req = urllib.request.Request(u, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req, timeout=60) as r:
                     data = r.read()
                 with open(p + '.part', 'wb') as f:
                     f.write(data)
                 os.replace(p + '.part', p)
                 print('fetched', p)
 
-def load(url, block=4):
-    """The picture in 0..1, block-averaged (grain and JPEG noise average out)."""
+def load(url, block=4, crop=None):
+    """The picture in 0..1, cropped, block-averaged (grain and JPEG noise average out)."""
     from PIL import Image
-    a = np.asarray(Image.open(local(url)).convert('RGB'), np.float64) / 255.0
+    im = Image.open(local(url)).convert('RGB')
+    if crop:
+        im = im.crop(crop)
+    a = np.asarray(im, np.float64) / 255.0
     h, w = a.shape[0] // block * block, a.shape[1] // block * block
     return a[:h, :w].reshape(h // block, block, w // block, block, 3).mean((1, 3))
 
 def samples(look, skip=None):
     """Matching (before, after) colours from every pair but [skip], letterbox bars left out."""
     xs, ys = [], []
-    for k, (b, a) in enumerate(LOOKS[look]['pairs']):
+    for k, (b, a, crop) in enumerate(LOOKS[look]['pairs']):
         if k == skip:
             continue
-        x, y = load(b), load(a)
+        x, y = load(b, crop=crop), load(a, crop=crop)
         keep = ~((x.max(2) < 0.015) & (y.max(2) < 0.015))
-        # Rows and columns that are black bars in both.
+        # Rows that are black bars in both.
         bars = (x.max((1, 2)) < 0.02) & (y.max((1, 2)) < 0.02)
         keep[bars] = False
         xs.append(x[keep]); ys.append(y[keep])
     return np.concatenate(xs), np.concatenate(ys)
+
+def prior_lut(stock):
+    """A film-lab stock's LUT from the app's assets, as lattice rows [b][g][r]."""
+    from PIL import Image
+    img = np.asarray(Image.open(os.path.join(HERE, '../../app/src/main/assets/luts', stock + '.png')).convert('RGB'), np.float64) / 255
+    lut = np.zeros((N, N, N, 3))
+    for bi in range(N):
+        lut[bi] = img[:, bi * N:(bi + 1) * N]
+    return lut.reshape(-1, 3)
 
 # ----------------------------------------------------------------------------- the fit
 def trilinear_weights(x):
@@ -148,8 +192,13 @@ def lattice_points():
     b, g, r = np.meshgrid(t, t, t, indexing='ij')
     return np.stack([r.ravel(), g.ravel(), b.ravel()], 1)
 
-def fit(x, y, smooth=4.0, prior=0.02, reach=2.0):
-    """The N^3 lattice (rows [b][g][r], rgb) that best maps x to y."""
+def fit(x, y, smooth=4.0, prior=0.02, reach=2.0, stock=None):
+    """The N^3 lattice (rows [b][g][r], rgb) that best maps x to y.
+
+    Where the samples say nothing, it leans on a fallback: smooth 1D curves fitted to the
+    samples or, given a film-lab [stock], that stock's LUT moved by the same kind of curves
+    fitted to what the samples do differently (so a few frames of one film still give the
+    whole colour space a film's behaviour, with the measured look's tone and balance)."""
     import scipy.sparse as sp
     from scipy.sparse.linalg import spsolve
     # Even out how much each region of colour counts: crowded colours (sky, walls) would
@@ -163,7 +212,13 @@ def fit(x, y, smooth=4.0, prior=0.02, reach=2.0):
     A = trilinear_weights(x)
     W = sp.diags(w)
     D = second_differences()
-    base = additive_features(lattice_points()) @ fit_additive(x, y, w)
+    if stock is None:
+        base = additive_features(lattice_points()) @ fit_additive(x, y, w)
+    else:
+        P = prior_lut(stock)
+        from fujilab import trilinear
+        px = trilinear(P.reshape(N, N, N, 3), x)
+        base = P + additive_features(lattice_points()) @ fit_additive(x, y - px, w, smooth=8.0)
 
     scale = len(x) / N ** 3
     # Lattice points far from any sample lean on the fallback; those among samples on the data.
@@ -186,24 +241,32 @@ def delta_e(a, b):
 
 # ----------------------------------------------------------------------------- commands
 def check(look='sleepycharlie'):
-    """Each pair predicted from a fit to the others: how close the look gets on new pictures."""
+    """How close the look gets on pictures it wasn't fitted to: each pair predicted from a fit
+    to the others or, with a single pair, each half of the frame from a fit to the other half."""
+    stock = LOOKS[look].get('prior')
     pairs = LOOKS[look]['pairs']
     rows = []
-    for k, (b, a) in enumerate(pairs):
-        x, y = samples(look, skip=k)
-        lut = fit(x, y)
-        bx, ay = load(b), load(a)
-        pred = apply(lut, bx)
-        de = delta_e(pred, ay)
-        base = delta_e(bx, ay)
-        rows.append((k, float(np.median(de)), float(np.percentile(de, 90)), float(np.median(base))))
-        print(f'pair {k}: fitted ΔE median {rows[-1][1]:.2f}  p90 {rows[-1][2]:.2f}   (ungraded {rows[-1][3]:.2f})')
-    print('mean median ΔE %.2f (ungraded %.2f)' % (np.mean([r[1] for r in rows]), np.mean([r[3] for r in rows])))
+    def report(label, lut, bx, ay):
+        de = delta_e(apply(lut, bx), ay)
+        rows.append((float(np.median(de)), float(np.median(delta_e(bx, ay)))))
+        print(f'{label}: fitted ΔE median {rows[-1][0]:.2f}  p90 {np.percentile(de, 90):.2f}   (ungraded {rows[-1][1]:.2f})')
+    if len(pairs) == 1:
+        b, a, crop = pairs[0]
+        bx, ay = load(b, crop=crop), load(a, crop=crop)
+        h = bx.shape[0] // 2
+        for name, (tr, te) in (('top from bottom', (slice(h, None), slice(0, h))), ('bottom from top', (slice(0, h), slice(h, None)))):
+            lut = fit(bx[tr].reshape(-1, 3), ay[tr].reshape(-1, 3), stock=stock)
+            report(name, lut, bx[te], ay[te])
+    else:
+        for k, (b, a, crop) in enumerate(pairs):
+            x, y = samples(look, skip=k)
+            report(f'pair {k}', fit(x, y, stock=stock), load(b, crop=crop), load(a, crop=crop))
+    print('mean median ΔE %.2f (ungraded %.2f)' % (np.mean([r[0] for r in rows]), np.mean([r[1] for r in rows])))
 
 def write_lut(look, path):
     from PIL import Image
     x, y = samples(look)
-    y3 = fit(x, y).reshape(N, N, N, 3)                       # [b][g][r]
+    y3 = fit(x, y, stock=LOOKS[look].get('prior')).reshape(N, N, N, 3)   # [b][g][r]
     img = np.zeros((N, N * N, 3), np.uint8)
     for bi in range(N):
         img[:, bi * N:(bi + 1) * N, :] = np.round(y3[bi] * 255).astype(np.uint8)
@@ -215,8 +278,8 @@ def preview(out, look='sleepycharlie'):
     from PIL import Image
     lut = np.load(os.path.join(CACHE, f'{look}.npy')).reshape(-1, 3)
     os.makedirs(out, exist_ok=True)
-    for k, (b, a) in enumerate(LOOKS[look]['pairs']):
-        bx, ay = load(b, 5), load(a, 5)
+    for k, (b, a, crop) in enumerate(LOOKS[look]['pairs']):
+        bx, ay = load(b, 5, crop), load(a, 5, crop)
         pred = apply(lut, bx)
         strip = np.concatenate([bx, pred, ay], 1)
         Image.fromarray(np.round(np.clip(strip, 0, 1) * 255).astype(np.uint8)).save(os.path.join(out, f'{look}_{k}.jpg'), quality=88)
@@ -227,12 +290,15 @@ if __name__ == '__main__':
     if cmd == 'fetch':
         fetch()
     elif cmd == 'check':
-        check()
+        for look in sys.argv[2:] or LOOKS:
+            print('--', look)
+            check(look)
     elif cmd == 'luts':
         os.makedirs(sys.argv[2], exist_ok=True)
-        for look in LOOKS:
+        for look in sys.argv[3:] or LOOKS:
             write_lut(look, os.path.join(sys.argv[2], f'cu_{look}.png'))
     elif cmd == 'preview':
-        preview(sys.argv[2])
+        for look in sys.argv[3:] or LOOKS:
+            preview(sys.argv[2], look)
     else:
         print(__doc__)

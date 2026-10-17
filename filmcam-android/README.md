@@ -175,6 +175,22 @@ The **Custom** tab holds creators' grades and your own LUTs.
     colour error of about 2.5 (OKLab ΔE×100; around 2 is barely visible), against 6.2 for
     the ungraded frame. It is not exact: the PowerGrade also adjusts exposure and white
     balance per shot, and its own LUT files aren't public.
+- **Dehancer 250D / Dehancer 500T:** the look of Dehancer Pro (dehancer.com), the film
+  emulation plugin, on its default stock (Kodak Vision3 250D daylight) and on Vision3 500T
+  tungsten printed with grain and bloom.
+  - **Colour:** fitted to Dehancer's own before/after frames: the plugin screenshot that shows
+    one frame with only the camera input converted and with the 250D profile, and the Film
+    Developer article's Rec.709 source and finished 500T frame. These are single portraits,
+    so the film lab's cine stocks (250D-like and 500T-like) fill in the colours they don't
+    show, moved by smooth curves toward what Dehancer does differently.
+  - **How close:** within the frames, about 0.4 (250D) and 0.8 (500T) median ΔE against
+    Dehancer's output, from 2.1 and 6.0 untouched. Outside skin, blues and browns it is the
+    film model's estimate, not a measurement.
+  - **Effects:** matched by rendering Dehancer's own None / Halation / Bloom / Grain frames
+    through the app's shaders: grain 0.4 equals its default 35 mm ISO 250 grain; its halation
+    is redder and stronger than film's usual orange (this look uses a redder halo near the
+    top of the range); its bloom is a wide, low-threshold glow, which the app's diffusion
+    reproduces.
 - **Import LUT (.cube):** the last card in Custom adds any 3D `.cube` LUT as a look: one you
   bought (Cinecell 02's Look LUT gives its colour exactly), or your own grade from Resolve,
   Premiere or Lightroom. It is resampled to the app's 33³ LUT and applied to the picture as

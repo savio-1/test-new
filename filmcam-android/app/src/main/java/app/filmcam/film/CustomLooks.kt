@@ -1,7 +1,7 @@
 package app.filmcam.film
 
-// The Sleepy Charlie LUT is made by tools/film-lab/customlab.py: edit that, then run
-//   python3 customlab.py luts ../../app/src/main/assets/luts
+// The cu_* LUTs are made by tools/film-lab/customlab.py: edit that, then run
+//   python3 customlab.py luts ../../app/src/main/assets/luts [look ...]
 
 /**
  * Custom looks: a creator's grade measured from their published before/after frames, and
@@ -10,6 +10,11 @@ package app.filmcam.film
 object CustomLooks {
     val STOCKS: List<FilmStock> = listOf(
         FilmStock(id = "cu_sleepycharlie", name = "Sleepy Charlie", colorGrain = 0.08f, monochrome = false, swatch = 0xFF89836E),
+        // Dehancer's halation is redder than film's usual orange, and pulls a little blue.
+        FilmStock(id = "cu_dehancer250d", name = "Dehancer 250D", colorGrain = 0.1f, monochrome = false, swatch = 0xFF8E7A68,
+            halationColor = Rgb(1f, 0.2f, 0.02f)),
+        FilmStock(id = "cu_dehancer500t", name = "Dehancer 500T", colorGrain = 0.1f, monochrome = false, swatch = 0xFF5E6676,
+            halationColor = Rgb(1f, 0.2f, 0.02f)),
     )
 
     val CAMERAS: List<FilmCamera> by lazy {
@@ -21,6 +26,20 @@ object CustomLooks {
                 CameraCategory.CUSTOM, FilmLook(
                     stock = FilmStocks.byId("cu_sleepycharlie"), halation = 0.3f, halationSize = 0.35f, bloom = 0.08f,
                     vignette = 0f, aberration = 0f, grain = 0.22f, grainSize = 0.9f, softness = 0f,
+                )),
+            // Dehancer Pro. Colour: fitted to Dehancer's own before/after frames, with the film
+            // lab's cine stocks filling in colours those frames don't show. Effects: matched to
+            // Dehancer's None / Halation / Bloom / Grain frames rendered through these shaders
+            // (grain 0.4 = its default 35 mm ISO 250; diffusion stands in for its wide bloom).
+            FilmCamera("cu_dehancer250d", "Dehancer 250D", "Dehancer Pro's default: Kodak Vision3 250D daylight negative",
+                CameraCategory.CUSTOM, FilmLook(
+                    stock = FilmStocks.byId("cu_dehancer250d"), halation = 0.8f, halationSize = 0.35f, bloom = 0.1f,
+                    diffusion = 0.3f, vignette = 0f, aberration = 0f, grain = 0.4f, grainSize = 1.0f, softness = 0f,
+                )),
+            FilmCamera("cu_dehancer500t", "Dehancer 500T", "Dehancer Pro: Kodak Vision3 500T tungsten, printed, with grain and bloom",
+                CameraCategory.CUSTOM, FilmLook(
+                    stock = FilmStocks.byId("cu_dehancer500t"), halation = 0.9f, halationSize = 0.4f, bloom = 0.1f,
+                    diffusion = 0.3f, vignette = 0f, aberration = 0f, grain = 0.4f, grainSize = 1.0f, softness = 0f,
                 )),
         )
     }

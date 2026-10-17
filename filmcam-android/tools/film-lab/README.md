@@ -67,3 +67,8 @@ fit made of smooth 1D curves per channel (bounded, so saturated colours stay san
 polynomial turned pure greens black). Crowded colours (sky, walls) are down-weighted so rare
 ones (skin, signs) count as much. Grain and halation are spatial and set on the look.
 
+A look can name a film-lab stock as its `prior` (Dehancer's two looks use `cine250d` and
+`kino500t`): with only one or two sample frames, colours they don't show come from that stock's
+LUT, shifted by smooth curves fitted to how the samples differ from it. `check` then holds out
+half of the frame instead of a whole pair.
+
