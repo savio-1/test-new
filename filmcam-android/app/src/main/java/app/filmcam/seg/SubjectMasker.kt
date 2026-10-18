@@ -22,8 +22,11 @@ import kotlin.math.min
 /**
  * Cuts the subject out of each frame so text can sit behind it.
  *
- * Two on-device models (MediaPipe): DeepLab v3 says what every pixel is (person, horse, dog,
- * car, bike...) and the selfie model draws people precisely, hair included. By default every
+ * Three on-device models (MediaPipe): DeepLab v3 says what every pixel is (person, horse, dog,
+ * car, bike...), the selfie model draws people precisely, and the multiclass selfie model finds
+ * their hair. The matte hugs the person's own edge, so text set behind sits right against
+ * them; only round hair, where strands and movement would let text peep through, is it firmed
+ * up and grown a little. By default every
  * person is the subject: the selfie model runs on every frame, kept to where DeepLab (run every
  * few frames) sees people, so a landscape is never mistaken for a face. A tap picks one subject
  * instead: the connected region under the finger (a rider and their horse are one region),
@@ -54,7 +57,11 @@ class SubjectMasker(private val context: Context) {
     private var peopleTs = 0L
     private var objectsTs = 0L
     private var seq = 0L
-    private var prevMatte: ByteArray? = null
+    /** The hair zone (firmed, grown, held), from the multiclass model every few frames. */
+    private var hairZone: ByteArray? = null
+    private var hair: ImageSegmenter? = null
+    private var hairFailed = false
+    private var hairTs = 0L
     private var frame = 0L
     private var target: Target = Target.AllPeople
     /** DeepLab's last class map, and the subject region in it (kept between DeepLab runs). */
@@ -126,8 +133,8 @@ class SubjectMasker(private val context: Context) {
 
     fun release() {
         handler.post {
-            people?.close(); objects?.close()
-            people = null; objects = null
+            people?.close(); objects?.close(); hair?.close()
+            people = null; objects = null; hair = null
         }
         thread.quitSafely()
     }
@@ -175,6 +182,21 @@ class SubjectMasker(private val context: Context) {
         return out
     }
 
+    /** Hair confidence, 0..255 per pixel, or null when the hair model can't run (then no hair zone). */
+    private fun hairConfidence(img: MPImage): ByteArray? {
+        if (hairFailed) return null
+        val model = hair ?: segmenter(HAIR_MODEL, category = false, Delegate.CPU).also { hair = it }
+        if (model == null) { hairFailed = true; return null }
+        val r = model.segmentForVideo(img, ++hairTs)
+        val masks = r.confidenceMasks().orElse(null) ?: return null
+        // background, hair, body skin, face skin, clothes, other
+        val m = masks.getOrNull(HAIR) ?: run { masks.forEach { it.close() }; return null }
+        val f = FloatArray(m.width * m.height)
+        ByteBufferExtractor.extract(m).order(ByteOrder.nativeOrder()).asFloatBuffer().get(f)
+        masks.forEach { it.close() }
+        return ByteArray(f.size) { (f[it] * 255f + 0.5f).toInt().coerceIn(0, 255).toByte() }
+    }
+
     /** Object class per pixel (DeepLab v3 / PASCAL VOC: 0 background, 15 person...). */
     private fun objectClasses(img: MPImage): ByteArray? {
         val r = objectModel()?.segmentForVideo(img, ++objectsTs) ?: return null
@@ -219,6 +241,7 @@ class SubjectMasker(private val context: Context) {
         }
         val cls = classes!!
         val reg = region
+        if (reg == null) hairZone = null
         val out = ByteBuffer.allocateDirect(n)
         var any = false
         if (reg != null) {
@@ -230,6 +253,16 @@ class SubjectMasker(private val context: Context) {
                 // it is weak) also take DeepLab's own outline, which is fresh every frame then.
                 val conf = personConfidence(img)
                 val near = Regions.dilate(reg, w, h, max(3, w / 14))
+                // Hair: every third frame (offset from DeepLab's), held in between.
+                if (bigSubject && (hairZone?.size != n || frame % 3 == 1L)) {
+                    val hc = hairConfidence(img)
+                    hairZone = hc?.let { c ->
+                        for (i in 0 until n) if (!near[i]) c[i] = 0
+                        hairZone(c, hairZone?.takeIf { it.size == n }, w, h)
+                    }
+                } else if (!bigSubject) {
+                    hairZone = null      // far away, DeepLab's outline already covers them
+                }
                 for (i in 0 until n) {
                     var m = if (near[i] && conf != null) (conf[i] * 255f + 0.5f).toInt().coerceIn(0, 255) else 0
                     if ((!bigSubject || conf == null) && reg[i]) m = 255
@@ -239,14 +272,12 @@ class SubjectMasker(private val context: Context) {
                 for (i in 0 until n) if (reg[i]) { out.put(i, 255.toByte()); any = true }
             }
         }
-        // Firm it up so text set behind never shows through the subject: uncertain edges
-        // (hair, a busy background) count as subject, the outline grows a little, and the last
-        // frame's subject is held faintly so a moving head never leaves a gap.
-        val raw = ByteArray(n).also { out.position(0); out.get(it) }
-        val firm = solidify(raw, prevMatte?.takeIf { it.size == n }, w, h)
-        prevMatte = firm
-        out.position(0)
-        out.put(firm)
+        // The person's own edge everywhere, and the firmer hair zone over their hair.
+        val zone = hairZone?.takeIf { it.size == n && reg != null && (target as? Target.One)?.person != false }
+        if (zone != null) for (i in 0 until n) {
+            val z = zone[i].toInt() and 0xFF
+            if (z > (out.get(i).toInt() and 0xFF)) { out.put(i, z.toByte()); if (z > 127) any = true }
+        }
         out.position(0)
         latest = Matte(out, w, h, ++seq, empty = !any)
         status(when {
@@ -314,10 +345,12 @@ class SubjectMasker(private val context: Context) {
         const val INPUT_SIDE = 256
 
         /**
-         * A matte that holds text back firmly: confidence lifted (0.1 and up counts, 0.48 is
-         * solid), grown by about 1% of the frame, and at least 60% of [prev] (the frame before).
+         * Where hair is, firmly: hair confidence lifted (0.1 and up counts, 0.48 is solid), grown
+         * by about 1% of the frame, and at least 60% of [prev] (the zone before), so flyaway
+         * strands and a moving head never let text set behind show through. Elsewhere the matte
+         * is the person's own edge, so the text sits close.
          */
-        fun solidify(src: ByteArray, prev: ByteArray?, w: Int, h: Int): ByteArray {
+        fun hairZone(src: ByteArray, prev: ByteArray?, w: Int, h: Int): ByteArray {
             val n = w * h
             val lifted = IntArray(n) { i -> (((src[i].toInt() and 0xFF) - 25) * 2.6f).toInt().coerceIn(0, 255) }
             val r = max(1, (max(w, h) + 127) / 128)
@@ -338,6 +371,8 @@ class SubjectMasker(private val context: Context) {
             return out
         }
         private const val PEOPLE_MODEL = "seg/selfie_segmenter.tflite"
+        private const val HAIR_MODEL = "seg/selfie_multiclass_256x256.tflite"
+        private const val HAIR = 1
         private const val OBJECT_MODEL = "seg/deeplab_v3.tflite"
         private const val PERSON = 15
         private val LABELS = listOf(

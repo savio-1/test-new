@@ -93,6 +93,17 @@ struct Look: Codable, Equatable {
     var shadows: Float
     var clarity: Float
     var sharpness: Float
+    // The photo editor's effects (studio looks; noise works on any look)
+    var noise: Float
+    var halftone: Float
+    var threshold: Float
+    var halftoneInk: String
+    var halftonePaper: String
+    var ghost: Float
+    var tiltShift: Float
+    var tiltY: Float
+    var tiltSize: Float
+    var studio: Bool
 }
 
 struct FilmCamera: Codable, Equatable, Identifiable {
@@ -157,6 +168,12 @@ struct Spec: Codable {
 }
 
 extension String {
+    /// "#AARRGGBB" -> red, green and blue, 0..1.
+    var argbFloats: (Float, Float, Float) {
+        let hex = UInt64(dropFirst(), radix: 16) ?? 0xFF888888
+        return (Float((hex >> 16) & 0xFF) / 255, Float((hex >> 8) & 0xFF) / 255, Float(hex & 0xFF) / 255)
+    }
+
     /// "#AARRGGBB" -> UIColor.
     var argbColor: UIColor {
         let hex = UInt64(dropFirst(), radix: 16) ?? 0xFF888888

@@ -38,7 +38,7 @@ async function runFilm(DATA, imgUrl, camId, opts) {
     gl.linkProgram(p); if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error('link: ' + gl.getProgramInfoLog(p));
     return p;
   }
-  const P = { bright: prog(S.VERTEX, S.BRIGHT), blur: prog(S.VERTEX, S.BLUR), fin: prog(S.VERTEX, S.FINAL),
+  const P = { bright: prog(S.VERTEX, S.BRIGHT), blur: prog(S.VERTEX, S.BLUR), gauss: prog(S.VERTEX, S.GAUSS), fin: prog(S.VERTEX, S.FINAL),
               dev: prog(S.VERTEX, S.DEVELOP_2D_MRT) };
   const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
   const vb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vb);
@@ -89,13 +89,68 @@ async function runFilm(DATA, imgUrl, camId, opts) {
   gl.generateMipmap(gl.TEXTURE_2D);
   const imageMatrix = stillMatrix(rot, false);
 
+  // Film stock LUT (33^3 strip: x = b*33 + r, y = g) as a 3D texture, as FilmRenderer does.
+  const lutUrl = DATA.luts && DATA.luts[look.stock.id];
+  const lutTex = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE10); gl.bindTexture(gl.TEXTURE_3D, lutTex);
+  if (lutUrl && !opts.noLut) {
+    const li = await new Promise(r => { const i = new Image(); i.onload = () => r(i); i.src = lutUrl; });
+    const n = li.height, cv = document.createElement('canvas'); cv.width = li.width; cv.height = n;
+    const cx = cv.getContext('2d'); cx.drawImage(li, 0, 0); const px = cx.getImageData(0, 0, li.width, n).data;
+    const buf = new Uint8Array(n * n * n * 4);
+    for (let b = 0; b < n; b++) for (let g = 0; g < n; g++) for (let r = 0; r < n; r++) {
+      const si = (g * n * n + b * n + r) * 4, di = ((b * n + g) * n + r) * 4;
+      buf[di] = px[si]; buf[di + 1] = px[si + 1]; buf[di + 2] = px[si + 2]; buf[di + 3] = 255;
+    }
+    gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, n, n, n, 0, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+  } else {
+    gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, 1, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+  }
+  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+  const lutOn = lutUrl && !opts.noLut ? 1 : 0;
+
   // Glow, as FilmRenderer.glow.
   const scale = Math.min(480 / Math.max(W, H), 0.5);
   const gw = Math.max(8, Math.round(W * scale)), gh = Math.max(8, Math.round(H * scale));
   const gT = tex(gw, gh, glowFmt), gW = tex(gw, gh, glowFmt), gX = tex(gw, gh, glowFmt), gS = tex(gw, gh, glowFmt), gD = tex(gw, gh, glowFmt);
-  const gTF = fbo(gT), gWF = fbo(gW), gXF = fbo(gX), gSF = fbo(gS), gDF = fbo(gD);
+  const gM = tex(gw, gh, glowFmt), gC = tex(gw, gh, glowFmt);
+  const gTF = fbo(gT), gWF = fbo(gW), gXF = fbo(gX), gSF = fbo(gS), gDF = fbo(gD), gMF = fbo(gM), gCF = fbo(gC);
   const thr = 0.62 - 0.2 * look.halation;
-  gl.viewport(0, 0, gw, gh); gl.bindFramebuffer(gl.FRAMEBUFFER, gTF); gl.useProgram(P.bright);
+  gl.viewport(0, 0, gw, gh);
+  gl.useProgram(P.bright); gl.uniform1i(U(P.bright, 'uLut'), 10); gl.uniform1i(U(P.bright, 'uMode'), 0);
+  const softSigma = look.blurMode === 'GAUSSIAN' ? look.blur * 0.04 : 0;
+  if (look.studio) {
+    // FilmRenderer.studioGlow
+    const long = Math.max(gw, gh);
+    const mask = (mode, t, col) => {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, gMF); gl.useProgram(P.bright);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, srcTex); gl.uniform1i(U(P.bright, 'uSrc'), 0);
+      gl.uniform1f(U(P.bright, 'uLutOn'), lutOn); gl.uniform1f(U(P.bright, 'uIntensity'), look.intensity === undefined ? 1 : look.intensity);
+      gl.uniformMatrix4fv(U(P.bright, 'uTexMatrix'), false, imageMatrix);
+      gl.uniform1f(U(P.bright, 'uLod'), Math.max(0, Math.log2(Math.max(W, H) / Math.max(gw, gh))));
+      gl.uniform1i(U(P.bright, 'uMode'), mode); gl.uniform1f(U(P.bright, 'uThreshold'), t || 0); gl.uniform3fv(U(P.bright, 'uCol'), col || [0, 0, 0]);
+      draw();
+    };
+    const gaussian = (from, toF, sigma, blackEdge = true) => {
+      const sg = Math.max(0.3, sigma); gl.useProgram(P.gauss); gl.uniform1i(U(P.gauss, 'uBlackEdge'), blackEdge ? 1 : 0);
+      gl.uniform1i(U(P.gauss, 'uSrc'), 0); gl.uniformMatrix4fv(U(P.gauss, 'uTexMatrix'), false, ident);
+      gl.uniform1f(U(P.gauss, 'uSigma'), sg); gl.uniform1i(U(P.gauss, 'uTaps'), Math.min(64, Math.ceil(sg * 3)));
+      gl.bindFramebuffer(gl.FRAMEBUFFER, gXF); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, from); gl.uniform2f(U(P.gauss, 'uStep'), 1 / gw, 0); draw();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, toF); gl.bindTexture(gl.TEXTURE_2D, gX); gl.uniform2f(U(P.gauss, 'uStep'), 0, 1 / gh); draw();
+    };
+    if (look.bloom > 0) { const k = Math.min(1, look.bloom); mask(1, 0.62 - 0.22 * k); gaussian(gM, gWF, long * (0.012 + 0.025 * k)); }
+    if (look.halation > 0) { const k = Math.min(1, look.halation); mask(2, 0.72 - 0.2 * k, look.stock.halationColor);
+      gaussian(gM, gTF, long * (0.003 + 0.007 * k)); gaussian(gM, gSF, long * (0.012 + 0.02 * k)); }
+    const soft = softSigma * long;
+    if (look.clarity !== 0 || look.tiltShift > 0 || soft >= 1) {
+      mask(3);
+      if (look.clarity !== 0) gaussian(gM, gCF, long * 0.018, false);
+      if (look.tiltShift > 0) gaussian(gM, gDF, long * 0.018 * look.tiltShift); else if (soft >= 1) gaussian(gM, gDF, soft);
+    }
+  } else {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, gTF); gl.useProgram(P.bright);
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, srcTex); gl.uniform1i(U(P.bright, 'uSrc'), 0);
   gl.uniformMatrix4fv(U(P.bright, 'uTexMatrix'), false, imageMatrix);
   gl.uniform1f(U(P.bright, 'uLod'), Math.max(0, Math.log2(Math.max(W, H) / Math.max(gw, gh)))); gl.uniform1f(U(P.bright, 'uThreshold'), thr);
@@ -116,6 +171,7 @@ async function runFilm(DATA, imgUrl, camId, opts) {
     gl.useProgram(P.bright); gl.bindFramebuffer(gl.FRAMEBUFFER, gDF); gl.bindTexture(gl.TEXTURE_2D, srcTex);
     gl.uniform1f(U(P.bright, 'uThreshold'), -0.31); draw(); gl.useProgram(P.blur);
     pass(gD, gXF, sx * 3, 0); pass(gX, gDF, 0, sy * 3); pass(gD, gXF, sx * 7, 0); pass(gX, gDF, 0, sy * 7);
+  }
   }
 
   // Overlay textures (ports of DateStamp, CamcorderOsd, EdgePrint).
@@ -171,6 +227,7 @@ async function runFilm(DATA, imgUrl, camId, opts) {
 
   // Final, as FilmRenderer.drawFinal; optionally in tiles like renderTiled.
   const f = P.fin; gl.useProgram(f);
+  const f1s = (n, v) => gl.uniform1f(U(f, n), v);
   const bind = (u, t, n) => { gl.activeTexture(gl.TEXTURE0 + u); gl.bindTexture(gl.TEXTURE_2D, t); gl.uniform1i(U(f, n), u); };
   bind(0, srcTex, 'uImage'); bind(1, srcTex, 'uPrevImage'); bind(2, gT, 'uGlowTight'); bind(3, gW, 'uGlowWide');
   bind(4, gS, 'uStreakTex'); bind(8, gD, 'uDiffuseTex'); bind(9, textTex || edgeTex, 'uTextTex'); gl.uniform1f(U(f, 'uTextOn'), textTex ? 1 : 0); bind(5, stampTex, 'uStamp'); bind(6, osdTex, 'uOsd'); bind(7, edgeTex, 'uEdge');
@@ -194,32 +251,24 @@ async function runFilm(DATA, imgUrl, camId, opts) {
     gl.uniform3fv(U(f, 'uStyleShadow'), ps.shadowTint); gl.uniform3fv(U(f, 'uStyleHigh'), ps.highTint);
     gl.uniform4f(U(f, 'uStyleUser'), sTone, sColor, sPal, ps.skin);
   }
-  // Film stock LUT (33^3 strip: x = b*33 + r, y = g) as a 3D texture, as FilmRenderer does.
-  const lutUrl = DATA.luts && DATA.luts[look.stock.id];
-  let lutTex = gl.createTexture();
   gl.activeTexture(gl.TEXTURE10); gl.bindTexture(gl.TEXTURE_3D, lutTex);
-  if (lutUrl && !opts.noLut) {
-    const li = await new Promise(r => { const i = new Image(); i.onload = () => r(i); i.src = lutUrl; });
-    const n = li.height, cv = document.createElement('canvas'); cv.width = li.width; cv.height = n;
-    const cx = cv.getContext('2d'); cx.drawImage(li, 0, 0); const px = cx.getImageData(0, 0, li.width, n).data;
-    const buf = new Uint8Array(n * n * n * 4);
-    for (let b = 0; b < n; b++) for (let g = 0; g < n; g++) for (let r = 0; r < n; r++) {
-      const si = (g * n * n + b * n + r) * 4, di = ((b * n + g) * n + r) * 4;
-      buf[di] = px[si]; buf[di + 1] = px[si + 1]; buf[di + 2] = px[si + 2]; buf[di + 3] = 255;
-    }
-    gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, n, n, n, 0, gl.RGBA, gl.UNSIGNED_BYTE, buf);
-  } else {
-    gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, 1, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
-  }
-  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
   gl.useProgram(f);
-  gl.uniform1i(U(f, 'uLut'), 10); gl.uniform1f(U(f, 'uLutOn'), lutUrl && !opts.noLut ? 1 : 0);
+  gl.uniform1i(U(f, 'uLut'), 10); gl.uniform1f(U(f, 'uLutOn'), lutOn);
+  bind(13, gC, 'uClarTex');
+  const studio = !!look.studio;
+  f1s('uStudio', studio ? 1 : 0); f1s('uSharpen', studio ? look.sharpness : 0); f1s('uClarity', studio ? look.clarity : 0);
+  const hk = Math.min(1, look.halation);
+  gl.uniform2f(U(f, 'uStudioGain'), Math.pow(2, 1 + Math.round(hk * 2)), Math.pow(2, 1 + Math.round(hk * 3)));
+  f1s('uStudioSoft', look.tiltShift <= 0 && softSigma * Math.max(gw, gh) >= 1 ? 1 : 0);
+  gl.uniform1i(U(f, 'uSmearCap'), opts.smearCap || 16);
+  f1s('uNoise', look.noise || 0); f1s('uHalftone', studio ? look.halftone : 0); f1s('uThreshold', studio ? (look.threshold || 0) : 0);
+  const rgbOf = v => [(v >> 16 & 255) / 255, (v >> 8 & 255) / 255, (v & 255) / 255];
+  gl.uniform3fv(U(f, 'uInk'), rgbOf(look.halftoneInk || 0x111111)); gl.uniform3fv(U(f, 'uPaper'), rgbOf(look.halftonePaper || 0xf4f1ea));
+  f1s('uGhost', studio ? look.ghost : 0); f1s('uTilt', studio ? look.tiltShift : 0); f1s('uTiltY', look.tiltY ?? 0.5); f1s('uTiltSize', look.tiltSize ?? 0.25);
   gl.uniform1f(U(f, 'uIntensity'), look.intensity === undefined ? 1 : look.intensity);
   gl.uniform1f(U(f, 'uExposureGain'), 1);
   gl.uniform4f(U(f, 'uAdjA'), look.warmth || 0, look.tint || 0, look.contrast || 0, look.saturation || 0);
-  gl.uniform4f(U(f, 'uAdjB'), look.highlights || 0, look.shadows || 0, look.vibrance || 0, look.clarity || 0);
+  gl.uniform4f(U(f, 'uAdjB'), look.highlights || 0, look.shadows || 0, look.vibrance || 0, look.studio ? 0 : look.clarity || 0);
   const s = look.stock;
   const f1 = (n, v) => gl.uniform1f(U(f, n), v), f3 = (n, v) => gl.uniform3fv(U(f, n), v);
   f1('uTemp', s.temperature); f1('uTint', s.tint); f1('uSat', s.saturation);
@@ -231,7 +280,7 @@ async function runFilm(DATA, imgUrl, camId, opts) {
   f1('uHalation', look.halation); f1('uHalThreshold', thr); f1('uBloom', look.bloom); f1('uStreak', look.streak);
   f1('uGrain', look.grain); f1('uGrainSize', Math.min(4, Math.max(0.5, look.grainSize))); f1('uLeak', look.lightLeak);
   f1('uPrism', look.prism); f1('uVignette', look.vignette); f1('uDust', look.dust); f1('uAberration', look.aberration);
-  f1('uSoftness', look.softness); f1('uCornerBlur', look.cornerBlur); f1('uDistortion', look.distortion);
+  f1('uSoftness', look.studio ? look.softness : look.softness - 0.8 * (look.sharpness || 0)); f1('uCornerBlur', look.cornerBlur); f1('uDistortion', look.distortion);
   f1('uCircle', look.circleMask ? 1 : 0); f1('uAnaglyph', look.anaglyph); f1('uFlash', look.flash); f1('uVhs', look.vhs);
   f1('uInterlace', 0); f1('uLowRes', look.lowRes); f1('uDiffusion', look.diffusion);
   const BLUR = { NONE: 0, GAUSSIAN: 1, ZOOM: 2, SPIN: 3, MOTION: 4 };

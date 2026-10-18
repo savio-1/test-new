@@ -91,6 +91,27 @@ uniform int uBorder;
 uniform int uStampStyle;
 uniform float uStampAspect;
 
+// The photo editor's looks (FilmLook.studio): the effects above, drawn its way. In studio mode
+// uGlowTight / uStreakTex hold the halation's two halos, uGlowWide the bloom, uDiffuseTex the
+// graded picture blurred for tilt-shift or the soft blur, uClarTex blurred for clarity.
+uniform float uStudio;
+uniform sampler2D uClarTex;
+uniform vec2 uStudioGain;   // halation halo gains
+uniform float uStudioSoft;  // 1: uDiffuseTex holds the soft blur
+uniform float uSharpen;     // 0..1
+uniform float uClarity;     // -1..1
+uniform int uSmearCap;      // most samples a zoom, spin or motion blur takes
+// Effects any look can use
+uniform float uNoise;
+uniform float uHalftone;
+uniform float uThreshold;   // two-tone: paper above this tone, ink below (0 off)
+uniform vec3 uInk;
+uniform vec3 uPaper;
+uniform float uGhost;
+uniform float uTilt;
+uniform float uTiltY;       // 0 = top
+uniform float uTiltSize;
+
 // Per-frame randomness from the CPU
 uniform uint uSeed;
 uniform float uTime;
@@ -533,6 +554,185 @@ vec3 blendText(vec3 b, vec4 t, int mode) {
     return mix(b, r, t.a);
 }
 
+// ---------------------------------------------------------------- the photo editor's looks
+// FilmLook.studio: the editor's effects, in its order (colour, noise, halftone, sharpen and
+// clarity, bloom, halation, fringing, motion / double / zoom / spin, tilt-shift, fisheye, soft
+// blur, then leak, vignette, grain, dust), worked backwards from each output pixel. Sizes are
+// in output pixels of the picture (gM is its long side), as the editor sizes them.
+vec2 gContent;      // picture size in output pixels
+float gM;           // its long side
+float gRectAspect;
+float gAspect;
+vec2 gUPerPx;       // picture uv (u) per output pixel
+float gExtraLod;    // the lens's low-res and toy-corner softening
+
+const vec3 LUMA601 = vec3(0.299, 0.587, 0.114);
+
+vec2 coverCrop(vec2 q) {
+    vec2 u = q;
+    if (gRectAspect < gAspect) u.x = 0.5 + (q.x - 0.5) * gRectAspect / gAspect;
+    else u.y = 0.5 + (q.y - 0.5) * gAspect / gRectAspect;
+    return u;
+}
+bool insidePic(vec2 q) { return q.x >= 0.0 && q.y >= 0.0 && q.x <= 1.0 && q.y <= 1.0; }
+vec3 screenA(vec3 d, vec3 g, float a) { return d + (1.0 - (1.0 - d) * (1.0 - g) - d) * a; }
+
+// The camera's picture at q (picture uv, y up), softened by about sigma output pixels.
+vec3 srcAt(vec2 q, float sigma) {
+    vec2 u = coverCrop(q);
+    if (sigma < 0.6) return sampleLod(u, uBaseLod + gExtraLod);
+    float lod = max(uBaseLod, uBaseLod + log2(2.0 * sigma)) + gExtraLod;
+    vec2 d = gUPerPx * sigma * 1.2;
+    vec3 acc = sampleLod(u, lod) * 0.25;
+    acc += (sampleLod(u + vec2(d.x, 0.0), lod) + sampleLod(u - vec2(d.x, 0.0), lod)
+          + sampleLod(u + vec2(0.0, d.y), lod) + sampleLod(u - vec2(0.0, d.y), lod)) * 0.125;
+    acc += (sampleLod(u + d, lod) + sampleLod(u - d, lod)
+          + sampleLod(u + vec2(d.x, -d.y), lod) + sampleLod(u + vec2(-d.x, d.y), lod)) * 0.0625;
+    return acc;
+}
+
+// The look's colour: its LUT, at the strength asked for.
+vec3 studioColour(vec3 c) {
+    if (uExposureGain != 1.0) c = linearToSrgb(srgbToLinear(clamp(c, 0.0, 1.0)) * uExposureGain);
+    return uLutOn > 0.5 ? mix(c, applyLut(c), uIntensity) : c;
+}
+vec3 graded(vec3 c) { return uStudio > 0.5 ? studioColour(c) : c; }
+
+// Grey noise in cells of a 1080 p picture, re-dealt every frame.
+float noiseAt(vec2 q) {
+    vec2 cell = floor(q * gContent / max(1.0, min(gContent.x, gContent.y) / 1080.0));
+    return (rnd(uvec3(uvec2(ivec2(cell) + 8192), uSeed + 71u)) - 0.5) * uNoise * (120.0 / 255.0);
+}
+
+// Colour, noise, sharpening, clarity, bloom and halation at one point.
+vec3 studioPoint(vec2 q, float soft) {
+    vec3 a = studioColour(srcAt(q, soft));
+    if (uThreshold > 0.0) a = clamp(dot(a, LUMA601), 0.0, 1.0) > uThreshold ? uPaper : uInk;
+    if (uNoise > 0.0) a += noiseAt(q);
+    a = clamp(a, 0.0, 1.0);
+    float sharpen = uSharpen + max(-uSoftness, 0.0) * 0.6;
+    if (sharpen > 0.0) {
+        vec3 b = studioColour(srcAt(q, max(soft, max(0.8, gM / 1100.0))));
+        a = clamp(a + (a - b) * sharpen * 1.6, 0.0, 1.0);
+    }
+    vec2 s = toScreen(coverCrop(q));
+    if (uClarity != 0.0) {
+        float w = 1.0 - abs(2.0 * clamp(dot(a, LUMA601), 0.0, 1.0) - 1.0) * 0.7;
+        a = clamp(a + (a - texture(uClarTex, s).rgb) * uClarity * (uClarity > 0.0 ? 0.9 : 0.75) * w, 0.0, 1.0);
+    }
+    if (uBloom > 0.0) {
+        vec3 g = min(texture(uGlowWide, s).rgb, 1.0);
+        a = screenA(a, g, 0.5 + 0.5 * uBloom);
+        if (uBloom > 0.5) a = screenA(a, g, (uBloom - 0.5) * 1.2);
+    }
+    if (uHalation > 0.0) {
+        a = screenA(a, min(texture(uGlowTight, s).rgb * uStudioGain.x, 1.0), 0.45 + 0.55 * uHalation);
+        a = screenA(a, min(texture(uStreakTex, s).rgb * uStudioGain.y, 1.0), 0.35 + 0.4 * uHalation);
+    }
+    return a;
+}
+
+// Colour fringing: red and green scaled out from the centre.
+vec3 studioFringed(vec2 q, float soft) {
+    if (uAberration <= 0.0) return studioPoint(q, soft);
+    float e = 0.012 * uAberration;
+    return vec3(studioPoint(0.5 + (q - 0.5) / (1.0 + e), soft).r,
+                studioPoint(0.5 + (q - 0.5) / (1.0 + e * 0.45), soft).g,
+                studioPoint(q, soft).b);
+}
+
+// Halftone: a hexagonal screen of ink dots on paper, each sized by the tone at its centre.
+vec3 halftoneAt(vec2 q) {
+    vec2 p = vec2(q.x, 1.0 - q.y) * gContent;                   // y down, like the editor
+    float cell = max(3.0, floor(gM * (0.004 + 0.022 * uHalftone) + 0.5));
+    float rowH = cell * 0.866;
+    float row = floor((p.y - cell * 0.5) / rowH + 0.5);
+    float ink = 0.0;
+    for (int dr = -1; dr <= 1; dr++) {
+        float rr = row + float(dr);
+        float y = cell * 0.5 + rr * rowH;
+        float off = mod(rr, 2.0) * cell * 0.5;
+        float cx = off + floor((p.x - off) / cell + 0.5) * cell;
+        for (int dc = -1; dc <= 1; dc++) {
+            vec2 c = vec2(cx + float(dc) * cell, y);
+            vec2 cq = clamp(vec2(c.x, gContent.y - c.y) / gContent, 0.0, 1.0);
+            float tone = clamp(dot(studioColour(srcAt(cq, 0.0)), LUMA601), 0.0, 1.0);
+            float r = cell * 0.56 * sqrt(1.0 - tone);
+            if (r > 0.35) ink = max(ink, clamp(r - length(p - c) + 0.5, 0.0, 1.0));
+        }
+    }
+    return mix(uPaper, uInk, ink);
+}
+
+// Tilt-shift: how much of the sharp picture shows at height y (0 = top).
+float tiltAlpha(float y) {
+    float h = clamp(uTiltSize, 0.02, 1.0) * 0.5;
+    float c = clamp(uTiltY, 0.0, 1.0);
+    float p[6] = float[6](0.0, clamp(c - h - 0.12, 0.0, 1.0), clamp(c - h, 0.0, 1.0), clamp(c + h, 0.0, 1.0),
+                          clamp(c + h + 0.12, 0.0, 1.0), 1.0);
+    float al[6] = float[6](c - h - 0.12 <= 0.0 ? 1.0 : 0.0, 0.0, 1.0, 1.0, 0.0, c + h + 0.12 >= 1.0 ? 1.0 : 0.0);
+    float a = al[0];
+    for (int i = 0; i < 5; i++) {
+        if (y >= p[i]) a = p[i + 1] > p[i] ? mix(al[i], al[i + 1], clamp((y - p[i]) / (p[i + 1] - p[i]), 0.0, 1.0)) : al[i + 1];
+    }
+    return a;
+}
+
+// The picture up to the finishes at q (after the fisheye). bw: how much blur the sharp centre allows.
+vec3 studioImage(vec2 q, float bw) {
+    if (uHalftone > 0.0) return halftoneAt(q);
+    bool softTex = uBlurMode == 1 && uStudioSoft > 0.5;
+    float soft = (uBlurMode == 1 && !softTex ? uBlur * 0.04 * gM * bw : 0.0) + max(uSoftness, 0.0) * 2.5 * uRefScale;
+    vec3 c;
+    float k = uBlur * bw;
+    if (uBlurMode >= 2 && k > 0.0) {
+        // Motion, zoom and spin: equal-weight copies; copies off the picture don't count.
+        float len = gM * k * 0.09;
+        int n = uBlurMode == 4 ? int(clamp(floor(len / 3.0 + 0.5), 6.0, 40.0)) : int(clamp(floor(10.0 + 26.0 * k + 0.5), 8.0, 36.0));
+        n = min(n, uSmearCap);
+        vec2 dpx = (q - 0.5) * gContent;
+        float gap = (uBlurMode == 4 ? len : length(dpx) * (uBlurMode == 2 ? 0.32 : 0.22) * k) / float(n - 1);
+        float ss = soft + max(gap - 3.0, 0.0) * 0.4;     // fewer copies than the editor: soften between them
+        vec3 acc = studioFringed(q, soft);
+        float cnt = 1.0;
+        for (int i = 1; i < 40; i++) {
+            if (i >= n) break;
+            float t = float(i) / float(n - 1);
+            vec2 p;
+            if (uBlurMode == 4) p = q + uBlurDir * len * (t - 0.5) / gContent;
+            else if (uBlurMode == 2) p = 0.5 + (q - 0.5) / (1.0 + k * 0.32 * t);
+            else {
+                float th = (t - 0.5) * k * 0.22;
+                p = 0.5 + vec2(dpx.x * cos(th) - dpx.y * sin(th), dpx.x * sin(th) + dpx.y * cos(th)) / gContent;
+            }
+            if (!insidePic(p)) continue;
+            acc += studioFringed(p, ss);
+            cnt += 1.0;
+        }
+        c = acc / cnt;
+    } else {
+        c = studioFringed(q, soft);
+    }
+    if (uGhost > 0.0) {
+        // Double exposure: a copy one step along the direction, then a fainter one two steps.
+        vec2 off = uBlurDir * gM * uGhost * 0.12 / gContent;
+        if (insidePic(q + off)) c = mix(c, studioFringed(q + off, soft), 0.42);
+        if (insidePic(q + 2.0 * off)) c = mix(c, studioFringed(q + 2.0 * off, soft), 0.2);
+    }
+    vec2 s = toScreen(coverCrop(q));
+    if (uTilt > 0.0) c = mix(texture(uDiffuseTex, s).rgb, c, tiltAlpha(1.0 - q.y));
+    else if (softTex) c = mix(c, texture(uDiffuseTex, s).rgb, bw);
+    return c;
+}
+
+// A radial gradient ellipse with three stops: colour and alpha at t (0 centre, 1 edge).
+vec4 leakBlob(vec2 p, vec2 c, vec2 r, vec3 c0, float a0, float p1, vec3 c1, float a1, float a2) {
+    float t = length((p - c) / r);
+    if (t >= 1.0) return vec4(c1, a2);
+    if (t < p1) return vec4(mix(c0, c1, t / p1), mix(a0, a1, t / p1));
+    return vec4(c1, mix(a1, a2, (t - p1) / (1.0 - p1)));
+}
+
 void main() {
     vec2 fragUV = (gl_FragCoord.xy + uTileOffset) / uTargetSize;
     int frameK = uTargetRot + uFrameRot;
@@ -548,10 +748,21 @@ void main() {
     vec2 asp = vec2(rectAspect, 1.0);
     float cornerDist = length((cp - 0.5) * asp) / (0.5 * length(asp));  // 0 centre, 1 corner
     float mask = 1.0;
+    gContent = L.size * min(framePx.x, framePx.y);
+    gM = max(gContent.x, gContent.y);
+    gRectAspect = rectAspect;
+    gAspect = aspect;
+    gUPerPx = (rectAspect < aspect ? vec2(rectAspect / aspect, 1.0) : vec2(1.0, aspect / rectAspect)) / gContent;
 
     // ---- lens distortion: barrel, up to a full circular fisheye
     vec2 q = cp;
-    if (uDistortion > 0.0) {
+    if (uDistortion > 0.0 && uStudio > 0.5) {
+        // The editor's fisheye: barrel over the whole picture; outside it stays black.
+        vec2 n = cp * 2.0 - 1.0;
+        q = (n * (1.0 + 0.6 * uDistortion * (dot(n, n) - 1.0)) + 1.0) * 0.5;
+        if (!insidePic(q)) mask = 0.0;
+        q = clamp(q, 0.0, 1.0);
+    } else if (uDistortion > 0.0) {
         vec2 d = (cp - 0.5) * asp;
         float norm = uCircle > 0.5 ? 0.5 * min(rectAspect, 1.0) : 0.5 * length(asp);
         float rn = length(d) / norm;
@@ -592,56 +803,68 @@ void main() {
 
     // ---- sampling: fringing, toy-lens corners, low resolution
     float lod = uLowRes * 2.6 + uCornerBlur * 4.0 * smoothstep(0.25, 1.0, cornerDist);
-    vec2 dir = u - 0.5;
-    float ca = uAberration * 0.006;
+    gExtraLod = lod;
     vec3 c;
-    c.r = sampleAt(u + dir * ca, lod).r;
-    c.g = sampleAt(u, lod).g;
-    c.b = sampleAt(u - dir * ca, lod).b;
+    if (uStudio > 0.5) {
+        // The editor's look: its colour and effects in its order (see studioImage).
+        float bw = 1.0;
+        if (uBlurFocus > 0.0) {
+            vec2 ua = vec2(aspect, 1.0);
+            float r = length((u - 0.5) * ua) / (0.5 * length(ua));
+            bw = smoothstep(uBlurFocus * 0.7, uBlurFocus * 0.7 + 0.45, r);
+        }
+        c = studioImage(q, bw);
+    } else {
+        vec2 dir = u - 0.5;
+        float ca = uAberration * 0.006;
+        c.r = sampleAt(u + dir * ca, lod).r;
+        c.g = sampleAt(u, lod).g;
+        c.b = sampleAt(u - dir * ca, lod).b;
 
-    // Softness and sharpening work on a 1080 p-sized neighbourhood at any output size.
-    float softLod = uBaseLod + lod + log2(uRefScale);
-    vec2 o1 = uImageTexel * (1.0 + 2.5 * max(uSoftness, 0.0)) * exp2(softLod);
-    vec2 ti = toImage(s);
-    vec3 blur = 0.25 * (textureLod(uImage, ti + vec2(o1.x, o1.y), softLod).rgb
-                      + textureLod(uImage, ti + vec2(-o1.x, o1.y), softLod).rgb
-                      + textureLod(uImage, ti + vec2(o1.x, -o1.y), softLod).rgb
-                      + textureLod(uImage, ti + vec2(-o1.x, -o1.y), softLod).rgb);
-    if (uSoftness > 0.0) c = mix(c, blur, min(uSoftness * 1.2, 1.0));
-    else c = c + (c - blur) * (-uSoftness) * 1.5;
-    c = clamp(c, 0.0, 1.0);
+        // Softness and sharpening work on a 1080 p-sized neighbourhood at any output size.
+        float softLod = uBaseLod + lod + log2(uRefScale);
+        vec2 o1 = uImageTexel * (1.0 + 2.5 * max(uSoftness, 0.0)) * exp2(softLod);
+        vec2 ti = toImage(s);
+        vec3 blur = 0.25 * (textureLod(uImage, ti + vec2(o1.x, o1.y), softLod).rgb
+                          + textureLod(uImage, ti + vec2(-o1.x, o1.y), softLod).rgb
+                          + textureLod(uImage, ti + vec2(o1.x, -o1.y), softLod).rgb
+                          + textureLod(uImage, ti + vec2(-o1.x, -o1.y), softLod).rgb);
+        if (uSoftness > 0.0) c = mix(c, blur, min(uSoftness * 1.2, 1.0));
+        else c = c + (c - blur) * (-uSoftness) * 1.5;
+        c = clamp(c, 0.0, 1.0);
 
-    // ---- camera-movement blurs: soft, zoom, spin, motion. The centre can stay sharp.
-    if (uBlurMode > 0 && uBlur > 0.0) {
-        vec2 ua = vec2(aspect, 1.0);
-        vec2 d = (u - 0.5) * ua;
-        float r = length(d) / (0.5 * length(ua));                       // 0 centre, 1 corner
-        float w = uBlurFocus > 0.0 ? smoothstep(uBlurFocus * 0.7, uBlurFocus * 0.7 + 0.45, r) : 1.0;
-        if (w > 0.001) {
-            float jitter = rnd(uvec3(uvec2(gl_FragCoord.xy + uTileOffset), uSeed + 61u));
-            float span = uBlur * w * (uBlurMode == 1 ? 0.06 : uBlurMode == 4 ? 0.15 : 0.12 * max(r, 0.2));
-            // Sample from a mip level matching the tap spacing, so the streaks stay smooth.
-            float imagePx = 1.0 / min(uImageTexel.x, uImageTexel.y);
-            float blurLod = max(0.0, log2(span * imagePx / 12.0) - 0.5);
-            vec3 acc = vec3(0.0);
-            for (int i = 0; i < 12; i++) {
-                float t = (float(i) + jitter) / 12.0 - 0.5;
-                vec2 p;
-                if (uBlurMode == 2) {
-                    p = 0.5 + (u - 0.5) * (1.0 + t * uBlur * 0.32 * w);
-                } else if (uBlurMode == 3) {
-                    float a = t * uBlur * 0.55 * w;
-                    p = 0.5 + vec2(d.x * cos(a) - d.y * sin(a), d.x * sin(a) + d.y * cos(a)) / ua;
-                } else if (uBlurMode == 4) {
-                    p = u + uBlurDir / ua * t * uBlur * 0.15 * w;
-                } else {
-                    float ang = float(i) * 2.39996 + jitter * 6.2832;
-                    float rad = sqrt((float(i) + 0.5) / 12.0) * uBlur * 0.03 * w;
-                    p = u + vec2(cos(ang), sin(ang)) * rad / ua;
+        // ---- camera-movement blurs: soft, zoom, spin, motion. The centre can stay sharp.
+        if (uBlurMode > 0 && uBlur > 0.0) {
+            vec2 ua = vec2(aspect, 1.0);
+            vec2 d = (u - 0.5) * ua;
+            float r = length(d) / (0.5 * length(ua));                       // 0 centre, 1 corner
+            float w = uBlurFocus > 0.0 ? smoothstep(uBlurFocus * 0.7, uBlurFocus * 0.7 + 0.45, r) : 1.0;
+            if (w > 0.001) {
+                float jitter = rnd(uvec3(uvec2(gl_FragCoord.xy + uTileOffset), uSeed + 61u));
+                float span = uBlur * w * (uBlurMode == 1 ? 0.06 : uBlurMode == 4 ? 0.15 : 0.12 * max(r, 0.2));
+                // Sample from a mip level matching the tap spacing, so the streaks stay smooth.
+                float imagePx = 1.0 / min(uImageTexel.x, uImageTexel.y);
+                float blurLod = max(0.0, log2(span * imagePx / 12.0) - 0.5);
+                vec3 acc = vec3(0.0);
+                for (int i = 0; i < 12; i++) {
+                    float t = (float(i) + jitter) / 12.0 - 0.5;
+                    vec2 p;
+                    if (uBlurMode == 2) {
+                        p = 0.5 + (u - 0.5) * (1.0 + t * uBlur * 0.32 * w);
+                    } else if (uBlurMode == 3) {
+                        float a = t * uBlur * 0.55 * w;
+                        p = 0.5 + vec2(d.x * cos(a) - d.y * sin(a), d.x * sin(a) + d.y * cos(a)) / ua;
+                    } else if (uBlurMode == 4) {
+                        p = u + uBlurDir / ua * t * uBlur * 0.15 * w;
+                    } else {
+                        float ang = float(i) * 2.39996 + jitter * 6.2832;
+                        float rad = sqrt((float(i) + 0.5) / 12.0) * uBlur * 0.03 * w;
+                        p = u + vec2(cos(ang), sin(ang)) * rad / ua;
+                    }
+                    acc += sampleLod(p, lodOf(lod) + blurLod);
                 }
-                acc += sampleLod(p, lodOf(lod) + blurLod);
+                c = acc / 12.0;
             }
-            c = acc / 12.0;
         }
     }
 
@@ -649,7 +872,7 @@ void main() {
     if (uInterlace > 0.0) {
         float field = floor(f.y * framePx.y / max(1.0, framePx.y / 540.0));
         if (mod(field, 2.0) > 0.5) {
-            vec3 prev = textureLod(uPrevImage, toImage(s), lodOf(lod)).rgb;
+            vec3 prev = graded(textureLod(uPrevImage, toImage(s), lodOf(lod)).rgb);
             c = mix(c, prev, uInterlace);
         }
     }
@@ -658,7 +881,7 @@ void main() {
     if (uVhs > 0.0) {
         vec3 cc = vec3(0.0);
         for (int i = 1; i <= 4; i++) cc += sampleAt(u - vec2(0.0035 * float(i), 0.0), lod + 0.5);
-        cc *= 0.25;
+        cc = graded(cc * 0.25);
         mat3 toYiq = mat3(0.299, 0.596, 0.211, 0.587, -0.274, -0.523, 0.114, -0.322, 0.312);
         mat3 toRgb = mat3(1.0, 1.0, 1.0, 0.956, -0.272, -1.106, 0.621, -0.647, 1.703);
         vec3 yiq = toYiq * c;
@@ -670,14 +893,14 @@ void main() {
     // ---- stereo split: left eye in red, right eye in cyan
     if (uAnaglyph > 0.0) {
         float off = 0.004 + 0.016 * uAnaglyph;
-        vec3 le = sampleAt(u + vec2(off, 0.0), lod);
-        vec3 re = sampleAt(u - vec2(off, 0.0), lod);
+        vec3 le = graded(sampleAt(u + vec2(off, 0.0), lod));
+        vec3 re = graded(sampleAt(u - vec2(off, 0.0), lod));
         c = mix(c, vec3(dot(le, LUMA), re.g, re.b), min(1.0, uAnaglyph * 2.0));
     }
 
     // ---- prism ghost: a faint shifted copy tinted by the spectrum
     if (uPrism > 0.0) {
-        vec3 ghost = sampleAt(u + uPrismGhost, lod + 1.0);
+        vec3 ghost = graded(sampleAt(u + uPrismGhost, lod + 1.0));
         vec3 tint = spectrum(dot(cp - uPrismBand.xy, uPrismBand.zw) * 1.6 + uTime * 0.03);
         c = screenBlend(c, ghost * tint * 0.4 * uPrism);
     }
@@ -686,10 +909,13 @@ void main() {
     float l0 = dot(c * c, LUMA);
     float self = l0 * smoothstep(uHalThreshold, uHalThreshold + 0.3, l0);
 
-    // ---- emulsion
-    if (uExposureGain != 1.0) c = linearToSrgb(srgbToLinear(clamp(c, 0.0, 1.0)) * uExposureGain);
-    vec3 stock = uLutOn > 0.5 ? applyLut(c) : grade(c);
-    c = mix(c, stock, uIntensity);
+    // ---- emulsion (a studio look's colour is already in)
+    if (uStudio < 0.5) {
+        if (uExposureGain != 1.0) c = linearToSrgb(srgbToLinear(clamp(c, 0.0, 1.0)) * uExposureGain);
+        vec3 stock = uLutOn > 0.5 ? applyLut(c) : grade(c);
+        c = mix(c, stock, uIntensity);
+        if (uNoise > 0.0) c += noiseAt(q);
+    }
     if (uStyleOn > 0.5) c = photoStyle(c);
     if (dot(abs(uAdjA), vec4(1.0)) + dot(abs(uAdjB), vec4(1.0)) > 0.0) {
         float localLuma = uAdjB.w != 0.0 ? dot(sampleAt(u, 4.5), LUMA) : 0.0;
@@ -697,32 +923,34 @@ void main() {
     }
 
     // ---- halation, bloom and streaks, as light (then back to display space)
-    vec3 gT = texture(uGlowTight, s).rgb;
-    vec3 gW = texture(uGlowWide, s).rgb;
-    vec3 lin = c * c;
-    // Halation is light bouncing off the film base back into the red layer: a warm
-    // fringe *around* highlights, so take the spread glow minus the highlight itself.
-    float glowAround = dot(gT * 0.5 + gW * 0.5, LUMA);
-    float halo = max(glowAround - self * 0.9, 0.0);
-    lin += uHalColor * halo * uHalation * 2.6;
-    if (uStreak > 0.0) {
-        // A point light spread this wide is faint, a window is not: compress the response
-        // so both read as a streak and neither blows out.
-        float st = dot(texture(uStreakTex, s).rgb, LUMA);
-        st = (1.0 - exp(-st * 14.0)) * 0.55;
-        lin += mix(vec3(0.35, 0.55, 1.0), vec3(0.8), uMono) * st * uStreak;
+    if (uStudio < 0.5) {
+        vec3 gT = texture(uGlowTight, s).rgb;
+        vec3 gW = texture(uGlowWide, s).rgb;
+        vec3 lin = c * c;
+        // Halation is light bouncing off the film base back into the red layer: a warm
+        // fringe *around* highlights, so take the spread glow minus the highlight itself.
+        float glowAround = dot(gT * 0.5 + gW * 0.5, LUMA);
+        float halo = max(glowAround - self * 0.9, 0.0);
+        lin += uHalColor * halo * uHalation * 2.6;
+        if (uStreak > 0.0) {
+            // A point light spread this wide is faint, a window is not: compress the response
+            // so both read as a streak and neither blows out.
+            float st = dot(texture(uStreakTex, s).rgb, LUMA);
+            st = (1.0 - exp(-st * 14.0)) * 0.55;
+            lin += mix(vec3(0.35, 0.55, 1.0), vec3(0.8), uMono) * st * uStreak;
+        }
+        vec3 bloomCol = mix(gW, vec3(dot(gW, LUMA)), uMono);
+        lin = 1.0 - (1.0 - clamp(lin, 0.0, 1.0)) * (1.0 - clamp(bloomCol * uBloom * 0.7, 0.0, 1.0));
+        if (uDiffusion > 0.0) {
+            // Mist filter: a soft copy of the whole picture laid over it. Highlights spread,
+            // shadows lift and contrast drops, like shooting through a diffusion glass.
+            vec3 dif = texture(uDiffuseTex, s).rgb;
+            dif = mix(dif, vec3(dot(dif, LUMA)), uMono);
+            lin = mix(lin, dif, uDiffusion * 0.18);
+            lin = 1.0 - (1.0 - clamp(lin, 0.0, 1.0)) * (1.0 - clamp(dif * dif * 1.1 * uDiffusion, 0.0, 1.0));
+        }
+        c = sqrt(max(lin, 0.0));
     }
-    vec3 bloomCol = mix(gW, vec3(dot(gW, LUMA)), uMono);
-    lin = 1.0 - (1.0 - clamp(lin, 0.0, 1.0)) * (1.0 - clamp(bloomCol * uBloom * 0.7, 0.0, 1.0));
-    if (uDiffusion > 0.0) {
-        // Mist filter: a soft copy of the whole picture laid over it. Highlights spread,
-        // shadows lift and contrast drops, like shooting through a diffusion glass.
-        vec3 dif = texture(uDiffuseTex, s).rgb;
-        dif = mix(dif, vec3(dot(dif, LUMA)), uMono);
-        lin = mix(lin, dif, uDiffusion * 0.18);
-        lin = 1.0 - (1.0 - clamp(lin, 0.0, 1.0)) * (1.0 - clamp(dif * dif * 1.1 * uDiffusion, 0.0, 1.0));
-    }
-    c = sqrt(max(lin, 0.0));
 
     // ---- on-camera flash: hot centre, fast fall-off
     if (uFlash > 0.0) {
@@ -731,8 +959,24 @@ void main() {
         c = mix(c, c * c * (3.0 - 2.0 * c), uFlash * 0.35);
     }
 
+    // The editor's finishes work in picture pixels, y down.
+    vec2 Pp = vec2(cp.x, 1.0 - cp.y) * gContent;
+    float W = gContent.x, H = gContent.y;
+
     // ---- light leaks: exposures that sneaked in from the edges
-    if (uLeak > 0.0) {
+    if (uLeak > 0.0 && uStudio > 0.5) {
+        // Three soft blobs of light from the left edge, drifting and pulsing.
+        float y1 = H * (0.36 + sin(uTime * 0.45) * 0.12), y2 = H * (0.78 + sin(uTime * 0.6 + 2.0) * 0.08);
+        vec3 lc = vec3(1.0, 90.0 / 255.0, 31.0 / 255.0), pink = vec3(1.0, 40.0 / 255.0, 90.0 / 255.0);
+        vec4 b1 = leakBlob(Pp, vec2(-W * 0.04, y1), vec2(W * 0.62, H * 0.7), lc, 0.95, 0.45, lc, 0.4, 0.0);
+        vec4 b2 = leakBlob(Pp, vec2(-W * 0.02, y2), vec2(W * 0.45, H * 0.4), pink, 0.7, 0.5, pink, 0.22, 0.0);
+        vec4 b3 = leakBlob(Pp, vec2(-W * 0.03, y1 + H * 0.04), vec2(W * 0.2, H * 0.32), vec3(1.0, 236.0 / 255.0, 190.0 / 255.0),
+                           0.95, 0.6, vec3(1.0, 190.0 / 255.0, 120.0 / 255.0), 0.35, 0.0);
+        float k = uLeak * (0.78 + 0.22 * sin(uTime * 1.3));
+        c = screenA(c, b1.rgb, b1.a * k);
+        c = screenA(c, b2.rgb, b2.a * k);
+        c = screenA(c, b3.rgb, b3.a * k);
+    } else if (uLeak > 0.0) {
         vec3 leak = vec3(0.0);
         vec2 qq = cp * asp;
         for (int i = 0; i < 3; i++) {
@@ -758,13 +1002,25 @@ void main() {
     }
 
     // ---- vignette
-    c *= mix(1.0, 1.0 - smoothstep(0.3, 1.15, cornerDist) * 0.85, uVignette);
+    if (uStudio > 0.5) {
+        float r0 = min(W, H) * 0.25, r1 = length(vec2(W, H)) * 0.5;
+        c *= 1.0 - clamp((length(Pp - vec2(W, H) * 0.5) - r0) / (r1 - r0), 0.0, 1.0) * uVignette * 0.75;
+    } else {
+        c *= mix(1.0, 1.0 - smoothstep(0.3, 1.15, cornerDist) * 0.85, uVignette);
+    }
 
     // ---- flicker and colour density pumping
     c *= uGain;
 
     // ---- grain: two octaves of value noise, strongest in the mid-tones
-    if (uGrain > 0.0) {
+    if (uGrain > 0.0 && uStudio > 0.5) {
+        // The editor's grain: grey cells laid on with an overlay blend.
+        vec2 cell = floor(Pp / max(1.0, uGrainSize * min(W, H) / 1080.0));
+        float g = rnd(uvec3(uvec2(ivec2(cell) + 8192), uSeed + 83u));
+        vec3 d = clamp(c, 0.0, 1.0);
+        vec3 ov = mix(2.0 * d * g, 1.0 - 2.0 * (1.0 - d) * (1.0 - g), step(0.5, d));
+        c = mix(d, ov, min(uGrain, 1.0) * 0.55);
+    } else if (uGrain > 0.0) {
         vec2 gp = cp * L.size * (1080.0 / uGrainSize);       // short side = 1080 px
         float g = (vnoise(gp, uSeed) - 0.5) + 0.55 * (vnoise(gp * 2.17 + 13.7, uSeed + 7u) - 0.5);
         // Clumping: grain is not uniform, it gathers in soft patches.
@@ -791,7 +1047,38 @@ void main() {
     }
 
     // ---- dust and scratches
-    if (uDust > 0.0) {
+    if (uDust > 0.0 && uStudio > 0.5) {
+        // Specks dealt 12 times a second (as many as on a 1080 p picture), and a few thin
+        // scratches that stay for 9 of those frames.
+        uint frame = uint(max(uTime, 0.0) * 12.0);
+        float area = 1080.0 * 1080.0 * max(W, H) / min(W, H);
+        float n = floor(min(uDust, 1.0) * (10.0 + 34.0 * area / (1080.0 * 1350.0)));
+        for (int i = 0; i < 60; i++) {
+            if (float(i) >= n) break;
+            uvec3 h = uvec3(uint(i), frame, 0x5eedu);
+            vec2 sc = vec2(rnd(h), rnd(h + uvec3(0u, 0u, 1u))) * vec2(W, H);
+            float rr = gM * (0.0007 + pow(rnd(h + uvec3(0u, 0u, 2u)), 3.0) * 0.0045);
+            float e = length((Pp - sc) / vec2(rr, rr * (0.5 + rnd(h + uvec3(0u, 0u, 3u)) * 0.7)));
+            if (e < 1.0) {
+                bool white = rnd(h + uvec3(0u, 0u, 4u)) < 0.6;
+                c = mix(c, white ? vec3(1.0, 252.0 / 255.0, 240.0 / 255.0) : vec3(14.0, 10.0, 6.0) / 255.0,
+                        white ? 0.45 + rnd(h + uvec3(0u, 0u, 5u)) * 0.5 : 0.4 + rnd(h + uvec3(0u, 0u, 6u)) * 0.5);
+            }
+        }
+        uint blk = frame / 9u;
+        float lines = floor(min(uDust, 1.0) * 2.5 + rnd(uvec3(blk, 7u, 0x5eedu)) * 1.2);
+        for (int i = 0; i < 4; i++) {
+            if (float(i) >= lines) break;
+            uvec3 h = uvec3(uint(i), blk, 0xcafeu);
+            float x = rnd(h) * W + (rnd(uvec3(uint(i), frame, 0xbeefu)) - 0.5) * gM * 0.003;
+            float lw = gM * (0.0006 + rnd(h + uvec3(0u, 0u, 1u)) * 0.0012);
+            bool seg = rnd(uvec3(uint(floor(Pp.y / (H * 0.2))), blk * 4u + uint(i), 0xfaceu)) >= 0.35;
+            if (abs(Pp.x - x) < lw * 0.5 && seg) {
+                c = mix(c, rnd(h + uvec3(0u, 0u, 2u)) < 0.75 ? vec3(1.0, 252.0 / 255.0, 240.0 / 255.0) : vec3(10.0, 8.0, 6.0) / 255.0,
+                        0.2 + rnd(h + uvec3(0u, 0u, 3u)) * 0.3);
+            }
+        }
+    } else if (uDust > 0.0) {
         vec2 dp = cp * asp * 16.0;
         vec2 cell = floor(dp);
         uvec3 h = uvec3(uvec2(ivec2(cell) + 4096), uSeed);

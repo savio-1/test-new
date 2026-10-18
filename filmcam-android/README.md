@@ -118,13 +118,19 @@ Burn text into video while you record, and into photos.
     ("Cutting out people", "No person in view", "Subject out of view") or why it couldn't
     start, so a text that isn't going behind anything is never silent about it.
   - **How it's cut out:** each frame is segmented on the phone, with no network. DeepLab v3
-    finds people, animals and vehicles; around people, MediaPipe's selfie model adds the soft
-    edge of hair. A picked subject is followed frame to frame by its outline, so it stays the
-    subject as it moves, and someone walking past it is not.
+    finds people, animals and vehicles; around people, MediaPipe's selfie model draws their
+    edge. A picked subject is followed frame to frame by its outline, so it stays the subject as
+    it moves, and someone walking past it is not.
+  - **Close to the subject, firm round hair:** the text is cut at the person's own edge, so it
+    sits right against a face, an ear or a shoulder. Only where there is hair is the cut-out
+    firmed up: MediaPipe's multiclass selfie model (every third frame) finds the hair, and there
+    faint strands count as subject, the zone grows by about 1% of the frame and is held for a
+    few frames as it fades, so flyaway or moving hair never lets text peep through. No hair
+    (or no hair model) means no margin anywhere.
   - **Timing:** segmentation runs alongside the film passes. The frame waits up to 12 ms for
     its own cut-out, so a moving subject and its cut-out stay together. If the model is slower
     on a phone, the cut-out lands one frame later. Photos wait for their own cut-out.
-  - **On the CPU:** both models run on the phone's CPU (XNNPACK), at 256 pixels on the long
+  - **On the CPU:** the models run on the phone's CPU (XNNPACK), at 256 pixels on the long
     side. MediaPipe's GPU delegate is not used: on phones where it can't start, its GL thread
     takes the whole app down a few seconds later.
 
@@ -406,6 +412,31 @@ The **Custom** tab holds creators' grades and your own LUTs.
   it comes from the phone (Rec.709 / sRGB), live, in video and photos. Any size and
   `DOMAIN_MIN`/`DOMAIN_MAX` are read; 1D LUTs aren't. The selected imported look has a ×
   to remove it.
+
+## Studio looks
+
+The photo editor's own looks, in five tabs that follow its shelves: **Studio Film** (21:
+Film, Gold 200, Portrait 400, Tungsten 800, Super 8, Cinema, Light leak...), **Studio Colour**
+(Vivid, Warm, Cool, Fade, Dreamy, Punch), **Studio B&W** (B&W, Pan 400, Soft B&W, Noir, Sepia,
+Xerox), **Studio Print** (Halftone, Fine dots, Duo blue, Duo pink, Duo dots, Photocopy, Riso)
+and **Studio FX** (Motion, Gym grit, Ghost, Noise, Haze, Zoom burst, Spin, Tilt-shift, Double,
+Fisheye, Lens). The editor's Original is the app's own Original.
+
+- **Colour:** each look's colour and tone (exposure, contrast, highlights, split tone, cross
+  process, duotone...) is the editor's own maths, baked into the look's LUT
+  (`tools/studio-looks/studiolab.py`; within half a level of the editor's `.cube` files).
+- **Everything else is drawn the editor's way** (`FilmLook.studio`): grain laid on with an
+  overlay blend, its vignette, bloom and two-halo halation from the graded picture, its light
+  leak, dust and scratches, fringing, sharpening and clarity, motion / zoom / spin blurs,
+  double exposure, tilt-shift, fisheye, halftone dots, two-tone threshold and digital noise.
+  Every size is a share of the frame, so the viewfinder, a 4K video and a 200 MP photo look
+  the same. Grain, noise, leak and dust move from frame to frame in video.
+- **Checked against the editor:** rendered through the app's shaders by `tools/look-preview`
+  and compared with the editor's own renders of the same photo: 40 dB and up (no visible
+  difference) for the colour, film and B&W looks; the blur and dot looks differ only where the
+  editor averages its copies in 8 bits, as its own GPU version does.
+- **Adjust works on them:** grain, vignette, halation, bloom, leaks, dust, fringing, sharpness,
+  clarity, fisheye and the blurs change the look's own effects; the Basic tools go on top.
 
 ## Genesis
 
@@ -755,6 +786,7 @@ Camera2 stream (up to 8K) ──► SurfaceTexture (OES) ─┐
 | `camera/LogCurve.kt` | The S-Log3 and HLG curves, the view assist and the .cube LUTs |
 | `film/PhotoStyle.kt` | Photographic styles (kept in the engine; the tab was removed) |
 | `tools/film-lab` | The negative + print model and `stocks.json`; bakes `assets/luts` |
+| `tools/studio-looks` | The editor's looks (`looks.json`): their LUTs, tiles and `StudioLooks.kt` |
 | `ui/Controls.kt` | The gentle press on every tap, and the slim slider |
 | `record/VideoRecorder.kt` | Codec choice, MP4 muxing, microphone or copied audio |
 | `record/VideoExporter.kt` | Imported clips: preview playback, and developing them frame by frame |

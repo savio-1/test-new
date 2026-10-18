@@ -1,0 +1,883 @@
+{
+  "version": 1,
+  "shelves": [
+    {
+      "id": "film",
+      "name": "Film",
+      "looks": [
+        "film",
+        "gold",
+        "portrait",
+        "vivid100",
+        "green400",
+        "tungsten",
+        "halation",
+        "slide",
+        "expired",
+        "disposable",
+        "instant",
+        "super8",
+        "cinema",
+        "twostrip",
+        "crossp",
+        "bleach",
+        "overexposed",
+        "pushed",
+        "lightleak",
+        "negative",
+        "vintage"
+      ]
+    },
+    {
+      "id": "colour",
+      "name": "Colour",
+      "looks": [
+        "original",
+        "vivid",
+        "warm",
+        "cool",
+        "fade",
+        "dreamy",
+        "punch"
+      ]
+    },
+    {
+      "id": "mono",
+      "name": "B&W",
+      "looks": [
+        "bw",
+        "pan400",
+        "softbw",
+        "noir",
+        "sepia",
+        "xerox"
+      ]
+    },
+    {
+      "id": "print",
+      "name": "Print",
+      "looks": [
+        "halftone",
+        "halftoneFine",
+        "duoBlue",
+        "duoPink",
+        "duoDots",
+        "photocopy",
+        "riso"
+      ]
+    },
+    {
+      "id": "fx",
+      "name": "Effects",
+      "looks": [
+        "motion",
+        "grit",
+        "ghost",
+        "noisy",
+        "haze",
+        "zoomburst",
+        "spin",
+        "tilt",
+        "double",
+        "fisheye",
+        "lens"
+      ]
+    }
+  ],
+  "looks": {
+    "film": {
+      "id": "film",
+      "name": "Film",
+      "shelf": "film",
+      "params": {
+        "fade": 22,
+        "warmth": 10,
+        "contrast": 10,
+        "saturation": -8,
+        "grain": 45
+      },
+      "passes": [
+        "grain"
+      ]
+    },
+    "gold": {
+      "id": "gold",
+      "name": "Gold 200",
+      "shelf": "film",
+      "params": {
+        "warmth": 22,
+        "saturation": 12,
+        "contrast": 8,
+        "fade": 10,
+        "highlights": -15,
+        "splitTone": 30,
+        "toneShadow": "#5a3a2a",
+        "toneHigh": "#ffc46b",
+        "grain": 30,
+        "vignette": 18
+      },
+      "passes": [
+        "vignette",
+        "grain"
+      ]
+    },
+    "portrait": {
+      "id": "portrait",
+      "name": "Portrait 400",
+      "shelf": "film",
+      "params": {
+        "contrast": -8,
+        "saturation": -10,
+        "warmth": 12,
+        "tint": 6,
+        "fade": 18,
+        "shadows": 20,
+        "highlights": -20,
+        "splitTone": 25,
+        "toneShadow": "#3d6a6e",
+        "toneHigh": "#ffcfa8",
+        "grain": 25
+      },
+      "passes": [
+        "grain"
+      ]
+    },
+    "vivid100": {
+      "id": "vivid100",
+      "name": "Vivid 100",
+      "shelf": "film",
+      "params": {
+        "contrast": 18,
+        "saturation": 30,
+        "vibrance": 20,
+        "warmth": 6,
+        "sharpen": 30,
+        "grain": 12
+      },
+      "passes": [
+        "sharpen",
+        "grain"
+      ]
+    },
+    "green400": {
+      "id": "green400",
+      "name": "Green 400",
+      "shelf": "film",
+      "params": {
+        "tint": -14,
+        "warmth": -4,
+        "contrast": 10,
+        "saturation": 8,
+        "splitTone": 35,
+        "toneShadow": "#1f6b5a",
+        "toneHigh": "#f3e6c0",
+        "fade": 12,
+        "grain": 35
+      },
+      "passes": [
+        "grain"
+      ]
+    },
+    "tungsten": {
+      "id": "tungsten",
+      "name": "Tungsten 800",
+      "shelf": "film",
+      "params": {
+        "warmth": -24,
+        "tint": 4,
+        "contrast": 12,
+        "halation": 70,
+        "shadows": 10,
+        "splitTone": 30,
+        "toneShadow": "#14425a",
+        "toneHigh": "#ffd2a0",
+        "grain": 40
+      },
+      "passes": [
+        "halation",
+        "grain"
+      ]
+    },
+    "halation": {
+      "id": "halation",
+      "name": "Halation",
+      "shelf": "film",
+      "params": {
+        "halation": 55,
+        "warmth": 14,
+        "fade": 10,
+        "contrast": 8,
+        "grain": 30,
+        "vignette": 20
+      },
+      "passes": [
+        "halation",
+        "vignette",
+        "grain"
+      ]
+    },
+    "slide": {
+      "id": "slide",
+      "name": "Slide 50",
+      "shelf": "film",
+      "params": {
+        "contrast": 28,
+        "saturation": 38,
+        "vibrance": 15,
+        "blacks": -20,
+        "warmth": -4,
+        "tint": -6,
+        "vignette": 25
+      },
+      "passes": [
+        "vignette"
+      ]
+    },
+    "expired": {
+      "id": "expired",
+      "name": "Expired",
+      "shelf": "film",
+      "params": {
+        "fade": 35,
+        "tint": 22,
+        "warmth": 20,
+        "contrast": -14,
+        "saturation": -18,
+        "splitTone": 40,
+        "toneShadow": "#5b2d6b",
+        "toneHigh": "#ffe08a",
+        "grain": 55,
+        "dust": 35,
+        "vignette": 30
+      },
+      "passes": [
+        "vignette",
+        "grain",
+        "dust"
+      ]
+    },
+    "disposable": {
+      "id": "disposable",
+      "name": "Disposable",
+      "shelf": "film",
+      "params": {
+        "contrast": 22,
+        "saturation": 10,
+        "tint": -10,
+        "warmth": 10,
+        "vignette": 45,
+        "chroma": 40,
+        "grain": 45,
+        "highlights": 15,
+        "sharpen": 20
+      },
+      "passes": [
+        "sharpen",
+        "chroma",
+        "vignette",
+        "grain"
+      ]
+    },
+    "instant": {
+      "id": "instant",
+      "name": "Instant",
+      "shelf": "film",
+      "params": {
+        "fade": 28,
+        "contrast": -12,
+        "saturation": -15,
+        "warmth": 14,
+        "tint": 10,
+        "highlights": -25,
+        "splitTone": 35,
+        "toneShadow": "#2d5d7a",
+        "toneHigh": "#ffe6b3",
+        "bloom": 25,
+        "vignette": 22
+      },
+      "passes": [
+        "bloom",
+        "vignette"
+      ]
+    },
+    "super8": {
+      "id": "super8",
+      "name": "Super 8",
+      "shelf": "film",
+      "params": {
+        "warmth": 26,
+        "fade": 22,
+        "contrast": 10,
+        "saturation": -6,
+        "bloom": 30,
+        "blur": 0.6,
+        "vignette": 50,
+        "grain": 60,
+        "grainSize": 40,
+        "chroma": 25,
+        "halation": 30
+      },
+      "passes": [
+        "bloom",
+        "halation",
+        "chroma",
+        "blur",
+        "vignette",
+        "grain"
+      ]
+    },
+    "cinema": {
+      "id": "cinema",
+      "name": "Cinema",
+      "shelf": "film",
+      "params": {
+        "splitTone": 70,
+        "toneShadow": "#0e6b7a",
+        "toneHigh": "#ffa155",
+        "contrast": 16,
+        "saturation": 6,
+        "shadows": 8,
+        "vignette": 20,
+        "grain": 20
+      },
+      "passes": [
+        "vignette",
+        "grain"
+      ]
+    },
+    "twostrip": {
+      "id": "twostrip",
+      "name": "Two-strip",
+      "shelf": "film",
+      "params": {
+        "saturation": -35,
+        "splitTone": 90,
+        "toneShadow": "#0f7a86",
+        "toneHigh": "#ff6a3d",
+        "contrast": 14,
+        "grain": 25
+      },
+      "passes": [
+        "grain"
+      ]
+    },
+    "crossp": {
+      "id": "crossp",
+      "name": "Cross process",
+      "shelf": "film",
+      "params": {
+        "cross": 80,
+        "saturation": 20,
+        "contrast": 6,
+        "grain": 20
+      },
+      "passes": [
+        "grain"
+      ]
+    },
+    "bleach": {
+      "id": "bleach",
+      "name": "Bleach bypass",
+      "shelf": "film",
+      "params": {
+        "saturation": -55,
+        "contrast": 40,
+        "clarity": 40,
+        "blacks": -10,
+        "sharpen": 25,
+        "grain": 25
+      },
+      "passes": [
+        "sharpen",
+        "clarity",
+        "grain"
+      ]
+    },
+    "overexposed": {
+      "id": "overexposed",
+      "name": "Overexposed",
+      "shelf": "film",
+      "params": {
+        "exposure": 25,
+        "highlights": -30,
+        "fade": 15,
+        "saturation": -10,
+        "warmth": 10,
+        "contrast": -10,
+        "bloom": 40,
+        "grain": 30
+      },
+      "passes": [
+        "bloom",
+        "grain"
+      ]
+    },
+    "pushed": {
+      "id": "pushed",
+      "name": "Pushed",
+      "shelf": "film",
+      "params": {
+        "exposure": -12,
+        "contrast": 25,
+        "shadows": -10,
+        "grain": 70,
+        "grainSize": 30,
+        "saturation": -10,
+        "vignette": 25
+      },
+      "passes": [
+        "vignette",
+        "grain"
+      ]
+    },
+    "lightleak": {
+      "id": "lightleak",
+      "name": "Light leak",
+      "shelf": "film",
+      "params": {
+        "warmth": 16,
+        "fade": 16,
+        "contrast": 4,
+        "leak": 70,
+        "grain": 35,
+        "vignette": 20
+      },
+      "passes": [
+        "leak",
+        "vignette",
+        "grain"
+      ]
+    },
+    "negative": {
+      "id": "negative",
+      "name": "Negative",
+      "shelf": "film",
+      "params": {
+        "negative": 100,
+        "contrast": -10,
+        "grain": 25
+      },
+      "passes": [
+        "grain"
+      ]
+    },
+    "vintage": {
+      "id": "vintage",
+      "name": "Vintage",
+      "shelf": "film",
+      "params": {
+        "sepia": 35,
+        "fade": 30,
+        "warmth": 18,
+        "contrast": -6,
+        "vignette": 35,
+        "grain": 30
+      },
+      "passes": [
+        "vignette",
+        "grain"
+      ]
+    },
+    "original": {
+      "id": "original",
+      "name": "Original",
+      "shelf": "colour",
+      "params": {},
+      "passes": []
+    },
+    "vivid": {
+      "id": "vivid",
+      "name": "Vivid",
+      "shelf": "colour",
+      "params": {
+        "saturation": 35,
+        "contrast": 12
+      },
+      "passes": []
+    },
+    "warm": {
+      "id": "warm",
+      "name": "Warm",
+      "shelf": "colour",
+      "params": {
+        "warmth": 35,
+        "saturation": 8
+      },
+      "passes": []
+    },
+    "cool": {
+      "id": "cool",
+      "name": "Cool",
+      "shelf": "colour",
+      "params": {
+        "warmth": -30,
+        "contrast": 6
+      },
+      "passes": []
+    },
+    "fade": {
+      "id": "fade",
+      "name": "Fade",
+      "shelf": "colour",
+      "params": {
+        "fade": 45,
+        "contrast": -12,
+        "saturation": -10
+      },
+      "passes": []
+    },
+    "dreamy": {
+      "id": "dreamy",
+      "name": "Dreamy",
+      "shelf": "colour",
+      "params": {
+        "brightness": 10,
+        "fade": 25,
+        "saturation": -12
+      },
+      "passes": []
+    },
+    "punch": {
+      "id": "punch",
+      "name": "Punch",
+      "shelf": "colour",
+      "params": {
+        "contrast": 30,
+        "saturation": 25,
+        "brightness": -4
+      },
+      "passes": []
+    },
+    "bw": {
+      "id": "bw",
+      "name": "B&W",
+      "shelf": "mono",
+      "params": {
+        "grayscale": 100,
+        "contrast": 12
+      },
+      "passes": []
+    },
+    "pan400": {
+      "id": "pan400",
+      "name": "Pan 400",
+      "shelf": "mono",
+      "params": {
+        "grayscale": 100,
+        "contrast": 30,
+        "clarity": 25,
+        "grain": 55,
+        "blacks": -10,
+        "vignette": 20
+      },
+      "passes": [
+        "clarity",
+        "vignette",
+        "grain"
+      ]
+    },
+    "softbw": {
+      "id": "softbw",
+      "name": "Soft B&W",
+      "shelf": "mono",
+      "params": {
+        "grayscale": 100,
+        "contrast": 6,
+        "fade": 20,
+        "grain": 40,
+        "bloom": 20
+      },
+      "passes": [
+        "bloom",
+        "grain"
+      ]
+    },
+    "noir": {
+      "id": "noir",
+      "name": "Noir",
+      "shelf": "mono",
+      "params": {
+        "grayscale": 100,
+        "contrast": 45,
+        "brightness": -8,
+        "vignette": 45,
+        "grain": 25
+      },
+      "passes": [
+        "vignette",
+        "grain"
+      ]
+    },
+    "sepia": {
+      "id": "sepia",
+      "name": "Sepia",
+      "shelf": "mono",
+      "params": {
+        "sepia": 85,
+        "contrast": 5
+      },
+      "passes": []
+    },
+    "xerox": {
+      "id": "xerox",
+      "name": "Xerox",
+      "shelf": "mono",
+      "params": {
+        "grayscale": 100,
+        "contrast": 60,
+        "brightness": 8,
+        "grain": 50,
+        "fade": 10
+      },
+      "passes": [
+        "grain"
+      ]
+    },
+    "halftone": {
+      "id": "halftone",
+      "name": "Halftone",
+      "shelf": "print",
+      "params": {
+        "grayscale": 100,
+        "contrast": 25,
+        "brightness": 12,
+        "halftone": 35
+      },
+      "passes": [
+        "halftone"
+      ]
+    },
+    "halftoneFine": {
+      "id": "halftoneFine",
+      "name": "Fine dots",
+      "shelf": "print",
+      "params": {
+        "grayscale": 100,
+        "contrast": 20,
+        "halftone": 12
+      },
+      "passes": [
+        "halftone"
+      ]
+    },
+    "duoBlue": {
+      "id": "duoBlue",
+      "name": "Duo blue",
+      "shelf": "print",
+      "params": {
+        "contrast": 15,
+        "duotone": true,
+        "duoDark": "#1b2a8f",
+        "duoLight": "#a9c4ff"
+      },
+      "passes": []
+    },
+    "duoPink": {
+      "id": "duoPink",
+      "name": "Duo pink",
+      "shelf": "print",
+      "params": {
+        "contrast": 15,
+        "duotone": true,
+        "duoDark": "#3a0d2c",
+        "duoLight": "#ff7ab6"
+      },
+      "passes": []
+    },
+    "duoDots": {
+      "id": "duoDots",
+      "name": "Duo dots",
+      "shelf": "print",
+      "params": {
+        "contrast": 20,
+        "duotone": true,
+        "duoDark": "#1b2a8f",
+        "duoLight": "#b8cdfa",
+        "halftone": 20
+      },
+      "passes": [
+        "halftone"
+      ]
+    },
+    "photocopy": {
+      "id": "photocopy",
+      "name": "Photocopy",
+      "shelf": "print",
+      "params": {
+        "contrast": 20,
+        "threshold": 50,
+        "grain": 35
+      },
+      "passes": [
+        "grain"
+      ]
+    },
+    "riso": {
+      "id": "riso",
+      "name": "Riso",
+      "shelf": "print",
+      "params": {
+        "contrast": 25,
+        "duotone": true,
+        "duoDark": "#f2542d",
+        "duoLight": "#fff3d6",
+        "halftone": 8,
+        "grain": 25
+      },
+      "passes": [
+        "halftone",
+        "grain"
+      ]
+    },
+    "motion": {
+      "id": "motion",
+      "name": "Motion",
+      "shelf": "fx",
+      "params": {
+        "motion": 45,
+        "contrast": 6
+      },
+      "passes": [
+        "motion"
+      ]
+    },
+    "grit": {
+      "id": "grit",
+      "name": "Gym grit",
+      "shelf": "fx",
+      "params": {
+        "grayscale": 100,
+        "contrast": 28,
+        "brightness": -6,
+        "motion": 55,
+        "noise": 55,
+        "vignette": 35
+      },
+      "passes": [
+        "noise",
+        "motion",
+        "vignette"
+      ]
+    },
+    "ghost": {
+      "id": "ghost",
+      "name": "Ghost",
+      "shelf": "fx",
+      "params": {
+        "motion": 70,
+        "motionAngle": 90,
+        "fade": 18,
+        "saturation": -20
+      },
+      "passes": [
+        "motion"
+      ]
+    },
+    "noisy": {
+      "id": "noisy",
+      "name": "Noise",
+      "shelf": "fx",
+      "params": {
+        "noise": 60,
+        "contrast": 10,
+        "fade": 8
+      },
+      "passes": [
+        "noise"
+      ]
+    },
+    "haze": {
+      "id": "haze",
+      "name": "Haze",
+      "shelf": "fx",
+      "params": {
+        "blur": 6,
+        "fade": 22,
+        "brightness": 8,
+        "noise": 30
+      },
+      "passes": [
+        "noise",
+        "blur"
+      ]
+    },
+    "zoomburst": {
+      "id": "zoomburst",
+      "name": "Zoom burst",
+      "shelf": "fx",
+      "params": {
+        "zoomBlur": 55,
+        "contrast": 10
+      },
+      "passes": [
+        "zoomBlur"
+      ]
+    },
+    "spin": {
+      "id": "spin",
+      "name": "Spin",
+      "shelf": "fx",
+      "params": {
+        "spinBlur": 45,
+        "contrast": 6
+      },
+      "passes": [
+        "spinBlur"
+      ]
+    },
+    "tilt": {
+      "id": "tilt",
+      "name": "Tilt-shift",
+      "shelf": "fx",
+      "params": {
+        "tiltShift": 60,
+        "saturation": 20,
+        "contrast": 8
+      },
+      "passes": [
+        "tiltShift"
+      ]
+    },
+    "double": {
+      "id": "double",
+      "name": "Double",
+      "shelf": "fx",
+      "params": {
+        "ghost": 45,
+        "motionAngle": 20,
+        "fade": 10
+      },
+      "passes": [
+        "ghost"
+      ]
+    },
+    "fisheye": {
+      "id": "fisheye",
+      "name": "Fisheye",
+      "shelf": "fx",
+      "params": {
+        "fisheye": 45,
+        "contrast": 6,
+        "saturation": 8
+      },
+      "passes": [
+        "fisheye"
+      ]
+    },
+    "lens": {
+      "id": "lens",
+      "name": "Lens",
+      "shelf": "fx",
+      "params": {
+        "fisheye": 35,
+        "warmth": 12,
+        "fade": 10,
+        "vignette": 30
+      },
+      "passes": [
+        "fisheye",
+        "vignette"
+      ]
+    }
+  }
+}

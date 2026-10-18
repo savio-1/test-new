@@ -30,6 +30,8 @@ class Tool(
 object Tools {
     private val onOff = listOf("Off", "On")
     private fun signed(v: Float) = "%+d".format((v * 100).roundToInt())
+    /** Studio looks draw their glows the editor's way, which has no halo size, mist or streaks. */
+    private val notStudio: (FilmLook) -> Boolean = { !it.studio }
 
     fun all(evMin: Float, evMax: Float): List<Tool> = listOf(
         // Basic: the everyday corrections, on top of any look (or the Original camera)
@@ -61,10 +63,10 @@ object Tools {
             options = ShutterSpeed.entries.map { it.label },
             get = { it.shutter.ordinal.toFloat() }, set = { l, v -> l.copy(shutter = ShutterSpeed.entries[v.roundToInt()]) }),
         Tool("halation", "Halation", Ico.Halation, ToolGroup.LIGHT, get = { it.halation }, set = { l, v -> l.copy(halation = v) }),
-        Tool("halsize", "Halo size", Ico.Size, ToolGroup.LIGHT, get = { it.halationSize }, set = { l, v -> l.copy(halationSize = v) }),
+        Tool("halsize", "Halo size", Ico.Size, ToolGroup.LIGHT, visible = notStudio, get = { it.halationSize }, set = { l, v -> l.copy(halationSize = v) }),
         Tool("bloom", "Bloom", Ico.Bloom, ToolGroup.LIGHT, get = { it.bloom }, set = { l, v -> l.copy(bloom = v) }),
-        Tool("diffusion", "Mist", Ico.Diffusion, ToolGroup.LIGHT, get = { it.diffusion }, set = { l, v -> l.copy(diffusion = v) }),
-        Tool("streak", "Streaks", Ico.Streak, ToolGroup.LIGHT, get = { it.streak }, set = { l, v -> l.copy(streak = v) }),
+        Tool("diffusion", "Mist", Ico.Diffusion, ToolGroup.LIGHT, visible = notStudio, get = { it.diffusion }, set = { l, v -> l.copy(diffusion = v) }),
+        Tool("streak", "Streaks", Ico.Streak, ToolGroup.LIGHT, visible = notStudio, get = { it.streak }, set = { l, v -> l.copy(streak = v) }),
         Tool("leak", "Leaks", Ico.Leak, ToolGroup.LIGHT, get = { it.lightLeak }, set = { l, v -> l.copy(lightLeak = v) }),
         Tool("prism", "Prism", Ico.Prism, ToolGroup.LIGHT, get = { it.prism }, set = { l, v -> l.copy(prism = v) }),
         Tool("flash", "Flash", Ico.FlashLook, ToolGroup.LIGHT, get = { it.flash }, set = { l, v -> l.copy(flash = v) }),
@@ -82,7 +84,7 @@ object Tools {
         Tool("aberration", "Fringing", Ico.Aberration, ToolGroup.LENS, get = { it.aberration }, set = { l, v -> l.copy(aberration = v) }),
         Tool("corners", "Toy lens", Ico.Corners, ToolGroup.LENS, get = { it.cornerBlur }, set = { l, v -> l.copy(cornerBlur = v) }),
         Tool("fisheye", "Fisheye", Ico.Fisheye, ToolGroup.LENS, get = { it.distortion }, set = { l, v -> l.copy(distortion = v) }),
-        Tool("circle", "Circle", Ico.Focus, ToolGroup.LENS, 0f, 1f, options = onOff,
+        Tool("circle", "Circle", Ico.Focus, ToolGroup.LENS, 0f, 1f, options = onOff, visible = notStudio,
             get = { if (it.circleMask) 1f else 0f }, set = { l, v -> l.copy(circleMask = v >= 0.5f) }),
         Tool("stereo", "3D", Ico.Stereo, ToolGroup.LENS, get = { it.anaglyph }, set = { l, v -> l.copy(anaglyph = v) }),
         // Motion

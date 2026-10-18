@@ -11,7 +11,7 @@ src = open(root + 'gl/Shaders.kt').read()
 consts = dict(re.findall(r'const val (\w+) = """(.*?)"""', src, re.S))
 for k, v in list(consts.items()):
     consts[k] = v.replace('$DEVELOP_BODY', consts['DEVELOP_BODY'])
-shaders = {k: consts[k] for k in ['VERTEX', 'DEVELOP_2D', 'DEVELOP_OES', 'TRAIL', 'BRIGHT', 'BLUR', 'FINAL']}
+shaders = {k: consts[k] for k in ['VERTEX', 'DEVELOP_2D', 'DEVELOP_OES', 'TRAIL', 'BRIGHT', 'BLUR', 'GAUSS', 'FINAL']}
 shaders['DEVELOP_2D_MRT'] = consts['DEVELOP_2D'].replace('precision highp float;', 'precision highp float;\n#define MRT 1', 1)
 
 
@@ -106,6 +106,24 @@ for cid, name, sub, cat, body, uniform_grain in found:
     if uniform_grain:   # cam(): a sharper lens than written
         if look.get('softness', 0) > 0: look['softness'] *= 0.6
         look['aberration'] = look.get('aberration', 0) * 0.6
+    cams.append({'id': cid, 'name': name, 'subtitle': sub, 'category': cat, 'look': look})
+
+# Studio looks (StudioLooks.kt): look(stock("st_id", "Name", 0x..., mono = true), field = value, ...).
+studio_src = strip_comments(open(root + 'film/StudioLooks.kt').read())
+studio_defaults = named(re.search(r'private fun look\((.*?)\n    \) = FilmLook', studio_src, re.S).group(1))
+for cid, name, sub, cat, body in re.findall(
+        r'FilmCamera\("(st_\w+)", "([^"]+)", "([^"]+)", CameraCategory\.(\w+), look\((.*?)\)\),\n', studio_src, re.S):
+    args = split_args(body)
+    st_args = split_args(re.match(r'stock\((.*)\)$', args[0], re.S).group(1))
+    look = {k: value(v) for k, v in look_defaults.items() if k not in ('stock', 'frame', 'stamp', 'style')}
+    look.update({k: value(v) for k, v in studio_defaults.items() if k != 'stock'})
+    look.update({k: value(v) for k, v in named(','.join(args[1:])).items()})
+    for k in ('halftoneInk', 'halftonePaper'):
+        v = named(','.join(args[1:])).get(k) or studio_defaults[k]
+        look[k] = int(v.strip().rstrip('L'), 16)
+    look.update({'studio': True, 'frame': 0, 'stamp': 0, 'blurFocus': 0.0})
+    look['stock'] = dict(stocks['NEUTRAL'], id=st_args[0].strip('"'), name=st_args[1].strip('"'), colorGrain=0.0,
+                         monochrome='mono = true' in args[0], halationColor=[1.0, 72 / 255, 30 / 255])
     cams.append({'id': cid, 'name': name, 'subtitle': sub, 'category': cat, 'look': look})
 
 # Photographic styles: enum entries NAME("Label", field = value, ...), with nested parentheses.

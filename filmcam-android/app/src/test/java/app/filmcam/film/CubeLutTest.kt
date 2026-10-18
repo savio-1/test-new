@@ -114,4 +114,19 @@ class CubeLutTest {
             assertTrue("no LUT for ${cam.id}", java.io.File("src/main/assets/luts/${cam.id}.png").exists())
         }
     }
+
+    @Test fun studioLooksHaveTheirShelvesLutsAndTiles() {
+        val cams = FilmCameras.ALL.filter { it.look.studio }
+        assertEquals(51, cams.size)
+        val shelves = setOf(CameraCategory.STUDIO_FILM, CameraCategory.STUDIO_COLOUR, CameraCategory.STUDIO_MONO,
+            CameraCategory.STUDIO_PRINT, CameraCategory.STUDIO_FX)
+        assertEquals(shelves, cams.map { it.category }.toSet())
+        for (cam in cams) {
+            assertEquals(cam.id, cam.look.stock.id)
+            assertTrue(FilmStocks.ALL.any { it.id == cam.id })
+            assertTrue("no LUT for ${cam.id}", java.io.File("src/main/assets/luts/${cam.id}.png").exists())
+            assertTrue("no tile for ${cam.id}", java.io.File("src/main/assets/looks/${cam.id}.jpg").exists())
+        }
+        assertEquals("look ids are unique", FilmCameras.ALL.size, FilmCameras.ALL.map { it.id }.toSet().size)
+    }
 }

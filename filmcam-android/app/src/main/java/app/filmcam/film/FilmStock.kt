@@ -354,7 +354,7 @@ object FilmStocks {
         CHROME_100, INSTANT, PEEL_APART,
         MONO_400, SILVER_100, SEPIA, ORTHO,
         VHS_TAPE, MINI_DV, DIGICAM,
-    ) + CustomLooks.STOCKS + GenesisLooks.STOCKS + FujiRecipes.STOCKS
+    ) + CustomLooks.STOCKS + StudioLooks.STOCKS + GenesisLooks.STOCKS + FujiRecipes.STOCKS
 
     fun byId(id: String): FilmStock = ALL.firstOrNull { it.id == id } ?: GOLD_200
 }

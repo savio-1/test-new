@@ -56,7 +56,7 @@ class SpecExportTest {
         val specFile = root.resolve("spec/filmcam-spec.json")
         val shaders = mapOf(
             "vertex.vert" to Shaders.VERTEX, "develop_camera.frag" to Shaders.DEVELOP_OES, "develop_image.frag" to Shaders.DEVELOP_2D,
-            "trail.frag" to Shaders.TRAIL, "bright.frag" to Shaders.BRIGHT, "blur.frag" to Shaders.BLUR, "final.frag" to Shaders.FINAL, "seg_input.frag" to Shaders.SEG_INPUT,
+            "trail.frag" to Shaders.TRAIL, "bright.frag" to Shaders.BRIGHT, "blur.frag" to Shaders.BLUR, "gauss.frag" to Shaders.GAUSS, "final.frag" to Shaders.FINAL, "seg_input.frag" to Shaders.SEG_INPUT,
         )
         var stale = write(specFile, json)
         for ((name, src) in shaders) stale = write(root.resolve("shaders/$name"), src.trimStart() + "\n") || stale

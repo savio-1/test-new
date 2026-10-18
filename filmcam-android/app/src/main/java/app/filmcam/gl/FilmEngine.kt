@@ -827,7 +827,7 @@ class FilmEngine {
                 while (x0 < w) {
                     val tw = min(tile, w - x0)
                     GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, fbo)
-                    renderer.drawFinal(src, look, frameFx, tw, th, targetRot, frameRot, w, h, x0, y0, withText)
+                    renderer.drawFinal(src, look, frameFx, tw, th, targetRot, frameRot, w, h, x0, y0, withText, still = true)
                     buf.clear()
                     GLES30.glReadPixels(0, 0, tw, th, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, buf)
                     flipRows(buf, tile * 4, th)

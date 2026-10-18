@@ -4,11 +4,13 @@ import android.graphics.Bitmap
 import android.opengl.GLES11Ext
 import android.opengl.GLES30
 import android.opengl.GLUtils
+import app.filmcam.film.BlurMode
 import app.filmcam.film.CamcorderOsd
 import app.filmcam.film.DateStamp
 import app.filmcam.film.EdgePrint
 import app.filmcam.film.FilmLook
 import app.filmcam.film.FrameFx
+import app.filmcam.film.Rgb
 import app.filmcam.film.StampStyle
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -31,15 +33,20 @@ class Glow(imageW: Int, imageH: Int, format: Int) {
     val tmp = GlUtil.createTexture(w, h, format)
     val streak = GlUtil.createTexture(w, h, format)
     val diffuse = GlUtil.createTexture(w, h, format)
+    /** Studio looks: a highlight mask (or the graded picture) before it is blurred, and the clarity blur. */
+    val mask = GlUtil.createTexture(w, h, format)
+    val clarity = GlUtil.createTexture(w, h, format)
     val tightFbo = GlUtil.createFramebuffer(tight)
     val wideFbo = GlUtil.createFramebuffer(wide)
     val tmpFbo = GlUtil.createFramebuffer(tmp)
     val streakFbo = GlUtil.createFramebuffer(streak)
     val diffuseFbo = GlUtil.createFramebuffer(diffuse)
+    val maskFbo = GlUtil.createFramebuffer(mask)
+    val clarityFbo = GlUtil.createFramebuffer(clarity)
 
     fun release() {
-        GlUtil.deleteFramebuffers(tightFbo, wideFbo, tmpFbo, streakFbo, diffuseFbo)
-        GlUtil.deleteTextures(tight, wide, tmp, streak, diffuse)
+        GlUtil.deleteFramebuffers(tightFbo, wideFbo, tmpFbo, streakFbo, diffuseFbo, maskFbo, clarityFbo)
+        GlUtil.deleteTextures(tight, wide, tmp, streak, diffuse, mask, clarity)
     }
 }
 
@@ -125,6 +132,7 @@ class FilmRenderer {
     private val trail = Program(Shaders.VERTEX, Shaders.TRAIL)
     private val bright = Program(Shaders.VERTEX, Shaders.BRIGHT)
     private val blur = Program(Shaders.VERTEX, Shaders.BLUR)
+    private val gauss = Program(Shaders.VERTEX, Shaders.GAUSS)
     private val final = Program(Shaders.VERTEX, Shaders.FINAL)
     private val segInput = Program(Shaders.VERTEX, Shaders.SEG_INPUT)
 
@@ -185,6 +193,19 @@ class FilmRenderer {
         tex
     }
     private var emptyLut = 0
+
+    /** The stock's LUT, or a 1-texel stand-in so the 3D sampler always has a texture. */
+    private fun lutTexture(id: String): Int {
+        val lut = lutFor(id)
+        if (lut != 0) return lut
+        if (emptyLut == 0) {
+            emptyLut = IntArray(1).also { GLES30.glGenTextures(1, it, 0) }[0]
+            GLES30.glBindTexture(GLES30.GL_TEXTURE_3D, emptyLut)
+            GLES30.glTexImage3D(GLES30.GL_TEXTURE_3D, 0, GLES30.GL_RGBA8, 1, 1, 1, 0, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE,
+                ByteBuffer.allocateDirect(4))
+        }
+        return emptyLut
+    }
 
     init {
         val quad = floatArrayOf(
@@ -437,10 +458,13 @@ class FilmRenderer {
     fun glow(src: FinalSource, look: FilmLook, frameTurns: Int) {
         val g = src.glow
         GLES30.glViewport(0, 0, g.w, g.h)
+        if (look.studio) { studioGlow(src, look); return }
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, g.tightFbo)
         bright.use()
         bindTex(0, src.image)
         bright.set1i("uSrc", 0)
+        bright.set1i("uMode", 0)
+        bindTex(10, lutTexture(look.stock.id), GLES30.GL_TEXTURE_3D); bright.set1i("uLut", 10)
         bright.setMat4("uTexMatrix", src.imageMatrix)
         bright.set1f("uLod", max(0f, log2(max(src.width, src.height).toFloat() / max(g.w, g.h))))
         bright.set1f("uThreshold", halationThreshold(look))
@@ -499,6 +523,68 @@ class FilmRenderer {
     }
 
     /**
+     * The studio looks' glows, as the editor makes them: masks from the graded picture, then
+     * true Gaussians sized to the frame (sigma as a share of the long side, like the editor's).
+     * tight / streak: halation's two halos; wide: bloom; diffuse: tilt-shift or soft blur;
+     * clarity: the clarity blur.
+     */
+    private fun studioGlow(src: FinalSource, look: FilmLook) {
+        val g = src.glow
+        val long = max(g.w, g.h).toFloat()
+        val lut = lutTexture(look.stock.id)
+        fun mask(mode: Int, threshold: Float = 0f, col: Rgb = Rgb(0f, 0f, 0f)) {
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, g.maskFbo)
+            bright.use()
+            bindTex(0, src.image); bright.set1i("uSrc", 0)
+            bindTex(10, lut, GLES30.GL_TEXTURE_3D); bright.set1i("uLut", 10)
+            bright.set1f("uLutOn", if (lut != emptyLut) 1f else 0f)
+            bright.set1f("uIntensity", look.intensity.coerceIn(0f, 1f))
+            bright.setMat4("uTexMatrix", src.imageMatrix)
+            bright.set1f("uLod", max(0f, log2(max(src.width, src.height).toFloat() / max(g.w, g.h))))
+            bright.set1i("uMode", mode)
+            bright.set1f("uThreshold", threshold)
+            bright.set3f("uCol", col.r, col.g, col.b)
+            draw()
+        }
+        fun gaussian(from: Int, toFbo: Int, sigma: Float, blackEdge: Boolean = true) {
+            val sg = max(0.3f, sigma)
+            gauss.use()
+            gauss.set1i("uBlackEdge", if (blackEdge) 1 else 0)
+            gauss.set1i("uSrc", 0)
+            gauss.setMat4("uTexMatrix", identity)
+            gauss.set1f("uSigma", sg)
+            gauss.set1i("uTaps", min(64, kotlin.math.ceil(sg * 3f).toInt()))
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, g.tmpFbo)
+            bindTex(0, from); gauss.set2f("uStep", 1f / g.w, 0f); draw()
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, toFbo)
+            bindTex(0, g.tmp); gauss.set2f("uStep", 0f, 1f / g.h); draw()
+        }
+        if (look.bloom > 0f) {
+            val k = look.bloom.coerceIn(0f, 1f)
+            mask(1, 0.62f - 0.22f * k)
+            gaussian(g.mask, g.wideFbo, long * (0.012f + 0.025f * k))
+        }
+        if (look.halation > 0f) {
+            val k = look.halation.coerceIn(0f, 1f)
+            mask(2, 0.72f - 0.2f * k, look.stock.halationColor)
+            gaussian(g.mask, g.tightFbo, long * (0.003f + 0.007f * k))
+            gaussian(g.mask, g.streakFbo, long * (0.012f + 0.02f * k))
+        }
+        val tilt = look.tiltShift > 0f
+        val soft = studioSoftSigma(look) * long
+        if (look.clarity != 0f || tilt || soft >= 1f) {
+            mask(3)
+            if (look.clarity != 0f) gaussian(g.mask, g.clarityFbo, long * 0.018f, blackEdge = false)
+            if (tilt) gaussian(g.mask, g.diffuseFbo, long * 0.018f * look.tiltShift)
+            else if (soft >= 1f) gaussian(g.mask, g.diffuseFbo, soft)
+        }
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
+    }
+
+    /** A studio look's soft blur, as a share of the long side (the editor's blur 0..40 is per mille). */
+    private fun studioSoftSigma(look: FilmLook) = if (look.blurMode == BlurMode.GAUSSIAN) look.blur * 0.04f else 0f
+
+    /**
      * Pass 4 into whatever framebuffer is bound. [targetRot] turns the target into screen
      * space (1 for the landscape encoder buffer), [frameRot] turns screen space upright.
      * For tiles, [fullW]x[fullH] is the whole output and ([tileX], [tileY]) where this tile
@@ -510,6 +596,7 @@ class FilmRenderer {
         fullW: Int = targetW, fullH: Int = targetH, tileX: Int = 0, tileY: Int = 0,
         withText: Boolean = true,
         logMode: Int = 0,
+        still: Boolean = false,
     ) {
         GLES30.glViewport(0, 0, targetW, targetH)
         val s = look.stock
@@ -532,6 +619,7 @@ class FilmRenderer {
             set1i("uTextBackBlend", textBackBlend)
             bindTex(12, if (subjectTex != 0) subjectTex else edgeTex); set1i("uSubject", 12)
             set1f("uSubjectOn", if (hasSubject) 1f else 0f)
+            bindTex(13, src.glow.clarity); set1i("uClarTex", 13)
             setMat4("uTexMatrix", identity)
             setMat4("uImageMatrix", src.imageMatrix)
 
@@ -573,7 +661,7 @@ class FilmRenderer {
             set1f("uVignette", look.vignette)
             set1f("uDust", look.dust)
             set1f("uAberration", look.aberration)
-            set1f("uSoftness", (look.softness - 0.8f * look.sharpness).coerceIn(-1f, 1f))
+            set1f("uSoftness", (look.softness - if (look.studio) 0f else 0.8f * look.sharpness).coerceIn(-1f, 1f))
             set1f("uCornerBlur", look.cornerBlur)
             set1f("uDistortion", look.distortion)
             set1f("uCircle", if (look.circleMask) 1f else 0f)
@@ -617,19 +705,31 @@ class FilmRenderer {
             set3f("uStyleHigh", ps.highTint.r, ps.highTint.g, ps.highTint.b)
             GLES30.glUniform4f(loc("uStyleUser"), st.tone, st.color, st.palette, ps.skin)
             // Film stock: its LUT when it has one, the parametric grade otherwise.
-            val lut = lutFor(s.id)
-            if (emptyLut == 0) {
-                emptyLut = IntArray(1).also { GLES30.glGenTextures(1, it, 0) }[0]
-                GLES30.glBindTexture(GLES30.GL_TEXTURE_3D, emptyLut)
-                GLES30.glTexImage3D(GLES30.GL_TEXTURE_3D, 0, GLES30.GL_RGBA8, 1, 1, 1, 0, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE,
-                    ByteBuffer.allocateDirect(4))
-            }
-            bindTex(10, if (lut != 0) lut else emptyLut, GLES30.GL_TEXTURE_3D); set1i("uLut", 10)
-            set1f("uLutOn", if (lut != 0) 1f else 0f)
+            val lut = lutTexture(s.id)
+            bindTex(10, lut, GLES30.GL_TEXTURE_3D); set1i("uLut", 10)
+            set1f("uLutOn", if (lut != emptyLut) 1f else 0f)
             set1f("uIntensity", look.intensity.coerceIn(0f, 1f))
             set1f("uExposureGain", if (digitalExposure) Math.pow(2.0, look.exposureEv.toDouble()).toFloat() else 1f)
             GLES30.glUniform4f(loc("uAdjA"), look.warmth, look.tint, look.contrast, look.saturation)
-            GLES30.glUniform4f(loc("uAdjB"), look.highlights, look.shadows, look.vibrance, look.clarity)
+            // A studio look sharpens and adds clarity the editor's way, in its own place in the order.
+            GLES30.glUniform4f(loc("uAdjB"), look.highlights, look.shadows, look.vibrance, if (look.studio) 0f else look.clarity)
+            set1f("uStudio", if (look.studio) 1f else 0f)
+            set1f("uSharpen", if (look.studio) look.sharpness else 0f)
+            set1f("uClarity", if (look.studio) look.clarity else 0f)
+            val hk = look.halation.coerceIn(0f, 1f)
+            set2f("uStudioGain", Math.pow(2.0, 1.0 + Math.round(hk * 2f)).toFloat(), Math.pow(2.0, 1.0 + Math.round(hk * 3f)).toFloat())
+            val glowLong = max(src.glow.w, src.glow.h)
+            set1f("uStudioSoft", if (look.tiltShift <= 0f && studioSoftSigma(look) * glowLong >= 1f) 1f else 0f)
+            set1i("uSmearCap", if (still) 40 else 16)
+            set1f("uNoise", look.noise)
+            set1f("uHalftone", if (look.studio) look.halftone else 0f)
+            set1f("uThreshold", if (look.studio) look.threshold else 0f)
+            set3f("uInk", (look.halftoneInk shr 16 and 0xFF) / 255f, (look.halftoneInk shr 8 and 0xFF) / 255f, (look.halftoneInk and 0xFF) / 255f)
+            set3f("uPaper", (look.halftonePaper shr 16 and 0xFF) / 255f, (look.halftonePaper shr 8 and 0xFF) / 255f, (look.halftonePaper and 0xFF) / 255f)
+            set1f("uGhost", if (look.studio) look.ghost else 0f)
+            set1f("uTilt", if (look.studio) look.tiltShift else 0f)
+            set1f("uTiltY", look.tiltY)
+            set1f("uTiltSize", look.tiltSize)
             set1i("uLogMode", logMode)
             set1f("uLogGain", logGain)
         }

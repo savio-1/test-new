@@ -170,6 +170,27 @@ data class FilmLook(
     val clarity: Float = 0f,
     /** Unsharp mask, 0..1 (adds to the lens's own sharpening). */
     val sharpness: Float = 0f,
+    // effects from the editor's looks: noise works on any look, the rest on studio looks
+    /** Per-pixel digital noise, re-dealt every frame. */
+    val noise: Float = 0f,
+    /** Halftone dot screen: dots of [halftoneInk] on [halftonePaper], sized by the tone. 0..1 sets the cell. */
+    val halftone: Float = 0f,
+    /** Two-tone print: [halftonePaper] where the tone is above this, [halftoneInk] below (0 off). */
+    val threshold: Float = 0f,
+    val halftoneInk: Long = 0xFF111111,
+    val halftonePaper: Long = 0xFFF4F1EA,
+    /** Double exposure: two copies stepped along [blurAngle]. */
+    val ghost: Float = 0f,
+    /** Tilt-shift: everything outside a horizontal band at [tiltY] ([tiltSize] tall, 0 = top) goes soft. */
+    val tiltShift: Float = 0f,
+    val tiltY: Float = 0.5f,
+    val tiltSize: Float = 0.25f,
+    /**
+     * Draw the effects with the photo editor's formulas (its studio looks): grain, vignette,
+     * halation, bloom, light leak, dust, fringing, sharpening, clarity, the blurs and the fisheye
+     * work on the graded picture the way the editor does, sized to the frame.
+     */
+    val studio: Boolean = false,
 )
 
 enum class CameraCategory(val label: String) {
@@ -177,6 +198,12 @@ enum class CameraCategory(val label: String) {
     ORIGINAL("Original"),
     /** Creators' grades and imported .cube LUTs. */
     CUSTOM("Custom"),
+    /** The photo editor's own looks, by its shelves. */
+    STUDIO_FILM("Studio Film"),
+    STUDIO_COLOUR("Studio Colour"),
+    STUDIO_MONO("Studio B&W"),
+    STUDIO_PRINT("Studio Print"),
+    STUDIO_FX("Studio FX"),
     /** Genesis film emulation (Cullen Kelly): its negative and print stocks. */
     GENESIS("Genesis"),
     FUJI("Fujifilm"),
@@ -226,7 +253,7 @@ object FilmCameras {
 
     val ALL: List<FilmCamera> = listOf(
         ORIGINAL,
-    ) + CustomLooks.CAMERAS + GenesisLooks.CAMERAS + FujiRecipes.CAMERAS + listOf(
+    ) + CustomLooks.CAMERAS + StudioLooks.CAMERAS + GenesisLooks.CAMERAS + FujiRecipes.CAMERAS + listOf(
         // ------------------------------------------------------------ classic film stocks, straight
         cam("portra", "Portrait 400", "Warm portrait negative · creamy skin", CameraCategory.FILM,
             FilmLook(stock = FilmStocks.PORTRAIT_400, halation = 0.3f, bloom = 0.15f, vignette = 0.18f, aberration = 0.05f)),

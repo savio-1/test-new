@@ -6,8 +6,8 @@ import ImageIO
 /// Highlights at ~480 px: tight glow (halation), wide glow (bloom), streaks, diffusion.
 final class Glow {
     let w: Int, h: Int
-    let tight, wide, tmp, streak, diffuse: GLuint
-    let tightFbo, wideFbo, tmpFbo, streakFbo, diffuseFbo: GLuint
+    let tight, wide, tmp, streak, diffuse, mask, clarity: GLuint
+    let tightFbo, wideFbo, tmpFbo, streakFbo, diffuseFbo, maskFbo, clarityFbo: GLuint
 
     init(_ imageW: Int, _ imageH: Int, format: Int32) {
         let scale = min(480 / Float(max(imageW, imageH)), 0.5)
@@ -16,13 +16,15 @@ final class Glow {
         tight = GLU.texture(w, h, format: format); wide = GLU.texture(w, h, format: format)
         tmp = GLU.texture(w, h, format: format); streak = GLU.texture(w, h, format: format)
         diffuse = GLU.texture(w, h, format: format)
+        mask = GLU.texture(w, h, format: format); clarity = GLU.texture(w, h, format: format)
         tightFbo = GLU.framebuffer(tight); wideFbo = GLU.framebuffer(wide); tmpFbo = GLU.framebuffer(tmp)
         streakFbo = GLU.framebuffer(streak); diffuseFbo = GLU.framebuffer(diffuse)
+        maskFbo = GLU.framebuffer(mask); clarityFbo = GLU.framebuffer(clarity)
     }
 
     func release() {
-        GLU.delete(framebuffers: [tightFbo, wideFbo, tmpFbo, streakFbo, diffuseFbo])
-        GLU.delete(textures: [tight, wide, tmp, streak, diffuse])
+        GLU.delete(framebuffers: [tightFbo, wideFbo, tmpFbo, streakFbo, diffuseFbo, maskFbo, clarityFbo])
+        GLU.delete(textures: [tight, wide, tmp, streak, diffuse, mask, clarity])
     }
 }
 
@@ -78,6 +80,7 @@ final class Renderer {
     private let developProg: Program
     private let bright: Program
     private let blur: Program
+    private let gauss: Program
     private let finalProg: Program
     let glowFormat: Int32
     private var vao: GLuint = 0
@@ -104,6 +107,7 @@ final class Renderer {
         developProg = try Program(vertex: vertex, fragment: Self.shader("develop_image.frag"))
         bright = try Program(vertex: vertex, fragment: Self.shader("bright.frag"))
         blur = try Program(vertex: vertex, fragment: Self.shader("blur.frag"))
+        gauss = try Program(vertex: vertex, fragment: Self.shader("gauss.frag"))
         finalProg = try Program(vertex: vertex, fragment: Self.shader("final.frag"))
         glowFormat = GLU.hasExtension("GL_EXT_color_buffer_half_float") || GLU.hasExtension("GL_EXT_color_buffer_float")
             ? GL_RGBA16F : GL_RGBA8
@@ -211,10 +215,13 @@ final class Renderer {
     func glow(_ src: FinalSource, _ look: Look, frameTurns: Int) {
         let g = src.glow
         glViewport(0, 0, GLsizei(g.w), GLsizei(g.h))
+        if look.studio { studioGlow(src, look); return }
         glBindFramebuffer(E(GL_FRAMEBUFFER), g.tightFbo)
         bright.use()
         bind(0, src.image)
         bright.i("uSrc", 0)
+        bright.i("uMode", 0)
+        bind(10, lutTexture(look.stock), GL_TEXTURE_3D); bright.i("uLut", 10)
         bright.mat4("uTexMatrix", src.imageMatrix)
         bright.f("uLod", max(0, log2(Float(max(src.width, src.height)) / Float(max(g.w, g.h)))))
         bright.f("uThreshold", halationThreshold(look))
@@ -262,10 +269,80 @@ final class Renderer {
         glBindFramebuffer(E(GL_FRAMEBUFFER), 0)
     }
 
+    /// The stock's LUT, or a 1-texel stand-in so the 3D sampler always has a texture.
+    private func lutTexture(_ id: String) -> GLuint {
+        let l = lut(for: id)
+        if l != 0 { return l }
+        if emptyLut == 0 {
+            glGenTextures(1, &emptyLut)
+            glBindTexture(E(GL_TEXTURE_3D), emptyLut)
+            let px: [UInt8] = [0, 0, 0, 255]
+            px.withUnsafeBytes { glTexImage3D(E(GL_TEXTURE_3D), 0, GL_RGBA8, 1, 1, 1, 0, E(GL_RGBA), E(GL_UNSIGNED_BYTE), $0.baseAddress) }
+        }
+        return emptyLut
+    }
+
+    /// A studio look's soft blur as a share of the long side (the editor's blur 0..40 is per mille).
+    private func studioSoftSigma(_ look: Look) -> Float { look.blurMode == "GAUSSIAN" ? look.blur * 0.04 : 0 }
+
+    /// The studio looks' glows, as the editor makes them (see FilmRenderer.studioGlow).
+    private func studioGlow(_ src: FinalSource, _ look: Look) {
+        let g = src.glow
+        let long = Float(max(g.w, g.h))
+        let lut = lutTexture(look.stock)
+        let halColor = spec.stock(look.stock).halationColor
+        func mask(_ mode: Int32, _ threshold: Float = 0, _ col: RGB = RGB(r: 0, g: 0, b: 0)) {
+            glBindFramebuffer(E(GL_FRAMEBUFFER), g.maskFbo)
+            bright.use()
+            bind(0, src.image); bright.i("uSrc", 0)
+            bind(10, lut, GL_TEXTURE_3D); bright.i("uLut", 10)
+            bright.f("uLutOn", lut != emptyLut ? 1 : 0)
+            bright.f("uIntensity", min(max(look.intensity, 0), 1))
+            bright.mat4("uTexMatrix", src.imageMatrix)
+            bright.f("uLod", max(0, log2(Float(max(src.width, src.height)) / Float(max(g.w, g.h)))))
+            bright.i("uMode", mode)
+            bright.f("uThreshold", threshold)
+            bright.f3("uCol", col)
+            draw()
+        }
+        func gaussian(_ from: GLuint, _ to: GLuint, _ sigma: Float, blackEdge: Bool = true) {
+            let sg = max(0.3, sigma)
+            gauss.use()
+            gauss.i("uBlackEdge", blackEdge ? 1 : 0)
+            gauss.i("uSrc", 0)
+            gauss.mat4("uTexMatrix", Mat.identity)
+            gauss.f("uSigma", sg)
+            gauss.i("uTaps", Int32(min(64, Int((sg * 3).rounded(.up)))))
+            glBindFramebuffer(E(GL_FRAMEBUFFER), g.tmpFbo)
+            bind(0, from); gauss.f2("uStep", 1 / Float(g.w), 0); draw()
+            glBindFramebuffer(E(GL_FRAMEBUFFER), to)
+            bind(0, g.tmp); gauss.f2("uStep", 0, 1 / Float(g.h)); draw()
+        }
+        if look.bloom > 0 {
+            let k = min(look.bloom, 1)
+            mask(1, 0.62 - 0.22 * k)
+            gaussian(g.mask, g.wideFbo, long * (0.012 + 0.025 * k))
+        }
+        if look.halation > 0 {
+            let k = min(look.halation, 1)
+            mask(2, 0.72 - 0.2 * k, halColor)
+            gaussian(g.mask, g.tightFbo, long * (0.003 + 0.007 * k))
+            gaussian(g.mask, g.streakFbo, long * (0.012 + 0.02 * k))
+        }
+        let soft = studioSoftSigma(look) * long
+        if look.clarity != 0 || look.tiltShift > 0 || soft >= 1 {
+            mask(3)
+            if look.clarity != 0 { gaussian(g.mask, g.clarityFbo, long * 0.018, blackEdge: false) }
+            if look.tiltShift > 0 { gaussian(g.mask, g.diffuseFbo, long * 0.018 * look.tiltShift) }
+            else if soft >= 1 { gaussian(g.mask, g.diffuseFbo, soft) }
+        }
+        glBindFramebuffer(E(GL_FRAMEBUFFER), 0)
+    }
+
     /// Pass 4 into the bound framebuffer. [targetRot]: target -> screen quarter turns;
     /// [frameRot]: screen -> upright frame. Tiles: full size plus this tile's offset.
     func drawFinal(_ src: FinalSource, _ look: Look, _ fx: FrameFx, targetW: Int, targetH: Int, targetRot: Int, frameRot: Int,
-                   fullW: Int? = nil, fullH: Int? = nil, tileX: Int = 0, tileY: Int = 0) {
+                   fullW: Int? = nil, fullH: Int? = nil, tileX: Int = 0, tileY: Int = 0, still: Bool = false) {
         let fw = fullW ?? targetW, fh = fullH ?? targetH
         glViewport(0, 0, GLsizei(targetW), GLsizei(targetH))
         let s = spec.stock(look.stock)
@@ -281,6 +358,7 @@ final class Renderer {
         bind(7, edgeTex); p.i("uEdge", 7)
         bind(8, src.glow.diffuse); p.i("uDiffuseTex", 8)
         bind(9, edgeTex); p.i("uTextTex", 9)
+        bind(13, src.glow.clarity); p.i("uClarTex", 13)
         p.f("uTextOn", 0)
         p.mat4("uTexMatrix", Mat.identity)
         p.mat4("uImageMatrix", src.imageMatrix)
@@ -304,7 +382,7 @@ final class Renderer {
         p.f("uHalation", look.halation); p.f("uHalThreshold", halationThreshold(look)); p.f("uBloom", look.bloom)
         p.f("uStreak", look.streak); p.f("uGrain", look.grain); p.f("uGrainSize", min(max(look.grainSize, 0.5), 4))
         p.f("uLeak", look.lightLeak); p.f("uPrism", look.prism); p.f("uVignette", look.vignette); p.f("uDust", look.dust)
-        p.f("uAberration", look.aberration); p.f("uSoftness", min(max(look.softness - 0.8 * look.sharpness, -1), 1))
+        p.f("uAberration", look.aberration); p.f("uSoftness", min(max(look.softness - (look.studio ? 0 : 0.8 * look.sharpness), -1), 1))
         p.f("uCornerBlur", look.cornerBlur); p.f("uDistortion", look.distortion); p.f("uCircle", look.circleMask ? 1 : 0)
         p.f("uAnaglyph", look.anaglyph); p.f("uFlash", look.flash); p.f("uVhs", look.vhs)
         p.f("uInterlace", src.previous != src.image ? look.interlace : 0); p.f("uLowRes", look.lowRes)
@@ -334,19 +412,29 @@ final class Renderer {
         p.f4("uStyleUser", st.tone, st.color, st.palette, ps.skin)
 
         // Film stock LUT, strength and the basic adjustments.
-        let l = lut(for: s.id)
-        if emptyLut == 0 {
-            glGenTextures(1, &emptyLut)
-            glBindTexture(E(GL_TEXTURE_3D), emptyLut)
-            let px: [UInt8] = [0, 0, 0, 255]
-            px.withUnsafeBytes { glTexImage3D(E(GL_TEXTURE_3D), 0, GL_RGBA8, 1, 1, 1, 0, E(GL_RGBA), E(GL_UNSIGNED_BYTE), $0.baseAddress) }
-        }
-        bind(10, l != 0 ? l : emptyLut, GL_TEXTURE_3D); p.i("uLut", 10)
-        p.f("uLutOn", l != 0 ? 1 : 0)
+        let l = lutTexture(s.id)
+        bind(10, l, GL_TEXTURE_3D); p.i("uLut", 10)
+        p.f("uLutOn", l != emptyLut ? 1 : 0)
         p.f("uIntensity", min(max(look.intensity, 0), 1))
         p.f("uExposureGain", digitalExposure ? powf(2, look.exposureEv) : 1)
         p.f4("uAdjA", look.warmth, look.tint, look.contrast, look.saturation)
-        p.f4("uAdjB", look.highlights, look.shadows, look.vibrance, look.clarity)
+        // A studio look sharpens and adds clarity the editor's way, in its own place in the order.
+        p.f4("uAdjB", look.highlights, look.shadows, look.vibrance, look.studio ? 0 : look.clarity)
+        p.f("uStudio", look.studio ? 1 : 0)
+        p.f("uSharpen", look.studio ? look.sharpness : 0)
+        p.f("uClarity", look.studio ? look.clarity : 0)
+        let hk = min(max(look.halation, 0), 1)
+        p.f2("uStudioGain", powf(2, 1 + (hk * 2).rounded()), powf(2, 1 + (hk * 3).rounded()))
+        p.f("uStudioSoft", look.tiltShift <= 0 && studioSoftSigma(look) * Float(max(src.glow.w, src.glow.h)) >= 1 ? 1 : 0)
+        p.i("uSmearCap", still ? 40 : 16)
+        p.f("uNoise", look.noise)
+        p.f("uHalftone", look.studio ? look.halftone : 0)
+        p.f("uThreshold", look.studio ? look.threshold : 0)
+        let ink = look.halftoneInk.argbFloats, paper = look.halftonePaper.argbFloats
+        p.f3("uInk", ink.0, ink.1, ink.2); p.f3("uPaper", paper.0, paper.1, paper.2)
+        p.f("uGhost", look.studio ? look.ghost : 0)
+        p.f("uTilt", look.studio ? look.tiltShift : 0)
+        p.f("uTiltY", look.tiltY); p.f("uTiltSize", look.tiltSize)
         p.i("uLogMode", 0); p.f("uLogGain", 1)
         draw()
     }
@@ -367,7 +455,7 @@ final class Renderer {
             while x0 < w {
                 let tw = min(tile, w - x0)
                 glBindFramebuffer(E(GL_FRAMEBUFFER), fbo)
-                drawFinal(src, look, fx, targetW: tw, targetH: th, targetRot: 0, frameRot: 0, fullW: w, fullH: h, tileX: x0, tileY: y0)
+                drawFinal(src, look, fx, targetW: tw, targetH: th, targetRot: 0, frameRot: 0, fullW: w, fullH: h, tileX: x0, tileY: y0, still: true)
                 tileBuf.withUnsafeMutableBytes { glReadPixels(0, 0, GLsizei(tw), GLsizei(th), E(GL_RGBA), E(GL_UNSIGNED_BYTE), $0.baseAddress) }
                 // GL rows count from the bottom; the image's from the top.
                 for row in 0..<th {
