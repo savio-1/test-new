@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Studio3D test harness</title>
+<style>
+  :root { --bg: #f2f1ee; --ink: #1b1b1b; --muted: #6b6b6b; --line: #dedcd6; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 system-ui, sans-serif; }
+  header { padding: 16px 20px; border-bottom: 1px solid var(--line); display: flex; gap: 16px; align-items: baseline; flex-wrap: wrap; }
+  h1 { font-size: 18px; margin: 0; }
+  #status { color: var(--muted); }
+  main { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 16px; padding: 16px 20px; }
+  figure { margin: 0; background: #fff; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  figure img { display: block; width: 100%; height: auto; background: #ddd; }
+  figcaption { padding: 8px 10px; display: flex; justify-content: space-between; gap: 8px; }
+  figcaption span { color: var(--muted); }
+  details { padding: 0 20px 20px; }
+  .art { display: flex; flex-wrap: wrap; gap: 8px; }
+  .art canvas { height: 120px; width: auto; border: 1px solid var(--line); }
+</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+</head>
+<body>
+<header><h1>Studio3D test harness</h1><div id="status">Loading…</div></header>
+<main id="grid"></main>
+<details><summary>Placeholder artwork</summary><div class="art" id="art"></div></details>
+<script type="module">
+import '../js/studio3d.js';
+const S = window.PG.Studio3D;
+const qs = new URLSearchParams(location.search);
+const W = +qs.get('w') || 1200, H = +qs.get('h') || 900, samples = qs.get('samples') ? +qs.get('samples') : undefined;
+const sx = qs.get('sx') ? JSON.parse(qs.get('sx')) : null;
+const only = qs.get('only') ? qs.get('only').split(',') : null;
+
+const PALETTES = [
+  ['#1F3B2D', '#E9E2D0', '#D9A441'], ['#E4572E', '#FFF7EC', '#1B1B1B'], ['#2B59C3', '#F4F1EA', '#F2C14E'],
+  ['#F2D7D0', '#3A1F1A', '#B5523B'], ['#111111', '#F5F3EE', '#C8FF3D'], ['#7A2E8E', '#FBEFFF', '#FFB000']
+];
+/* Placeholder artwork: colour field, grid, safe area, big type, a circle and colour bars,
+   so stretching, warping and placement are obvious in the renders. */
+function art(obj, name, spec, pi) {
+  const [bg, fg, ac] = PALETTES[pi % PALETTES.length];
+  const c = document.createElement('canvas'); c.width = spec.w; c.height = spec.h;
+  const x = c.getContext('2d'), w = spec.w, h = spec.h, m = Math.min(w, h);
+  x.fillStyle = bg; x.fillRect(0, 0, w, h);
+  // grid
+  x.strokeStyle = fg; x.globalAlpha = 0.18; x.lineWidth = Math.max(1, m / 400);
+  for (let i = 1; i < 10; i++) { x.beginPath(); x.moveTo((w * i) / 10, 0); x.lineTo((w * i) / 10, h); x.stroke(); x.beginPath(); x.moveTo(0, (h * i) / 10); x.lineTo(w, (h * i) / 10); x.stroke(); }
+  x.globalAlpha = 1;
+  // safe area
+  const [sx, sy, sw, sh] = spec.safe;
+  x.setLineDash([m / 60, m / 90]); x.strokeStyle = ac; x.lineWidth = Math.max(2, m / 220); x.strokeRect(sx, sy, sw, sh); x.setLineDash([]);
+  // circle in safe centre
+  const cx = sx + sw / 2, cy = sy + sh / 2, rr = Math.min(sw, sh) * 0.32;
+  x.fillStyle = ac; x.beginPath(); x.arc(cx, cy - rr * 0.2, rr * 0.45, 0, Math.PI * 2); x.fill();
+  // type
+  const fs = Math.min(sw / (Math.max(obj.length, 4) * 0.62), sh / 4.2);
+  x.fillStyle = fg; x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.font = `800 ${fs}px "Helvetica Neue", Arial, sans-serif`;
+  x.fillText(obj.toUpperCase(), cx, cy + rr * 0.55);
+  x.font = `600 ${fs * 0.42}px "Helvetica Neue", Arial, sans-serif`;
+  x.fillText(`${name} · ${w}×${h}`, cx, cy + rr * 0.55 + fs * 0.8);
+  // colour bars and edge markers
+  const bw = sw / 6; ['#e63946', '#f1a208', '#2a9d8f', '#264653', '#ffffff', '#000000'].forEach((cc, i) => { x.fillStyle = cc; x.fillRect(sx + i * bw, sy + sh - sh * 0.07, bw, sh * 0.05); });
+  x.font = `700 ${m * 0.05}px Arial`; x.fillStyle = fg;
+  x.fillText('TOP ↑', w / 2, h * 0.04 + m * 0.03);
+  x.textAlign = 'left'; x.fillText('L', m * 0.02, h / 2); x.textAlign = 'right'; x.fillText('R', w - m * 0.02, h / 2);
+  if (spec.wrap) { x.fillStyle = ac; x.globalAlpha = 0.5; x.fillRect(0, 0, w * 0.01, h); x.fillRect(w * 0.99, 0, w * 0.01, h); x.globalAlpha = 1; }
+  return c;
+}
+
+const CASES = [
+  { object: 'can', variant: 'standard' },
+  { object: 'can', variant: 'slim', count: 3, scene: 'concrete' },
+  { object: 'can', camera: 'close' },
+  { object: 'box', variant: 'tall' },
+  { object: 'box', variant: 'cube', scene: 'table' },
+  { object: 'box', variant: 'flat', scene: 'linen' },
+  { object: 'bottle', variant: 'dropper', colors: { glass: 'amber' } },
+  { object: 'bottle', variant: 'pump', colors: { glass: 'frosted' } },
+  { object: 'bottle', variant: 'dropper', colors: { glass: 'clear' }, count: 2, scene: 'wall' },
+  { object: 'jar' },
+  { object: 'tube' },
+  { object: 'pouch' },
+  { object: 'cup' },
+  { object: 'bag' },
+  { object: 'cards' },
+  { object: 'cards', camera: 'top', scene: 'linen' },
+  { object: 'paycard' }, { object: 'paycard', count: 2 },
+  { object: 'book' },
+  { object: 'phone' },
+  { object: 'laptop' },
+  { object: 'poster' },
+  { object: 'billboard' }
+];
+
+const grid = document.getElementById('grid'), status = document.getElementById('status'), artBox = document.getElementById('art');
+window.__results = [];
+(async () => {
+  await S.ready;
+  const cases = CASES.filter((c) => S.OBJECTS[c.object] && (!only || only.includes(c.object) || only.includes(caseName(c))));
+  let i = 0;
+  for (const c of cases) {
+    const name = caseName(c);
+    status.textContent = `Rendering ${++i}/${cases.length}: ${name}`;
+    const specs = S.textureSpec(c.object, c.variant);
+    const textures = {};
+    Object.entries(specs).forEach(([k, s], j) => { textures[k] = art(c.object, k, s, j + c.object.length); if (i === 1 || true) { const cc = textures[k]; cc.title = name + ' ' + k; } });
+    if (i <= 30) Object.values(textures).forEach((cv) => artBox.appendChild(cv));
+    const t0 = performance.now();
+    try {
+      const sc = sx ? { ...(typeof c.scene === 'object' ? c.scene : { preset: c.scene }), ...sx } : c.scene;
+      const url = await S.render({ ...c, scene: sc, textures, width: W, height: H, samples, key: name });
+      const ms = Math.round(performance.now() - t0);
+      const fig = document.createElement('figure');
+      fig.innerHTML = `<img alt="${name}" src="${url}"><figcaption><b>${name}</b><span>${ms} ms</span></figcaption>`;
+      grid.appendChild(fig);
+      window.__results.push({ name, url, ms });
+    } catch (e) {
+      console.error(name, e);
+      window.__results.push({ name, error: String(e && e.stack || e) });
+    }
+  }
+  status.textContent = `Done: ${cases.length} renders at ${W}×${H}`;
+  window.__done = true;
+})();
+function caseName(c) { return [c.object, c.variant, c.camera, c.scene, c.count > 1 ? 'x' + c.count : '', c.colors && c.colors.glass].filter(Boolean).join('-'); }
+</script>
+</body>
+</html>
