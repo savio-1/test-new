@@ -2,6 +2,9 @@ package app.filmcam.ui
 
 import android.widget.VideoView
 import androidx.compose.foundation.Canvas
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,6 +24,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -72,6 +76,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import app.filmcam.film.FontLibrary
+import app.filmcam.film.TextFx
 import app.filmcam.film.TextLayer
 import app.filmcam.film.TextRenderer
 import app.filmcam.sub.CaptionTemplate
@@ -109,17 +114,38 @@ private fun subStamp(ms: Long): String {
     return "%d:%02d.%d".format(t / 600, t / 10 % 60, t % 10)
 }
 
-enum class SubTab(val label: String) { LINES("Lines"), STYLE("Style"), PLACE("Position"), WORDS("Words") }
+/** The editor's tools, along the bottom; each opens one short panel over the rail. */
+enum class SubTool(val label: String) {
+    LINES("Lines"), STYLE("Style"), TEXT("Text"), EFFECTS("Effects"), MOTION("Motion"), WORDS("Words"), PLACE("Position"),
+    SOUND("Sound"), MORE("More"),
+}
 
-/** Classic lines are placed as a block; kinetic captions word by word. */
-private fun tabsFor(track: SubtitleTrack?) =
-    if (track?.style?.kinetic == true) listOf(SubTab.LINES, SubTab.STYLE, SubTab.WORDS) else listOf(SubTab.LINES, SubTab.STYLE, SubTab.PLACE)
+private fun SubTool.icon() = when (this) {
+    SubTool.LINES -> Ico.Subtitles
+    SubTool.STYLE -> Ico.Styles
+    SubTool.TEXT -> Ico.Fonts
+    SubTool.EFFECTS -> Ico.Shadow
+    SubTool.MOTION -> Ico.Motion
+    SubTool.WORDS -> Ico.Text
+    SubTool.PLACE -> Ico.Frame
+    SubTool.SOUND -> Ico.Mic
+    SubTool.MORE -> Ico.More
+}
+
+/** Classic lines are placed as a block; kinetic captions word by word, and they move. */
+private fun toolsFor(track: SubtitleTrack?) =
+    if (track?.style?.kinetic == true) listOf(SubTool.LINES, SubTool.STYLE, SubTool.TEXT, SubTool.EFFECTS, SubTool.MOTION, SubTool.WORDS, SubTool.SOUND, SubTool.MORE)
+    else listOf(SubTool.LINES, SubTool.STYLE, SubTool.TEXT, SubTool.EFFECTS, SubTool.PLACE, SubTool.SOUND, SubTool.MORE)
 
 /**
  * After a clip is shot: its speech as subtitles, in English, Telugu or both. Make them with
  * Gemini (or keep the ones heard live), fix any line by typing, set exactly when each shows,
  * style and place them, check them full screen, then burn them into a copy of the clip or
  * save an .srt.
+ *
+ * Laid out for a phone: the clip takes all the room there is, a slim play bar sits under it,
+ * and the tools run along the bottom. A tool opens one short panel; tapping it again closes
+ * the panel and the clip grows back.
  */
 @Composable
 fun SubtitleScreen(ui: UiState, actions: CameraActions) {
@@ -127,45 +153,70 @@ fun SubtitleScreen(ui: UiState, actions: CameraActions) {
     val fonts = ui.fonts
     var showKey by remember { mutableStateOf(ui.geminiKey.isBlank() && s.track == null) }
     var full by remember(s.item.uri) { mutableStateOf(false) }
-    val tabPicked = s.tab
     val selected = s.selectedWord
     // The player, shared by the inline preview and the full-screen one.
     val player = remember(s.item.uri) { SubPlayer() }
     val track = s.track
+    val tools = toolsFor(track)
     // Switching template swaps Position for Words (and back).
-    val tab = when {
-        tabPicked in tabsFor(track) -> tabPicked
-        tabPicked == SubTab.PLACE || tabPicked == SubTab.WORDS -> tabsFor(track).last()
-        else -> SubTab.LINES
+    val tool = when (val t = s.tool) {
+        null -> null
+        in tools -> t
+        SubTool.PLACE, SubTool.WORDS -> tools.first { it == SubTool.PLACE || it == SubTool.WORDS }
+        else -> null
     }
-    val wordMode = tab == SubTab.WORDS
+    val wordMode = tool == SubTool.WORDS
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         if (full) {
             SubFullScreen(ui, actions, s, fonts, player) { full = false }
-        } else Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()) {
-            Row(Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                SubIcon(Ico.Back) { actions.closeSubtitles() }
-                Text("Subtitles", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 6.dp))
-                Spacer(Modifier.weight(1f))
-                SubIcon(Ico.Fullscreen) { full = true }
-                SubIcon(Ico.Key) { showKey = !showKey }
-            }
+        } else BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()) {
+            val screenH = maxHeight
+            Column(Modifier.fillMaxSize()) {
+                Row(Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    SubIcon(Ico.Back) { actions.closeSubtitles() }
+                    Text("Subtitles", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 6.dp))
+                    Spacer(Modifier.weight(1f))
+                    SubIcon(Ico.Fullscreen) { full = true }
+                    SubIcon(Ico.Key) { showKey = !showKey }
+                    if (track != null) {
+                        Spacer(Modifier.width(4.dp))
+                        SubPrimary("Burn in", enabled = ui.progress < 0f && track.cues.isNotEmpty(), compact = true) { actions.burnSubtitles() }
+                    }
+                }
+                if (showKey) SubKeyPanel(ui, actions) { showKey = false }
 
-            // ---- the clip, with the subtitles drawn exactly as they will be burnt in
-            Box(Modifier.fillMaxWidth().height(if (track == null) 300.dp else 240.dp), contentAlignment = Alignment.Center) {
-                SubVideo(
-                    s, fonts, player, Modifier.aspectRatio(s.aspect), movable = tab == SubTab.PLACE,
-                    words = if (wordMode) WordPick(selected) { s.selectedWord = it } else null,
-                ) { t -> actions.updateSubtitles(t) }
-            }
+                // ---- the clip, as big as the screen allows, with the subtitles drawn exactly
+                // as they will be burnt in
+                BoxWithConstraints(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 10.dp), contentAlignment = Alignment.Center) {
+                    val fit = if (maxWidth / maxHeight > s.aspect) Modifier.fillMaxHeight().aspectRatio(s.aspect) else Modifier.fillMaxWidth().aspectRatio(s.aspect)
+                    SubVideo(
+                        s, fonts, player, fit.clip(Corners.medium), movable = tool == SubTool.PLACE,
+                        words = if (wordMode) WordPick(selected) { s.selectedWord = it } else null,
+                    ) { t -> actions.updateSubtitles(t) }
+                }
+                SubTransport(s, player)
+                if (s.aligning) Text("Timing each word to the voice…", color = Muted, fontSize = 11.sp, modifier = Modifier.padding(start = 16.dp, bottom = 4.dp))
 
-            if (showKey) SubKeyPanel(ui, actions) { showKey = false }
-
-            when {
-                s.status != null -> SubWorking(s, actions)
-                track == null -> SubStart(ui, actions, s)
-                else -> SubEditor(ui, actions, s, track, fonts, tab, { s.tab = it }, { full = true }, player, selected, { s.selectedWord = it })
+                when {
+                    s.status != null -> SubWorking(s, actions)
+                    track == null -> SubStart(ui, actions, s)
+                    else -> {
+                        s.error?.let { Text(it, color = Color(0xFFFF7A66), fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp)) }
+                        Box(Modifier.fillMaxWidth().animateContentSize(tween(220))) {
+                            if (tool != null) {
+                                val max = if (tool == SubTool.LINES) screenH * 0.42f else screenH * 0.34f
+                                Box(Modifier.fillMaxWidth().heightIn(max = max).padding(top = 4.dp)) {
+                                    SubSheet(tool, ui, actions, s, track, fonts, player, selected, preview = { full = true })
+                                }
+                            }
+                        }
+                        SubToolRail(tools, tool) { t ->
+                            s.tool = if (t == tool) null else t
+                            if (t != SubTool.WORDS) s.selectedWord = null
+                        }
+                    }
+                }
             }
         }
         if (ui.progress >= 0f) {
@@ -176,6 +227,76 @@ fun SubtitleScreen(ui: UiState, actions: CameraActions) {
             )
         }
     }
+}
+
+/** Play / pause, where the clip is, and a scrubber. */
+@Composable
+private fun SubTransport(s: SubtitleSession, player: SubPlayer) {
+    val dur = s.durationMs.coerceAtLeast(1L)
+    Row(Modifier.fillMaxWidth().height(40.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(36.dp).clip(CircleShape).clickable { player.toggle() }, contentAlignment = Alignment.Center) {
+            Icon(if (player.playing) Ico.Pause else Ico.Play, null, tint = Color.White, modifier = Modifier.size(18.dp))
+        }
+        Text(subStamp(s.positionMs), color = Color.White, fontSize = 11.sp, fontFamily = UiType.mono)
+        LineSlider(
+            (s.positionMs.toFloat() / dur).coerceIn(0f, 1f), Modifier.weight(1f).padding(horizontal = 10.dp),
+        ) { f -> val ms = (f * dur).toLong(); s.positionMs = ms; player.seek(ms) }
+        Text(subStamp(dur), color = Muted, fontSize = 11.sp, fontFamily = UiType.mono)
+    }
+}
+
+/** The tools, each an icon over its name; the open one is lit. */
+@Composable
+private fun SubToolRail(tools: List<SubTool>, open: SubTool?, pick: (SubTool) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().background(Panel).horizontalScroll(rememberScrollState()).padding(horizontal = 6.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        tools.forEach { t ->
+            val on = t == open
+            val ink by animateColorAsState(if (on) Color.White else Muted, tween(160), label = "toolInk")
+            val back by animateColorAsState(if (on) Color.White.copy(alpha = 0.1f) else Color.Transparent, tween(160), label = "toolBack")
+            Column(
+                Modifier.width(58.dp).clip(Corners.medium).background(back).clickable { pick(t) }.padding(vertical = 7.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Icon(t.icon(), null, tint = ink, modifier = Modifier.size(21.dp))
+                Text(t.label, color = ink, fontSize = 10.sp, maxLines = 1, modifier = Modifier.padding(top = 3.dp))
+            }
+        }
+    }
+}
+
+/** The panel of the open tool. */
+@Composable
+private fun SubSheet(
+    tool: SubTool, ui: UiState, actions: CameraActions, s: SubtitleSession, track: SubtitleTrack, fonts: FontLibrary?,
+    player: SubPlayer, selected: String?, preview: () -> Unit,
+) {
+    fun set(t: SubtitleTrack) = actions.updateSubtitles(t)
+    when (tool) {
+        SubTool.LINES -> SubLines(s, track, fonts, { ms -> player.seek(ms) }, ::set)
+        SubTool.STYLE -> SubSheetColumn {
+            SubTemplates(track.style.template, fonts) { tpl -> set(track.copy(style = track.style.copy(template = tpl))) }
+            SubLanguageRow(track, ::set)
+        }
+        SubTool.TEXT -> SubSheetColumn { SubTextSheet(track, fonts, ::set) }
+        SubTool.EFFECTS -> SubSheetColumn { if (track.style.kinetic) SubEffectsSheet(track, fonts, ::set) else SubBackgroundSheet(track, ::set) }
+        SubTool.MOTION -> SubSheetColumn { SubMotionSheet(track, ::set) }
+        SubTool.WORDS -> SubWordsPanel(s, track, fonts, player, selected, { s.selectedWord = it }, ::set)
+        SubTool.PLACE -> SubPlacePanel(track, ::set)
+        SubTool.SOUND -> SubSheetColumn { SubSoundSheet(track, ::set) }
+        SubTool.MORE -> SubSheetColumn { SubMoreSheet(ui, actions, track, preview, ::set) }
+    }
+}
+
+/** A panel's body: scrolls when it is taller than the room it has. */
+@Composable
+private fun SubSheetColumn(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp), content = content,
+    )
 }
 
 /** The clip's player: whichever VideoView is on screen, and where it is. */
@@ -398,11 +519,12 @@ private fun SubChip(text: String, on: Boolean, font: FontFamily? = null, onClick
 }
 
 @Composable
-private fun SubPrimary(text: String, modifier: Modifier = Modifier, enabled: Boolean = true, onClick: () -> Unit) {
+private fun SubPrimary(text: String, modifier: Modifier = Modifier, enabled: Boolean = true, compact: Boolean = false, onClick: () -> Unit) {
     Text(
-        text, color = Color.Black, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+        text, color = Color.Black, fontSize = if (compact) 13.sp else 14.sp, fontWeight = FontWeight.SemiBold,
         modifier = modifier.clip(Corners.small).background(if (enabled) Accent else Accent.copy(alpha = 0.4f))
-            .clickable(enabled = enabled, onClick = onClick).padding(horizontal = 18.dp, vertical = 11.dp),
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = if (compact) 14.dp else 18.dp, vertical = if (compact) 8.dp else 11.dp),
     )
 }
 
@@ -480,46 +602,6 @@ private fun SubStart(ui: UiState, actions: CameraActions, s: SubtitleSession) {
             modifier = Modifier.clip(Corners.medium).clickable {
                 actions.updateSubtitles(SubtitleTrack(listOf(Cue(0, minOf(3000L, s.durationMs.coerceAtLeast(1000L))))))
             }.padding(8.dp))
-    }
-}
-
-@Composable
-private fun ColumnScope.SubEditor(
-    ui: UiState, actions: CameraActions, s: SubtitleSession, track: SubtitleTrack, fonts: FontLibrary?,
-    tab: SubTab, setTab: (SubTab) -> Unit, preview: () -> Unit, player: SubPlayer,
-    selected: String?, select: (String?) -> Unit,
-) {
-    fun set(t: SubtitleTrack) = actions.updateSubtitles(t)
-    val seek: (Long) -> Unit = { ms -> player.seek(ms) }
-
-    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        tabsFor(track).forEach { t ->
-            Text(
-                t.label, color = if (tab == t) Color.Black else Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.weight(1f).clip(Corners.medium).background(if (tab == t) Accent else Panel)
-                    .clickable { setTab(t) }.padding(vertical = 8.dp),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            )
-        }
-    }
-
-    Box(Modifier.fillMaxWidth().weight(1f)) {
-        when (tab) {
-            SubTab.LINES -> SubLines(s, track, fonts, seek, ::set)
-            SubTab.STYLE -> SubStylePanel(track, fonts, ::set)
-            SubTab.PLACE -> SubPlacePanel(track, ::set)
-            SubTab.WORDS -> SubWordsPanel(s, track, fonts, player, selected, select, ::set)
-        }
-    }
-    s.error?.let { Text(it, color = Color(0xFFFF7A66), fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp)) }
-
-    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        SubSecondary("Redo") { actions.generateSubtitles() }
-        SubSecondary(".srt") { actions.saveSrt() }
-        SubSecondary("Preview", onClick = preview)
-        Spacer(Modifier.weight(1f))
-        SubPrimary("Burn in", enabled = ui.progress < 0f && track.cues.isNotEmpty()) { actions.burnSubtitles() }
     }
 }
 
@@ -620,59 +702,6 @@ private fun SubRepeat(text: String, onStep: () -> Unit) {
         },
         contentAlignment = Alignment.Center,
     ) { Text(text, color = Color.White, fontSize = 15.sp) }
-}
-
-/** Language, fonts, size, colour and what sits behind the letters. */
-@Composable
-private fun SubStylePanel(track: SubtitleTrack, fonts: FontLibrary?, set: (SubtitleTrack) -> Unit) {
-    val style = track.style
-    fun st(f: (SubtitleStyle) -> SubtitleStyle) = set(track.copy(style = f(style)))
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        SubLabel("Template")
-        SubTemplates(style.template, fonts) { tpl -> st { it.copy(template = tpl) } }
-        SubLabel("Language")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SubtitleLanguage.entries.forEach { l -> SubChip(l.label, style.language == l) { st { it.copy(language = l) } } }
-        }
-        if (style.kinetic) {
-            SubKineticStyle(track, fonts, set)
-            return@Column
-        }
-        if (fonts != null) {
-            if (style.language != SubtitleLanguage.TELUGU) {
-                SubLabel("English font")
-                SubFontMenu(fonts, style.latinFont, telugu = false) { k -> st { it.copy(latinFont = k) } }
-            }
-            if (style.language != SubtitleLanguage.ENGLISH) {
-                SubLabel("Telugu font")
-                SubFontMenu(fonts, style.teluguFont, telugu = true) { k -> st { it.copy(teluguFont = k) } }
-            }
-        }
-        SubLabel("Size")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            SubChip("A−", false) { st { it.copy(size = (it.size - 0.004f).coerceAtLeast(0.022f)) } }
-            Text("${(style.size * 1000).roundToInt()}", color = Color.White, fontSize = 13.sp, fontFamily = UiType.mono)
-            SubChip("A+", false) { st { it.copy(size = (it.size + 0.004f).coerceAtMost(0.12f)) } }
-        }
-        SubLabel("Text colour")
-        SubSwatches(TextColors, style.color) { c -> st { it.copy(color = c) } }
-        SubLabel("Background")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SubtitleBackground.entries.forEach { b -> SubChip(b.label, style.background == b) { st { it.copy(background = b) } } }
-        }
-        if (style.background == SubtitleBackground.BOX || style.background == SubtitleBackground.OUTLINE) {
-            SubLabel(if (style.background == SubtitleBackground.BOX) "Box colour" else "Outline colour")
-            SubSwatches(BackColors, style.backColor) { c -> st { it.copy(backColor = c) } }
-        }
-        if (style.background == SubtitleBackground.BOX) {
-            SubLabel("Box opacity")
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Opacities.forEach { o -> SubChip("${(o * 100).roundToInt()}%", abs(style.backOpacity - o) < 0.05f) { st { it.copy(backOpacity = o) } } }
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-    }
 }
 
 @Composable
@@ -821,15 +850,148 @@ private fun SubTemplates(selected: CaptionTemplate, fonts: FontLibrary?, pick: (
     Text(selected.blurb, color = Muted, fontSize = 11.sp)
 }
 
-private val CaptionScales = listOf(0.7f, 0.85f, 1f, 1.15f, 1.3f)
 
-/** Kinetic captions: faces, size, colour, how words come in, and words behind the subject. */
+/** Language, and for kinetic captions a new layout of the same words. */
 @Composable
-private fun SubKineticStyle(track: SubtitleTrack, fonts: FontLibrary?, set: (SubtitleTrack) -> Unit) {
+private fun SubLanguageRow(track: SubtitleTrack, set: (SubtitleTrack) -> Unit) {
     val style = track.style
     fun st(f: (SubtitleStyle) -> SubtitleStyle) = set(track.copy(style = f(style)))
-    if (style.language == SubtitleLanguage.BOTH) Text("Kinetic captions show one language: English here.", color = Muted, fontSize = 11.sp)
-    Row(Modifier.fillMaxWidth().clip(Corners.medium).background(Panel).padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        SubtitleLanguage.entries.forEach { l -> SubChip(l.label, style.language == l) { st { it.copy(language = l) } } }
+        if (style.kinetic) {
+            Spacer(Modifier.width(6.dp))
+            SubChip("Shuffle layout", false) { st { it.copy(seed = it.seed + 1) } }
+            if (style.seed != 0) SubChip("Original", false) { st { it.copy(seed = 0) } }
+        }
+    }
+    if (style.kinetic && style.language == SubtitleLanguage.BOTH) Text("Kinetic captions show one language: English here.", color = Muted, fontSize = 11.sp)
+}
+
+/** A label, a slider and its value, on one line. */
+@Composable
+private fun SubSliderRow(label: String, value: Float, min: Float, max: Float, shown: String, change: (Float) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(label, color = Muted, fontSize = 12.sp, modifier = Modifier.width(64.dp))
+        LineSlider(value, Modifier.weight(1f), min = min, max = max, onChange = change)
+        Text(shown, color = Color.White, fontSize = 12.sp, fontFamily = UiType.mono, textAlign = androidx.compose.ui.text.style.TextAlign.End,
+            modifier = Modifier.width(48.dp))
+    }
+}
+
+/** A font drop-down with its label in front, on one line. */
+@Composable
+private fun SubFontRow(label: String, fonts: FontLibrary, selected: String, telugu: Boolean, pick: (String) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(label, color = Muted, fontSize = 12.sp, modifier = Modifier.width(64.dp))
+        Box(Modifier.weight(1f)) { SubFontMenu(fonts, selected, telugu, pick) }
+    }
+}
+
+/** Size, letter spacing, colour and fonts. */
+@Composable
+private fun SubTextSheet(track: SubtitleTrack, fonts: FontLibrary?, set: (SubtitleTrack) -> Unit) {
+    val style = track.style
+    fun st(f: (SubtitleStyle) -> SubtitleStyle) = set(track.copy(style = f(style)))
+    if (style.kinetic) {
+        SubSliderRow("Size", style.captionScale, 0.5f, 1.6f, "${(style.captionScale * 100).roundToInt()}%") { v -> st { it.copy(captionScale = (v * 20).roundToInt() / 20f) } }
+    } else {
+        SubSliderRow("Size", style.size, 0.022f, 0.12f, "${(style.size / 0.045f * 100).roundToInt()}%") { v -> st { it.copy(size = v) } }
+    }
+    SubSliderRow("Spacing", style.tracking, -0.05f, 0.4f, "%+d".format((style.tracking * 100).roundToInt())) { v ->
+        st { it.copy(tracking = if (abs(v) < 0.012f) 0f else (v * 100).roundToInt() / 100f) }
+    }
+    SubSwatches(TextColors, style.color) { c -> st { it.copy(color = c) } }
+    if (fonts != null) {
+        if (style.kinetic) {
+            if (style.language == SubtitleLanguage.TELUGU) {
+                SubFontRow("Telugu", fonts, style.teluguFont, telugu = true) { k -> st { it.copy(teluguFont = k) } }
+            } else {
+                SubFontRow("Main", fonts, style.captionFont, telugu = false) { k -> st { it.copy(captionFont = k) } }
+                SubFontRow("Accent", fonts, style.accentFont, telugu = false) { k -> st { it.copy(accentFont = k) } }
+                if (style.template == CaptionTemplate.STACK) SubFontRow("Italic", fonts, style.captionItalic, telugu = false) { k -> st { it.copy(captionItalic = k) } }
+            }
+        } else {
+            if (style.language != SubtitleLanguage.TELUGU) SubFontRow("English", fonts, style.latinFont, telugu = false) { k -> st { it.copy(latinFont = k) } }
+            if (style.language != SubtitleLanguage.ENGLISH) SubFontRow("Telugu", fonts, style.teluguFont, telugu = true) { k -> st { it.copy(teluguFont = k) } }
+        }
+    }
+}
+
+/** Kinetic captions: a finish on the letters, each shown on a little tile, how strong, and its colour. */
+@Composable
+private fun SubEffectsSheet(track: SubtitleTrack, fonts: FontLibrary?, set: (SubtitleTrack) -> Unit) {
+    val style = track.style
+    fun st(f: (SubtitleStyle) -> SubtitleStyle) = set(track.copy(style = f(style)))
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        TextFx.entries.forEach { fx -> SubEffectTile(fx, style, fonts, style.effect == fx) { st { it.copy(effect = fx) } } }
+    }
+    if (style.effect != TextFx.NONE) {
+        SubSliderRow("Strength", style.effectAmount, 0f, 1f, "${(style.effectAmount * 100).roundToInt()}%") { v -> st { it.copy(effectAmount = v) } }
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            SubChip("Auto", style.effectColor == 0) { st { it.copy(effectColor = 0) } }
+            (BackColors + TextColors.drop(1)).distinct().forEach { c ->
+                val on = style.effectColor != 0 && (c or (0xFF shl 24)) == (style.effectColor or (0xFF shl 24))
+                Box(
+                    Modifier.size(28.dp).clip(CircleShape).background(Color(c))
+                        .border(if (on) 3.dp else 1.dp, if (on) Accent else Color.White.copy(alpha = 0.3f), CircleShape)
+                        .clickable { st { it.copy(effectColor = c) } },
+                )
+            }
+        }
+    }
+}
+
+/** "Aa" with an effect, over a soft picture-like background. */
+@Composable
+private fun SubEffectTile(fx: TextFx, style: SubtitleStyle, fonts: FontLibrary?, on: Boolean, onClick: () -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Canvas(
+            Modifier.size(width = 64.dp, height = 50.dp).clip(Corners.medium)
+                .border(if (on) 2.dp else 1.dp, if (on) Accent else Color.White.copy(alpha = 0.15f), Corners.medium)
+                .clickable(onClick = onClick),
+        ) {
+            drawRect(androidx.compose.ui.graphics.Brush.linearGradient(listOf(Color(0xFF8C8A84), Color(0xFFD9D4C8), Color(0xFF6F7A80))))
+            if (fonts != null) {
+                val layer = TextLayer(
+                    id = 1, text = "Aa", font = style.captionFont, size = 0.62f, x = 0.5f, y = 0.5f, color = Color.White.toArgbInt(),
+                    fx = fx, fxAmount = if (fx == style.effect) style.effectAmount.coerceAtLeast(0.35f) else 0.6f,
+                    fxColor = if (fx == style.effect) style.effectColor else 0,
+                )
+                drawIntoCanvas { c -> TextRenderer.draw(c.nativeCanvas, listOf(layer), fonts, size.width, size.height) }
+            }
+        }
+        Text(fx.label, color = if (on) Color.White else Muted, fontSize = 10.sp, maxLines = 1, modifier = Modifier.padding(top = 3.dp))
+    }
+}
+
+private fun Color.toArgbInt(): Int = android.graphics.Color.argb((alpha * 255).roundToInt(), (red * 255).roundToInt(), (green * 255).roundToInt(), (blue * 255).roundToInt())
+
+/** Classic lines: what sits behind the letters (none, shadow, outline or a box), its colour and opacity. */
+@Composable
+private fun SubBackgroundSheet(track: SubtitleTrack, set: (SubtitleTrack) -> Unit) {
+    val style = track.style
+    fun st(f: (SubtitleStyle) -> SubtitleStyle) = set(track.copy(style = f(style)))
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        SubtitleBackground.entries.forEach { b -> SubChip(b.label, style.background == b) { st { it.copy(background = b) } } }
+    }
+    if (style.background == SubtitleBackground.BOX || style.background == SubtitleBackground.OUTLINE) {
+        SubSwatches(BackColors, style.backColor) { c -> st { it.copy(backColor = c) } }
+    }
+    if (style.background == SubtitleBackground.BOX) {
+        SubSliderRow("Opacity", style.backOpacity, 0.2f, 1f, "${(style.backOpacity * 100).roundToInt()}%") { v -> st { it.copy(backOpacity = v) } }
+    }
+}
+
+/** Kinetic captions: how words come in, and words passing behind the subject. */
+@Composable
+private fun SubMotionSheet(track: SubtitleTrack, set: (SubtitleTrack) -> Unit) {
+    val style = track.style
+    fun st(f: (SubtitleStyle) -> SubtitleStyle) = set(track.copy(style = f(style)))
+    SubLabel("Words come in")
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        WordAnim.entries.forEach { a -> SubChip(a.label, style.wordAnim == a) { st { it.copy(wordAnim = a) } } }
+    }
+    Row(Modifier.fillMaxWidth().clip(Corners.medium).background(Color(0xFF1A1A1C)).padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text("Text behind subject", color = Color.White, fontSize = 14.sp)
             Text("Some big words pass behind you, the rest stay in front. Faded here; tucked behind you when burnt in.",
@@ -838,40 +1000,39 @@ private fun SubKineticStyle(track: SubtitleTrack, fonts: FontLibrary?, set: (Sub
         Spacer(Modifier.width(10.dp))
         Toggle(style.behindSubject) { st { it.copy(behindSubject = !it.behindSubject) } }
     }
-    SubLabel("Words come in")
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        WordAnim.entries.forEach { a -> SubChip(a.label, style.wordAnim == a) { st { it.copy(wordAnim = a) } } }
-    }
-    SubLabel("Size")
+}
+
+private val CleanLevels = listOf(0f to "Off", 0.3f to "Light", 0.6f to "Medium", 1f to "Strong")
+
+/** Taking background noise out of the voice when burning in. */
+@Composable
+private fun SubSoundSheet(track: SubtitleTrack, set: (SubtitleTrack) -> Unit) {
+    val style = track.style
+    Text("Reduce background noise", color = Color.White, fontSize = 14.sp)
+    Text("Hiss, hum, fans, traffic and room noise are taken down, most of all between words; the voice itself is kept natural. Applied when you burn in.",
+        color = Muted, fontSize = 11.sp)
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        CaptionScales.forEach { k -> SubChip("${(k * 100).roundToInt()}%", abs(style.captionScale - k) < 0.02f) { st { it.copy(captionScale = k) } } }
-    }
-    SubLabel("Colour")
-    SubSwatches(TextColors, style.color) { c -> st { it.copy(color = c) } }
-    if (fonts != null) {
-        if (style.language == SubtitleLanguage.TELUGU) {
-            SubLabel("Telugu font")
-            SubFontMenu(fonts, style.teluguFont, telugu = true) { k -> st { it.copy(teluguFont = k) } }
-        } else {
-            SubLabel("Main font")
-            SubFontMenu(fonts, style.captionFont, telugu = false) { k -> st { it.copy(captionFont = k) } }
-            SubLabel("Accent font (the odd big word)")
-            SubFontMenu(fonts, style.accentFont, telugu = false) { k -> st { it.copy(accentFont = k) } }
-            if (style.template == CaptionTemplate.STACK) {
-                SubLabel("Italic font")
-                SubFontMenu(fonts, style.captionItalic, telugu = false) { k -> st { it.copy(captionItalic = k) } }
-            }
+        CleanLevels.forEach { (v, name) ->
+            SubChip(name, abs(style.cleanVoice - v) < 0.05f) { set(track.copy(style = style.copy(cleanVoice = v))) }
         }
     }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        SubSecondary("Shuffle layout") { st { it.copy(seed = it.seed + 1) } }
-        if (style.seed != 0) SubSecondary("Original layout") { st { it.copy(seed = 0) } }
+}
+
+/** Preview, redo, the .srt file and undoing word changes. */
+@Composable
+private fun SubMoreSheet(ui: UiState, actions: CameraActions, track: SubtitleTrack, preview: () -> Unit, set: (SubtitleTrack) -> Unit) {
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        SubSecondary("Full-screen preview", onClick = preview)
+        SubSecondary("Redo with Gemini") { actions.generateSubtitles() }
+        SubSecondary("Save .srt") { actions.saveSrt() }
     }
     if (track.edits.isNotEmpty()) {
         SubSecondary("Undo ${track.edits.size} word change${if (track.edits.size == 1) "" else "s"}") { set(track.copy(edits = emptyMap())) }
     }
-    Spacer(Modifier.height(8.dp))
+    if (ui.geminiKey.isBlank()) Text("Add a Gemini key (the key button above) to make subtitles from the clip's speech.", color = Muted, fontSize = 11.sp)
 }
+
+private enum class WordPart(val label: String) { FONT("Font"), SIZE("Size"), COLOUR("Colour"), ANIM("Comes in"), DEPTH("Depth") }
 
 /**
  * One word at a time: tap a word on the video (or below) to pick it, drag it anywhere, and
@@ -885,6 +1046,7 @@ private fun SubWordsPanel(
     val phrases = Kinetic.plan(track).phrases
     // The phrase picked, else the one on screen.
     val phrase = selected?.let { Kinetic.phraseOf(track, it) } ?: Kinetic.phraseAt(track, s.positionMs) ?: phrases.firstOrNull()
+    var part by remember { mutableStateOf(WordPart.FONT) }
     fun show(p: Phrase, id: String? = null) {
         // Hold the clip where the whole phrase is in.
         player.pause()
@@ -893,11 +1055,10 @@ private fun SubWordsPanel(
         player.seek(at)
         select(id)
     }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    SubSheetColumn {
         if (phrase == null) {
             Text("No words yet: write some lines first.", color = Muted, fontSize = 12.sp)
-            return@Column
+            return@SubSheetColumn
         }
         // The phrase's words, with steps to the one before and after.
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -913,45 +1074,48 @@ private fun SubWordsPanel(
         val word = phrase.words.firstOrNull { it.id == selected }
         if (word == null) {
             Text("Tap a word on the video, or above, to change it. Drag a word to move it.", color = Muted, fontSize = 12.sp)
-            return@Column
+            return@SubSheetColumn
         }
         val edit = track.edits[word.id]?.takeIf { it.text == word.text } ?: WordEdit(text = word.text)
         val placed = Kinetic.placedWord(track, word.id, s.aspect, fonts)
         fun ed(f: (WordEdit) -> WordEdit) = set(track.withEdit(word.id, f(edit)))
         val style = track.style
-
-        SubLabel("Font")
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            val faces = listOf(style.captionFont to "Sans", style.captionItalic to "Italic", style.accentFont to "Serif")
-            faces.forEach { (key, name) ->
-                SubChip(name, placed?.font == key, fonts?.let { FontFamily(it.typeface(key)) }) { ed { it.copy(font = key) } }
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            WordPart.entries.forEach { p ->
+                Text(p.label, color = if (p == part) Color.White else Muted, fontSize = 12.sp,
+                    fontWeight = if (p == part) FontWeight.SemiBold else FontWeight.Normal,
+                    modifier = Modifier.clip(Corners.small).clickable { part = p }.padding(vertical = 4.dp))
+            }
+            Spacer(Modifier.width(8.dp))
+            if (!edit.isEmpty) Text("Reset", color = Accent, fontSize = 12.sp,
+                modifier = Modifier.clip(Corners.small).clickable { set(track.withEdit(word.id, WordEdit(text = word.text))) }.padding(4.dp))
+            Text("Done", color = Accent, fontSize = 12.sp, modifier = Modifier.clip(Corners.small).clickable { select(null) }.padding(4.dp))
+        }
+        when (part) {
+            WordPart.FONT -> Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                listOf(style.captionFont to "Sans", style.captionItalic to "Italic", style.accentFont to "Serif").forEach { (key, name) ->
+                    SubChip(name, placed?.font == key, fonts?.let { FontFamily(it.typeface(key)) }) { ed { it.copy(font = key) } }
+                }
+                if (fonts != null) Box(Modifier.width(190.dp)) {
+                    SubFontMenu(fonts, placed?.font ?: style.captionFont, telugu = style.language == SubtitleLanguage.TELUGU) { k -> ed { it.copy(font = k) } }
+                }
+            }
+            WordPart.SIZE -> {
+                val now = placed?.size ?: 0.08f
+                // Shown against the template's own size for the word.
+                val base = if (edit.size == null) now else Kinetic.placedWord(track.withEdit(word.id, edit.copy(size = null)), word.id, s.aspect, fonts)?.size ?: now
+                SubSliderRow("Size", now / base, 0.4f, 2.5f, "${(now / base * 100).roundToInt()}%") { k -> ed { it.copy(size = (base * k).coerceIn(0.025f, 0.32f)) } }
+            }
+            WordPart.COLOUR -> SubSwatches(TextColors, placed?.color ?: style.color) { c -> ed { it.copy(color = c) } }
+            WordPart.ANIM -> Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                WordAnim.entries.forEach { a -> SubChip(a.label, (edit.anim ?: style.wordAnim) == a) { ed { it.copy(anim = a) } } }
+            }
+            WordPart.DEPTH -> {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    WordDepth.entries.forEach { d -> SubChip(d.label, edit.depth == d) { ed { it.copy(depth = d) } } }
+                }
+                if (placed?.behind == true) Text("Behind you: faded in this preview, tucked behind you when burnt in.", color = Muted, fontSize = 11.sp)
             }
         }
-        if (fonts != null) SubFontMenu(fonts, placed?.font ?: style.captionFont, telugu = style.language == SubtitleLanguage.TELUGU) { k -> ed { it.copy(font = k) } }
-        SubLabel("Size")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            val now = placed?.size ?: 0.08f
-            // Shown against the template's own size for the word.
-            val base = if (edit.size == null) now else Kinetic.placedWord(track.withEdit(word.id, edit.copy(size = null)), word.id, s.aspect, fonts)?.size ?: now
-            SubRepeat("−") { val n = (now * 0.92f).coerceAtLeast(0.025f); ed { it.copy(size = n) } }
-            Text("${(now / base * 100).roundToInt()}%", color = Color.White, fontSize = 13.sp, fontFamily = UiType.mono)
-            SubRepeat("+") { val n = (now * 1.08f).coerceAtMost(0.32f); ed { it.copy(size = n) } }
-        }
-        SubLabel("Colour")
-        SubSwatches(TextColors, placed?.color ?: style.color) { c -> ed { it.copy(color = c) } }
-        SubLabel("Comes in")
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            WordAnim.entries.forEach { a -> SubChip(a.label, (edit.anim ?: style.wordAnim) == a) { ed { it.copy(anim = a) } } }
-        }
-        SubLabel("Depth")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            WordDepth.entries.forEach { d -> SubChip(d.label, edit.depth == d) { ed { it.copy(depth = d) } } }
-        }
-        if (placed?.behind == true) Text("Behind you: faded in this preview, tucked behind you when burnt in.", color = Muted, fontSize = 11.sp)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (!edit.isEmpty) SubSecondary("Reset word") { set(track.withEdit(word.id, WordEdit(text = word.text))) }
-            SubSecondary("Done") { select(null) }
-        }
-        Spacer(Modifier.height(8.dp))
     }
 }

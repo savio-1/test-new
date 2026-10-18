@@ -21,6 +21,26 @@ import kotlin.math.min
 enum class TextAlign { LEFT, CENTER, RIGHT }
 
 /**
+ * A finish on the letters that helps them read over a busy picture. [amount] (0..1 on the
+ * layer) sets how strong it is; the colour is the layer's fxColor, or the effect's own.
+ */
+enum class TextFx(val label: String) {
+    NONE("None"),
+    /** A soft shadow just under the letters. */
+    SHADOW("Soft shadow"),
+    /** A hard copy of the letters, offset down and right. */
+    DROP("Drop shadow"),
+    /** A blurred halo in the text's colour (or the chosen one). */
+    GLOW("Glow"),
+    /** Soft focus: the letters bloom into a blur of themselves. */
+    BLUR("Soft blur"),
+    /** A clean stroke around each letter. */
+    OUTLINE("Outline"),
+    /** A dark, diffuse cloud behind the words, like a soft vignette under them. */
+    HAZE("Haze"),
+}
+
+/**
  * A line (or lines) of text burnt into the picture. Position and size are relative to the
  * upright frame, so the layer looks the same at any resolution and survives rotation.
  */
@@ -61,6 +81,10 @@ data class TextLayer(
     val reveal: Float = 1f,
     /** Soft focus on the letters, as a fraction of the text size (kinetic captions). Not saved. */
     val blur: Float = 0f,
+    /** A finish on the letters, how strong (0..1), and its colour (0: the effect's own). */
+    val fx: TextFx = TextFx.NONE,
+    val fxAmount: Float = 0.5f,
+    val fxColor: Int = 0,
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("id", id).put("text", text).put("font", font).put("size", size.toDouble())
@@ -69,6 +93,7 @@ data class TextLayer(
         .put("shadow", shadow).put("tracking", tracking.toDouble()).put("behind", behind).put("wrap", wrap.toDouble()).put("box", box)
         .put("boxColor", boxColor).put("outline", outline)
         .put("lineSpacing", lineSpacing.toDouble()).put("anim", anim.name)
+        .put("fx", fx.name).put("fxAmount", fxAmount.toDouble()).put("fxColor", fxColor)
 
     companion object {
         fun fromJson(o: JSONObject) = TextLayer(
@@ -91,6 +116,9 @@ data class TextLayer(
             outline = o.optInt("outline", 0),
             lineSpacing = o.optDouble("lineSpacing", 1.0).toFloat(),
             anim = runCatching { TextAnim.valueOf(o.optString("anim")) }.getOrDefault(TextAnim.NONE),
+            fx = runCatching { TextFx.valueOf(o.optString("fx")) }.getOrDefault(TextFx.NONE),
+            fxAmount = o.optDouble("fxAmount", 0.5).toFloat(),
+            fxColor = o.optInt("fxColor", 0),
         )
 
         /** Black at 60%: the classic subtitle box. */
@@ -367,9 +395,10 @@ object TextRenderer {
             // the reveal edge (so shadows and outlines go with their letters).
             val revealing = layer.reveal < 1f
             if (revealing) {
-                val pad = p.textSize
+                val pad = p.textSize * 2f
                 canvas.saveLayer(-pad, -pad, full.width + pad, full.height + pad, null)
             }
+            underFx(canvas, layer, l, p)
             if (layer.box) {
                 val (px, py) = boxPad(p)
                 // The box hugs the lines actually used, not the full wrap width.
@@ -397,8 +426,9 @@ object TextRenderer {
                 p.alpha = fillAlpha
             }
             l.draw(canvas)
+            if (layer.fx == TextFx.SHADOW) p.clearShadowLayer()
             if (revealing) {
-                val pad = p.textSize
+                val pad = p.textSize * 2f
                 val soft = max(full.width * 0.35f, p.textSize * 0.6f)
                 // The edge travels from fully left of the text to fully past it.
                 val edge = -soft + layer.reveal * (full.width + soft)
@@ -410,6 +440,61 @@ object TextRenderer {
                 canvas.restore()
             }
             canvas.restore()
+        }
+    }
+
+    /**
+     * The layer's effect, drawn under its letters with the same layout [l] (whose paint is [p]);
+     * a soft shadow is set on [p] itself and cleared after the letters are drawn.
+     */
+    private fun underFx(canvas: Canvas, layer: TextLayer, l: StaticLayout, p: TextPaint) {
+        val a = layer.fxAmount.coerceIn(0f, 1f)
+        val ts = p.textSize
+        val op = layer.opacity.coerceIn(0f, 1f)
+        fun tint(c: Int, alpha: Float) { p.color = c; p.alpha = (Color.alpha(c) * alpha * op).toInt().coerceIn(0, 255) }
+        val fill = p.color
+        val fillAlpha = p.alpha
+        val mask = p.maskFilter
+        fun restore() { p.color = fill; p.alpha = fillAlpha; p.maskFilter = mask; p.style = android.graphics.Paint.Style.FILL }
+        when (layer.fx) {
+            TextFx.NONE -> Unit
+            TextFx.SHADOW -> {
+                val c = if (layer.fxColor != 0) layer.fxColor else Color.BLACK
+                p.setShadowLayer(ts * (0.05f + 0.25f * a), 0f, ts * (0.02f + 0.05f * a),
+                    Color.argb(((0.35f + 0.55f * a) * 255 * op).toInt(), Color.red(c), Color.green(c), Color.blue(c)))
+            }
+            TextFx.DROP -> {
+                val d = ts * (0.035f + 0.07f * a)
+                tint(if (layer.fxColor != 0) layer.fxColor else Color.BLACK, 0.55f + 0.45f * a)
+                canvas.translate(d, d); l.draw(canvas); canvas.translate(-d, -d)
+                restore()
+            }
+            TextFx.GLOW, TextFx.BLUR -> {
+                val glow = layer.fx == TextFx.GLOW
+                tint(if (glow && layer.fxColor != 0) layer.fxColor else fill or (0xFF shl 24), if (glow) 0.55f + 0.45f * a else 0.5f + 0.4f * a)
+                p.maskFilter = android.graphics.BlurMaskFilter(ts * (if (glow) 0.08f + 0.32f * a else 0.05f + 0.2f * a), android.graphics.BlurMaskFilter.Blur.NORMAL)
+                l.draw(canvas)
+                if (glow && a > 0.5f) l.draw(canvas)
+                restore()
+                // Soft blur also softens the letters themselves a little.
+                if (!glow && layer.blur <= 0.002f) p.maskFilter = android.graphics.BlurMaskFilter(ts * 0.03f * a + 0.5f, android.graphics.BlurMaskFilter.Blur.NORMAL)
+            }
+            TextFx.OUTLINE -> {
+                tint(if (layer.fxColor != 0) layer.fxColor else Color.BLACK, 1f)
+                p.style = android.graphics.Paint.Style.STROKE
+                p.strokeJoin = android.graphics.Paint.Join.ROUND
+                p.strokeWidth = ts * (0.04f + 0.14f * a)
+                l.draw(canvas)
+                restore()
+            }
+            TextFx.HAZE -> {
+                tint(if (layer.fxColor != 0) layer.fxColor else Color.BLACK, 0.3f + 0.45f * a)
+                p.style = android.graphics.Paint.Style.FILL_AND_STROKE
+                p.strokeWidth = ts * 0.45f
+                p.maskFilter = android.graphics.BlurMaskFilter(ts * (0.45f + 0.55f * a), android.graphics.BlurMaskFilter.Blur.NORMAL)
+                l.draw(canvas)
+                restore()
+            }
         }
     }
 

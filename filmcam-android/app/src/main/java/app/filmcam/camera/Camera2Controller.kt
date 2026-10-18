@@ -98,6 +98,10 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
     private var rawRotation = 0
     /** The camera ignored our log curve (some phones list it but don't apply it). */
     private var ispCurveRejected = false
+    /** Video asks for the camera's best noise reduction and sharpening unless that cost frames. */
+    private var hqVideoRejected = false
+    private var hqFrames = 0
+    private var hqFirstNs = 0L
     @Volatile private var directOn = false
     /** The camera refused a session with stream use cases; build them plain from now on. */
     private var useCasesFailed = false
@@ -422,10 +426,12 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
             if (CameraMetadata.EDGE_MODE_OFF in c.edgeModes) b.set(CaptureRequest.EDGE_MODE, CameraMetadata.EDGE_MODE_OFF)
         }
 
-        // Photos: the camera's best noise reduction and sharpening, in the viewfinder too, so it
-        // looks like the system camera. Video keeps the camera's default (fast) modes, which
-        // never cost frame rate.
-        if (!video || still) {
+        // The camera's best noise reduction and sharpening, in the viewfinder too, so the picture
+        // is as clean as the system camera's. Video gets them as well at up to 30 fps, and drops
+        // back to the fast modes if the phone can't hold the frame rate with them.
+        val hqVideo = video && !still && !hqVideoRejected && cfg.fps <= 30 && !logInIsp
+        if (video && !still) { hqActive = hqVideo; hqFrames = 0 }
+        if (!video || still || hqVideo) {
             if (CameraMetadata.NOISE_REDUCTION_MODE_HIGH_QUALITY in c.noiseModes) {
                 b.set(CaptureRequest.NOISE_REDUCTION_MODE, CameraMetadata.NOISE_REDUCTION_MODE_HIGH_QUALITY)
             }
@@ -453,6 +459,7 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
                 ispCurveRejected = true
                 applyRepeating()
             }
+            if (hqActive) watchFrameRate(result)
             if (!manual()) {
                 result.get(CaptureResult.SENSOR_EXPOSURE_TIME)?.let { if (it > 0) lastExposureNs = it }
                 result.get(CaptureResult.SENSOR_SENSITIVITY)?.let { if (it > 0) lastIso = it }
@@ -467,6 +474,30 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
                     shoot()
                 }
             }
+        }
+    }
+
+    @Volatile private var hqActive = false
+
+    /**
+     * With high-quality processing on video, checks over the first second and a half that the
+     * camera keeps the frame rate. If frames come slower and it isn't the exposure holding them
+     * (a dark scene may lengthen frames on purpose), the fast modes come back.
+     */
+    private fun watchFrameRate(result: TotalCaptureResult) {
+        val ts = result.get(CaptureResult.SENSOR_TIMESTAMP) ?: return
+        val fps = config?.fps ?: return
+        if (hqFrames == 0) hqFirstNs = ts
+        hqFrames++
+        if (hqFrames < 45) return
+        val interval = (ts - hqFirstNs) / (hqFrames - 1).toDouble()
+        val target = 1e9 / fps
+        val exposure = result.get(CaptureResult.SENSOR_EXPOSURE_TIME) ?: 0L
+        hqActive = false
+        if (interval > target * 1.12 && exposure < interval * 0.8) {
+            Log.w(TAG, "high-quality video processing runs at ${"%.1f".format(1e9 / interval)} fps; using the fast modes")
+            hqVideoRejected = true
+            applyRepeating()
         }
     }
 

@@ -533,6 +533,7 @@ fun SettingsSheet(ui: UiState, actions: CameraActions) {
                 }
                 if (ui.stabilizationSupported) SettingSwitch("Stabilisation", "Steadier, slightly cropped", ui.stabilization) { actions.setStabilization(it) }
                 SettingSwitch("Log", "Flat S-Log3 video for colour grading", ui.log) { actions.setLog(it) }
+                SettingSwitch("Reduce background noise", "Hiss, hum, fans and traffic taken out of the sound; the voice stays natural", ui.voiceDenoise) { actions.setVoiceDenoise(it) }
             } else if (ui.photoSizes.isNotEmpty()) {
                 SettingLabel("Photo size")
                 Segmented(ui.photoSizes, ui.photoSize ?: ui.photoSizes.last(), { it.label }, Modifier.fillMaxWidth()) { actions.setPhotoSize(it) }

@@ -76,7 +76,26 @@ object AudioExtract {
         )
     }
 
-    private fun decodeToWav(ex: MediaExtractor, format: MediaFormat): ClipAudio {
+    /** The clip's sound as 16 kHz mono samples, -1..1 (for aligning words); null without sound. */
+    fun pcm16k(context: Context, uri: Uri): FloatArray? {
+        val ex = MediaExtractor()
+        try {
+            ex.setDataSource(context, uri, null)
+            val track = (0 until ex.trackCount).firstOrNull { ex.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true }
+                ?: return null
+            ex.selectTrack(track)
+            val bytes = decodeMono16k(ex, ex.getTrackFormat(track))
+            val sb = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
+            return FloatArray(sb.remaining()) { sb.get(it) / 32768f }
+        } finally {
+            ex.release()
+        }
+    }
+
+    private fun decodeToWav(ex: MediaExtractor, format: MediaFormat): ClipAudio = ClipAudio(wav(decodeMono16k(ex, format), 16_000), "audio/wav")
+
+    /** Decodes the selected track to 16-bit 16 kHz mono PCM (little-endian bytes). */
+    private fun decodeMono16k(ex: MediaExtractor, format: MediaFormat): ByteArray {
         val codec = MediaCodec.createDecoderByType(format.getString(MediaFormat.KEY_MIME)!!)
         codec.configure(format, null, null, 0)
         codec.start()
@@ -125,7 +144,7 @@ object AudioExtract {
             runCatching { codec.stop() }
             codec.release()
         }
-        return ClipAudio(wav(pcm.toByteArray(), 16_000), "audio/wav")
+        return pcm.toByteArray()
     }
 
     private fun wav(pcm: ByteArray, rate: Int): ByteArray {

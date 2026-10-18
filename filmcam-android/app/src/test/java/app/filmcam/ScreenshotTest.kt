@@ -131,11 +131,11 @@ class ScreenshotTest {
         }
         geminiKey = "set"
     })
-    private fun kinetic(tab: app.filmcam.ui.SubTab, word: String? = null, at: Long = 1500) = state(ThemeMode.DARK) {
+    private fun kinetic(tab: app.filmcam.ui.SubTool?, word: String? = null, at: Long = 1500) = state(ThemeMode.DARK) {
         screen = Screen.SUBTITLES
         subtitles = app.filmcam.ui.SubtitleSession(app.filmcam.util.MediaItem(android.net.Uri.EMPTY, true, 0L, 12_000L), 9f / 16f, 12_000L).apply {
             positionMs = at
-            this.tab = tab
+            this.tool = tab
             selectedWord = word
             track = app.filmcam.sub.SubtitleTrack(
                 listOf(
@@ -147,8 +147,11 @@ class ScreenshotTest {
         }
         geminiKey = "set"
     }
-    @Test fun subtitlesKineticStyle() = shot(kinetic(app.filmcam.ui.SubTab.STYLE))
-    @Test fun subtitlesKineticWords() = shot(kinetic(app.filmcam.ui.SubTab.WORDS, word = "0:4", at = 900))
+    @Test fun subtitlesKineticStyle() = shot(kinetic(app.filmcam.ui.SubTool.STYLE))
+    @Test fun subtitlesKineticText() = shot(kinetic(app.filmcam.ui.SubTool.TEXT))
+    @Test fun subtitlesKineticEffects() = shot(kinetic(app.filmcam.ui.SubTool.EFFECTS))
+    @Test fun subtitlesKineticClosed() = shot(kinetic(null))
+    @Test fun subtitlesKineticWords() = shot(kinetic(app.filmcam.ui.SubTool.WORDS, word = "0:4", at = 900))
     @Test fun subtitlesStart() = shot(state(ThemeMode.DARK) {
         screen = Screen.SUBTITLES
         subtitles = app.filmcam.ui.SubtitleSession(app.filmcam.util.MediaItem(android.net.Uri.EMPTY, true, 0L, 12_000L), 9f / 16f, 12_000L)

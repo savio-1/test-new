@@ -113,6 +113,9 @@ class VideoExporter(
     private val onDone: (Uri?) -> Unit,
     /** Called with each frame's time (µs) just before the engine draws it (subtitles follow it). */
     private val onFrameTime: ((Long) -> Unit)? = null,
+    /** Takes background noise out of the clip's voice (0: the sound copied as it is). */
+    private val cleanVoice: Float = 0f,
+    private val noiseModel: app.filmcam.audio.RnNoiseModel? = null,
 ) {
     @Volatile private var cancelled = false
 
@@ -145,8 +148,12 @@ class VideoExporter(
             out = target.first
 
             val at = audioTrack(ex)
-            val audio = if (at >= 0) AudioCopy({ MediaExtractor().apply { setDataSource(context, uri, null) } }, at,
-                ex.getTrackFormat(at), 0L, Long.MAX_VALUE) else null
+            val openSource = { MediaExtractor().apply { setDataSource(context, uri, null) } }
+            val audio = when {
+                at < 0 -> null
+                cleanVoice > 0f && noiseModel != null -> AudioClean(openSource, at, ex.getTrackFormat(at), noiseModel, cleanVoice)
+                else -> AudioCopy(openSource, at, ex.getTrackFormat(at), 0L, Long.MAX_VALUE)
+            }
             val rec = VideoRecorder.create(choice, if (portrait) 90 else 0, target.second, audio) { success ->
                 ok = success
                 finished.release()

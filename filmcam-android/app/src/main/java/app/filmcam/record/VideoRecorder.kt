@@ -101,7 +101,24 @@ class VideoRecorder(
                 maybeFinish()
             }
         }, Handler(videoThread.looper))
-        videoCodec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+        // H.264 at High profile (encoders default to Baseline, which spends the same bits on a
+        // visibly softer picture). Falls back to the encoder's own choice if it refuses.
+        val high = if (choice.mime == MediaFormat.MIMETYPE_VIDEO_AVC && !choice.hlg) runCatching {
+            videoCodec.codecInfo.getCapabilitiesForType(choice.mime).profileLevels
+                .filter { it.profile == MediaCodecInfo.CodecProfileLevel.AVCProfileHigh }.maxByOrNull { it.level }
+        }.getOrNull() else null
+        if (high != null) {
+            format.setInteger(MediaFormat.KEY_PROFILE, high.profile)
+            format.setInteger(MediaFormat.KEY_LEVEL, high.level)
+        }
+        try {
+            videoCodec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+        } catch (e: Exception) {
+            if (high == null) throw e
+            format.removeKey(MediaFormat.KEY_PROFILE)
+            format.removeKey(MediaFormat.KEY_LEVEL)
+            videoCodec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+        }
         inputSurface = if (persistent != null) persistent.also { videoCodec.setInputSurface(it) } else videoCodec.createInputSurface()
     }
 
@@ -346,11 +363,166 @@ class AudioCopy(private val open: () -> android.media.MediaExtractor, private va
 }
 
 /**
+ * The sound of an imported clip with its background noise taken out: decoded, cleaned by
+ * [app.filmcam.audio.VoiceDenoiser] and encoded again as AAC, on the source's own timestamps so
+ * it lines up with the exported frames.
+ */
+class AudioClean(
+    private val open: () -> android.media.MediaExtractor, private val track: Int, private val format: MediaFormat,
+    private val model: app.filmcam.audio.RnNoiseModel, private val strength: Float,
+) : AudioFeed {
+    override var sink: MuxerSink? = null
+    override var onDone: (() -> Unit)? = null
+    @Volatile override var done = false
+        private set
+    @Volatile private var cancelled = false
+
+    override fun start() {
+        Thread({ run() }, "AudioClean").start()
+    }
+
+    private fun run() {
+        var ex: android.media.MediaExtractor? = null
+        var dec: MediaCodec? = null
+        var enc: MediaCodec? = null
+        try {
+            ex = open()
+            ex.selectTrack(track)
+            val d = MediaCodec.createDecoderByType(format.getString(MediaFormat.KEY_MIME)!!)
+            dec = d
+            d.configure(format, null, null, 0)
+            d.start()
+            var rate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+            var channels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+            var dn: app.filmcam.audio.VoiceDenoiser? = null
+            var skip = 0
+            var e: MediaCodec? = null
+            var outTrack = -1
+            var firstUs = -1L
+            var framesIn = 0L
+            val info = MediaCodec.BufferInfo()
+            val einfo = MediaCodec.BufferInfo()
+            var lastPts = -1L
+            var encDone = false
+
+            fun drainEncoder(wait: Boolean) {
+                val c = e ?: return
+                while (true) {
+                    val o = c.dequeueOutputBuffer(einfo, if (wait) 10_000 else 0)
+                    if (o == MediaCodec.INFO_TRY_AGAIN_LATER) { if (!wait || encDone) return else continue }
+                    if (o == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) { outTrack = sink!!.addTrack(c.outputFormat); continue }
+                    if (o < 0) continue
+                    val buf = c.getOutputBuffer(o)
+                    val config = einfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0
+                    if (buf != null && einfo.size > 0 && !config && outTrack >= 0 && einfo.presentationTimeUs > lastPts) {
+                        lastPts = einfo.presentationTimeUs
+                        sink!!.write(outTrack, buf, einfo)
+                    }
+                    c.releaseOutputBuffer(o, false)
+                    if (einfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) { encDone = true; return }
+                }
+            }
+
+            /** Cleaned samples into the encoder, timed from the first sample of the source. */
+            fun encode(pcm: ShortArray, from: Int, eos: Boolean) {
+                val c = e ?: return
+                var pos = from
+                while ((pos < pcm.size || eos) && !cancelled) {
+                    val i = c.dequeueInputBuffer(10_000)
+                    if (i < 0) { drainEncoder(false); continue }
+                    val b = c.getInputBuffer(i)!!
+                    b.clear()
+                    val n = minOf(pcm.size - pos, b.capacity() / 2) / channels * channels
+                    b.order(java.nio.ByteOrder.LITTLE_ENDIAN).asShortBuffer().put(pcm, pos, n)
+                    val pts = firstUs + framesIn * 1_000_000L / rate
+                    val last = eos && pos + n >= pcm.size
+                    c.queueInputBuffer(i, 0, n * 2, pts, if (last) MediaCodec.BUFFER_FLAG_END_OF_STREAM else 0)
+                    pos += n
+                    framesIn += n / channels
+                    drainEncoder(false)
+                    if (last) break
+                }
+            }
+
+            fun startEncoder() {
+                val fmt = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, rate, channels).apply {
+                    setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
+                    setInteger(MediaFormat.KEY_BIT_RATE, 96_000 * channels.coerceAtMost(2))
+                    setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 16_384)
+                }
+                e = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC).also {
+                    it.configure(fmt, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+                    it.start()
+                }
+                enc = e
+                dn = app.filmcam.audio.VoiceDenoiser(model, rate, channels, strength)
+                skip = dn!!.latencyFrames * channels
+            }
+
+            var inDone = false
+            var outDone = false
+            while (!outDone && !cancelled) {
+                if (!inDone) {
+                    val i = d.dequeueInputBuffer(10_000)
+                    if (i >= 0) {
+                        val n = ex.readSampleData(d.getInputBuffer(i)!!, 0)
+                        if (n < 0) { d.queueInputBuffer(i, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM); inDone = true }
+                        else { d.queueInputBuffer(i, 0, n, ex.sampleTime, 0); ex.advance() }
+                    }
+                }
+                val o = d.dequeueOutputBuffer(info, 10_000)
+                if (o == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                    if (e == null) {
+                        rate = d.outputFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+                        channels = d.outputFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+                    }
+                } else if (o >= 0) {
+                    if (e == null) startEncoder()
+                    if (info.size > 0) {
+                        if (firstUs < 0) firstUs = info.presentationTimeUs
+                        val b = d.getOutputBuffer(o)!!.order(java.nio.ByteOrder.LITTLE_ENDIAN)
+                        b.position(info.offset)
+                        val pcm = ShortArray(info.size / 2)
+                        b.asShortBuffer().get(pcm)
+                        val clean = dn!!.process(pcm, 0, pcm.size)
+                        // The first latency's worth out is the denoiser filling up: drop it.
+                        val from = minOf(skip, clean.size)
+                        skip -= from
+                        if (from < clean.size) encode(clean, from, false)
+                    }
+                    d.releaseOutputBuffer(o, false)
+                    if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
+                        outDone = true
+                        if (e == null) startEncoder()
+                        if (firstUs < 0) firstUs = 0
+                        encode(dn!!.flush(), 0, true)
+                        while (!encDone && !cancelled) drainEncoder(true)
+                    }
+                }
+            }
+        } catch (ex2: Exception) {
+            Log.e("AudioClean", "clean", ex2)
+        } finally {
+            runCatching { dec?.stop() }; runCatching { dec?.release() }
+            runCatching { enc?.stop() }; runCatching { enc?.release() }
+            runCatching { ex?.release() }
+            done = true
+            onDone?.invoke()
+        }
+    }
+
+    override fun stop() = Unit
+    override fun forceDone() { cancelled = true; done = true }
+}
+
+/**
  * Microphone -> AAC on a dedicated thread. [clock] gives nanoseconds on the same clock as the
  * video frames: System.nanoTime for the GPU path, the camera's own for direct 10-bit takes.
  */
 class AudioPump private constructor(
     private val record: AudioRecord, private val codec: MediaCodec, private val clock: () -> Long,
+    /** Takes background noise out of the voice as it is recorded (null: the microphone as it is). */
+    private val denoiser: app.filmcam.audio.VoiceDenoiser? = null,
 ) : AudioFeed {
     override var sink: MuxerSink? = null
     override var onDone: (() -> Unit)? = null
@@ -359,6 +531,10 @@ class AudioPump private constructor(
     @Volatile private var running = false
     private var thread: Thread? = null
     private var track = -1
+    private val pcm = ShortArray(CHUNK / 2)
+    private var skip = denoiser?.latencyFrames ?: 0
+    private var tail: ShortArray? = null
+    private var tailPos = 0
 
     override fun start() {
         running = true
@@ -384,7 +560,43 @@ class AudioPump private constructor(
                     if (inIdx >= 0) {
                         val buf = codec.getInputBuffer(inIdx)!!
                         buf.clear()
-                        if (!running) {
+                        if (denoiser != null) {
+                            // Cleaned audio comes out a fixed latency late: the first samples out
+                            // are dropped and the tail is flushed at the end, so sample n out is
+                            // sample n in and the timestamps stay as they are.
+                            if (!running && tail == null) tail = denoiser.flush()
+                            val t = tail
+                            if (t != null) {
+                                val n = minOf(t.size - tailPos, buf.capacity() / 2)
+                                if (n > 0) {
+                                    buf.order(java.nio.ByteOrder.LITTLE_ENDIAN).asShortBuffer().put(t, tailPos, n)
+                                    codec.queueInputBuffer(inIdx, 0, n * 2, ptsUs(startNs, frames), 0)
+                                    tailPos += n; frames += n
+                                } else {
+                                    codec.queueInputBuffer(inIdx, 0, 0, ptsUs(startNs, frames), MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                                    eosQueued = true
+                                }
+                            } else {
+                                val read = record.read(pcm, 0, minOf(pcm.size, buf.capacity() / 2))
+                                if (read > 0) {
+                                    tap?.let { f ->
+                                        val raw = ByteBuffer.allocate(read * 2).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+                                        raw.asShortBuffer().put(pcm, 0, read)
+                                        f(raw, 0, read * 2)
+                                    }
+                                    if (startNs < 0) startNs = clock() - LATENCY_NS
+                                    val clean = denoiser.process(pcm, 0, read)
+                                    val from = minOf(skip, clean.size)
+                                    skip -= from
+                                    val n = clean.size - from
+                                    if (n > 0) buf.order(java.nio.ByteOrder.LITTLE_ENDIAN).asShortBuffer().put(clean, from, n)
+                                    codec.queueInputBuffer(inIdx, 0, n * 2, ptsUs(startNs, frames), 0)
+                                    frames += n
+                                } else {
+                                    codec.queueInputBuffer(inIdx, 0, 0, ptsUs(startNs, frames), 0)
+                                }
+                            }
+                        } else if (!running) {
                             codec.queueInputBuffer(inIdx, 0, 0, ptsUs(startNs, frames), MediaCodec.BUFFER_FLAG_END_OF_STREAM)
                             eosQueued = true
                         } else {
@@ -447,7 +659,7 @@ class AudioPump private constructor(
 
         /** Null if the microphone is unavailable (no permission, in use, no hardware). */
         @SuppressLint("MissingPermission")
-        fun create(clock: () -> Long = System::nanoTime): AudioPump? = try {
+        fun create(clock: () -> Long = System::nanoTime, denoiser: app.filmcam.audio.VoiceDenoiser? = null): AudioPump? = try {
             val min = AudioRecord.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
             val record = AudioRecord(
                 MediaRecorder.AudioSource.CAMCORDER, SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO,
@@ -463,7 +675,7 @@ class AudioPump private constructor(
                 }
                 val codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC)
                 codec.configure(fmt, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-                AudioPump(record, codec, clock)
+                AudioPump(record, codec, clock, denoiser)
             }
         } catch (e: Exception) {
             Log.w("AudioPump", "no audio", e)

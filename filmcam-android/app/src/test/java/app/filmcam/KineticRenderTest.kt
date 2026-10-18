@@ -119,6 +119,48 @@ class KineticRenderTest {
         }
     }
 
+    /** Every effect on the same moment, plus wide letter spacing, to judge them side by side. */
+    @Test fun effects() {
+        val bg = javaClass.classLoader!!.getResourceAsStream("kinetic_bg1.jpg").use { BitmapFactory.decodeStream(it) }.asImageBitmap()
+        val fonts = FontLibrary(paparazzi.context)
+        val cells = app.filmcam.film.TextFx.entries.map { SubtitleStyle(template = CaptionTemplate.SCATTER, effect = it, effectAmount = 0.6f) } +
+            SubtitleStyle(template = CaptionTemplate.SCATTER, tracking = 0.12f)
+        paparazzi.snapshot {
+            Canvas(Modifier.fillMaxSize().background(Color.Black)) {
+                val cols = 4
+                val cw = size.width / cols
+                val ch = cw * bg.height / bg.width
+                cells.forEachIndexed { k, style ->
+                    translate((k % cols) * cw, (k / cols) * (ch + 4f)) {
+                        drawImage(bg, IntOffset.Zero, IntSize(bg.width, bg.height), IntOffset.Zero, IntSize(cw.toInt(), ch.toInt()))
+                        val layers = SubtitleTrack(cues, style).layersAt(1500, bg.width.toFloat() / bg.height, fonts)
+                        drawIntoCanvas { c -> TextRenderer.draw(c.nativeCanvas, layers, fonts, cw, ch) }
+                        drawIntoCanvas { c ->
+                            c.nativeCanvas.drawText(if (style.tracking > 0f) "spacing +12" else style.effect.label, 6f, ch - 6f,
+                                android.graphics.Paint().apply { color = android.graphics.Color.YELLOW; textSize = 18f })
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /** Full-size stills of every effect at a settled moment (build/kinetic/effects). */
+    @Test fun effectStills() {
+        val bg = javaClass.classLoader!!.getResourceAsStream("kinetic_bg1.jpg").use { BitmapFactory.decodeStream(it) }
+        val fonts = FontLibrary(paparazzi.context)
+        val dir = java.io.File("build/kinetic/effects").apply { deleteRecursively(); mkdirs() }
+        val cells = app.filmcam.film.TextFx.entries.map { it.name to SubtitleStyle(template = CaptionTemplate.SCATTER, effect = it, effectAmount = 0.6f) } +
+            ("SPACING" to SubtitleStyle(template = CaptionTemplate.SCATTER, tracking = 0.12f))
+        for ((name, style) in cells) {
+            val out = android.graphics.Bitmap.createBitmap(bg.width, bg.height, android.graphics.Bitmap.Config.ARGB_8888)
+            val c = android.graphics.Canvas(out)
+            c.drawBitmap(bg, 0f, 0f, null)
+            TextRenderer.draw(c, SubtitleTrack(cues, style).layersAt(2950, bg.width.toFloat() / bg.height, fonts), fonts, bg.width.toFloat(), bg.height.toFloat())
+            java.io.File(dir, "$name.png").outputStream().use { out.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+        }
+    }
+
     @Test fun videoScatter() = frames("scatter", SubtitleStyle(template = CaptionTemplate.SCATTER, behindSubject = true))
     @Test fun videoStack() = frames("stack", SubtitleStyle(template = CaptionTemplate.STACK, behindSubject = true))
     @Test fun videoFocus() = frames("focus", SubtitleStyle(template = CaptionTemplate.FOCUS))

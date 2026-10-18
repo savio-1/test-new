@@ -17,13 +17,24 @@ data class Cue(
     val language: String = "",
     val english: String = "",
     val telugu: String = "",
+    /**
+     * When each word of [timedText] starts (ms), found by aligning the words to the clip's
+     * sound. Kept only while the text shown is still that text; retyping falls back to an
+     * estimate until the words are aligned again.
+     */
+    val wordStarts: List<Long> = emptyList(),
+    val timedText: String = "",
 ) {
     fun toJson(): JSONObject = JSONObject().put("start", startMs).put("end", endMs).put("language", language)
-        .put("english", english).put("telugu", telugu)
+        .put("english", english).put("telugu", telugu).apply {
+            if (wordStarts.isNotEmpty()) put("words", JSONArray().apply { wordStarts.forEach { put(it) } }).put("timedText", timedText)
+        }
 
     companion object {
         fun fromJson(o: JSONObject) = Cue(
             o.optLong("start"), o.optLong("end"), o.optString("language"), o.optString("english"), o.optString("telugu"),
+            o.optJSONArray("words")?.let { a -> List(a.length()) { a.optLong(it) } } ?: emptyList(),
+            o.optString("timedText"),
         )
     }
 }
@@ -66,6 +77,14 @@ data class SubtitleStyle(
     val behindSubject: Boolean = false,
     /** Kinetic captions: changes the spots and accents the template picks ("Shuffle"). */
     val seed: Int = 0,
+    /** Extra space between letters, in ems (both kinds of subtitles). */
+    val tracking: Float = 0f,
+    /** Kinetic captions: a finish on the letters (shadow, glow, haze...), how strong, and its colour (0: the effect's own). */
+    val effect: app.filmcam.film.TextFx = app.filmcam.film.TextFx.SHADOW,
+    val effectAmount: Float = 0.5f,
+    val effectColor: Int = 0,
+    /** Background noise taken out of the voice when burning in: 0 off, up to 1 (strong). */
+    val cleanVoice: Float = 0f,
 ) {
     val kinetic get() = template != CaptionTemplate.CLASSIC
 
@@ -75,7 +94,9 @@ data class SubtitleStyle(
         .put("backColor", backColor).put("backOpacity", backOpacity.toDouble())
         .put("template", template.name).put("captionFont", captionFont).put("captionItalic", captionItalic)
         .put("accentFont", accentFont).put("captionScale", captionScale.toDouble()).put("wordAnim", wordAnim.name)
-        .put("behindSubject", behindSubject).put("seed", seed)
+        .put("behindSubject", behindSubject).put("seed", seed).put("tracking", tracking.toDouble())
+        .put("effect", effect.name).put("effectAmount", effectAmount.toDouble()).put("effectColor", effectColor)
+        .put("cleanVoice", cleanVoice.toDouble())
 
     companion object {
         fun fromJson(o: JSONObject?) = if (o == null) SubtitleStyle() else SubtitleStyle(
@@ -102,6 +123,11 @@ data class SubtitleStyle(
             wordAnim = runCatching { WordAnim.valueOf(o.optString("wordAnim")) }.getOrDefault(WordAnim.BLUR),
             behindSubject = o.optBoolean("behindSubject", false),
             seed = o.optInt("seed", 0),
+            tracking = o.optDouble("tracking", 0.0).toFloat(),
+            effect = runCatching { app.filmcam.film.TextFx.valueOf(o.optString("effect")) }.getOrDefault(app.filmcam.film.TextFx.SHADOW),
+            effectAmount = o.optDouble("effectAmount", 0.5).toFloat(),
+            effectColor = o.optInt("effectColor", 0),
+            cleanVoice = o.optDouble("cleanVoice", 0.0).toFloat(),
         )
     }
 }
@@ -142,7 +168,7 @@ data class SubtitleTrack(val cues: List<Cue>, val style: SubtitleStyle = Subtitl
         val alpha = (s.backOpacity.coerceIn(0f, 1f) * 255).toInt()
         val base = lines.map { (text, font) ->
             TextLayer(
-                id = 0L, text = text.trim(), font = font, size = s.size, color = s.color, align = s.align,
+                id = 0L, text = text.trim(), font = font, size = s.size, color = s.color, align = s.align, tracking = s.tracking,
                 shadow = s.background == SubtitleBackground.SHADOW, wrap = room,
                 box = s.background == SubtitleBackground.BOX, boxColor = (s.backColor and 0xFFFFFF) or (alpha shl 24),
                 outline = if (s.background == SubtitleBackground.OUTLINE) s.backColor or (0xFF shl 24) else 0,

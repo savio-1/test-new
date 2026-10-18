@@ -80,9 +80,13 @@ class SubtitleSession(val item: MediaItem, val aspect: Float, val durationMs: Lo
     /** When transcription started (elapsed time on screen) and lines received so far. */
     var startedAt by mutableLongStateOf(0L)
     var linesSoFar by mutableIntStateOf(0)
-    /** The editor's open tab, and the word picked in Words (kinetic captions, by id). */
-    var tab by mutableStateOf(SubTab.LINES)
+    /** The editor's open tool (null: none, the clip as big as it gets), and the word picked in Words (by id). */
+    var tool by mutableStateOf<SubTool?>(null)
     var selectedWord by mutableStateOf<String?>(null)
+    /** Words are being timed to the voice. */
+    var aligning by mutableStateOf(false)
+    /** The clip's letter probabilities (worked out once, kept for re-timing retyped lines). */
+    @Volatile var letterProbs: Array<FloatArray>? = null
 }
 
 /** Everything the screen shows. Owned by the activity, mutated on the main thread. */
@@ -203,6 +207,8 @@ class UiState {
     var hlgFailed by mutableStateOf(false)
     var raw by mutableStateOf(false)
     var shutterSound by mutableStateOf(true)
+    /** Video: background noise taken out of the voice as it is recorded. */
+    var voiceDenoise by mutableStateOf(false)
     /** Some countries require the shutter sound; then it can't be turned off. */
     var shutterSoundRequired by mutableStateOf(false)
     var rawSupported by mutableStateOf(false)
@@ -262,6 +268,7 @@ interface CameraActions {
     fun setLogCurve(curve: LogCurveChoice)
     fun setRaw(on: Boolean)
     fun setShutterSound(on: Boolean)
+    fun setVoiceDenoise(on: Boolean)
     fun saveLut()
     fun setTimer(seconds: Int)
     fun setBurst(count: Int, interval: Float)

@@ -200,9 +200,12 @@ data class FilmCamera(
 )
 
 object FilmCameras {
-    /** Every camera starts with the same light grain: present, never in the way. */
-    const val DEFAULT_GRAIN = 0.14f
-    const val DEFAULT_GRAIN_SIZE = 1.05f
+    /**
+     * Every camera starts with the same faint, fine grain: a touch of texture that never reads
+     * as noise (and costs the video encoder few bits). Turn it up in Film for more.
+     */
+    const val DEFAULT_GRAIN = 0.05f
+    const val DEFAULT_GRAIN_SIZE = 0.95f
 
     /**
      * Every camera gets the same light grain, and a lens that is sharper than it used to be:

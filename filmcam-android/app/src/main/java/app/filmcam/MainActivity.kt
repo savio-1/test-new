@@ -65,6 +65,7 @@ import app.filmcam.sub.GeminiTranscriber
 import app.filmcam.sub.SubtitleLanguage
 import app.filmcam.sub.SubtitleStyle
 import app.filmcam.sub.SubtitleTrack
+import app.filmcam.sub.WordAligner
 import app.filmcam.sub.TranscribeException
 import app.filmcam.ui.SubtitleSession
 import app.filmcam.ui.ThemeMode
@@ -176,6 +177,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         ui.logCurve = enumPref("logCurve", app.filmcam.ui.LogCurveChoice.HLG)
         ui.raw = prefs.getBoolean("raw", false)
         ui.shutterSound = prefs.getBoolean("shutterSound", true)
+        ui.voiceDenoise = prefs.getBoolean("voiceDenoise", false)
         ui.shutterSoundRequired = android.os.Build.VERSION.SDK_INT >= 33 && MediaActionSound.mustPlayShutterSound()
         ui.timerSeconds = prefs.getInt("timer", 0)
         ui.burstCount = prefs.getInt("burstCount", 1)
@@ -718,6 +720,23 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         if (ui.shutterSound || ui.shutterSoundRequired) sound.play(kind)
     }
 
+    override fun setVoiceDenoise(on: Boolean) {
+        ui.voiceDenoise = on
+        prefs.edit { putBoolean("voiceDenoise", on) }
+    }
+
+    /** The noise model, loaded once (it is small) the first time a take or export needs it. */
+    private val noiseModel: app.filmcam.audio.RnNoiseModel? by lazy {
+        runCatching { app.filmcam.audio.RnNoiseModel.fromAssets(this) }.onFailure { Log.e("FilmCam", "noise model", it) }.getOrNull()
+    }
+
+    /** The microphone for a take, cleaned if the setting is on. */
+    private fun microphone(clock: () -> Long = System::nanoTime): AudioPump? {
+        if (!hasPermission(Manifest.permission.RECORD_AUDIO)) return null
+        val dn = if (ui.voiceDenoise) noiseModel?.let { app.filmcam.audio.VoiceDenoiser(it, AudioPump.SAMPLE_RATE, 1, 0.6f) } else null
+        return AudioPump.create(clock, dn)
+    }
+
     override fun setShutterSound(on: Boolean) {
         ui.shutterSound = on
         prefs.edit { putBoolean("shutterSound", on) }
@@ -1042,6 +1061,8 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
                 session.track = saved
                 ui.subtitles = session
                 ui.screen = Screen.SUBTITLES
+                // Lines saved before words were timed (or live ones) get timed now.
+                if (saved != null && WordAligner.needsAligning(saved)) scheduleAlign(session)
             }
         }
     }
@@ -1243,6 +1264,47 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         val file = subtitleFile(s.item.uri)
         val json = track.toJson().toString()
         io.execute { runCatching { file.writeText(json) } }
+        if (WordAligner.needsAligning(track)) scheduleAlign(s)
+    }
+
+    /** Times words to the voice on their own thread; one at a time, the latest track wins. */
+    private val alignExec = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val alignModel: app.filmcam.sub.AlignModel? by lazy {
+        runCatching { app.filmcam.sub.AlignModel.fromAssets(this) }.onFailure { Log.e("FilmCam", "align model", it) }.getOrNull()
+    }
+    private val alignRetry = Runnable { ui.subtitles?.let { s -> s.track?.let { if (WordAligner.needsAligning(it)) scheduleAlign(s) } } }
+
+    /**
+     * Finds when each word of [s]'s lines is said (shortly after a change, so typing isn't held
+     * up), then puts the times on the track if it hasn't changed meanwhile.
+     */
+    private fun scheduleAlign(s: SubtitleSession) {
+        mainHandler.removeCallbacks(alignRetry)
+        mainHandler.postDelayed({
+            val track = s.track ?: return@postDelayed
+            if (!WordAligner.needsAligning(track) || s.aligning) return@postDelayed
+            s.aligning = true
+            alignExec.execute {
+                val aligned = try {
+                    val model = alignModel ?: throw IllegalStateException("no model")
+                    val lp = s.letterProbs ?: run {
+                        val pcm = AudioExtract.pcm16k(this, s.item.uri) ?: FloatArray(0)
+                        model.logProbs(pcm).also { s.letterProbs = it }
+                    }
+                    WordAligner(model).alignWith(lp, track)
+                } catch (e: Throwable) {
+                    Log.e("FilmCam", "align", e)
+                    null
+                }
+                runOnUiThread {
+                    s.aligning = false
+                    if (ui.subtitles !== s || aligned == null) return@runOnUiThread
+                    // Changed while timing: time the new version instead.
+                    if (s.track === track) updateSubtitles(aligned) else mainHandler.postDelayed(alignRetry, 100)
+                }
+            }
+        }, 500)
     }
 
     override fun saveSrt() {
@@ -1284,6 +1346,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         exporter = VideoExporter(this, s.item.uri, info, engine,
             onProgress = { f -> runOnUiThread { ui.progress = f } },
             onFrameTime = { us -> engine.textLayers = track.layersAt(us / 1000, aspect, fonts) },
+            cleanVoice = track.style.cleanVoice, noiseModel = if (track.style.cleanVoice > 0f) noiseModel else null,
             onDone = { out ->
                 @Suppress("UNCHECKED_CAST")
                 runOnUiThread {
@@ -1620,7 +1683,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         val recorder = try {
             VideoRecorder.create(
                 choice, (turns * 90 + 90) % 360, pfd,
-                audio = if (hasPermission(Manifest.permission.RECORD_AUDIO)) AudioPump.create() else null,
+                audio = microphone(),
             ) { ok -> onVideoFinished(uri, ok) }
         } catch (e: Exception) {
             Log.e("FilmCam", "recorder", e)
@@ -1653,7 +1716,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         val clock: () -> Long = if (realtime) android.os.SystemClock::elapsedRealtimeNanos else System::nanoTime
         try {
             rec.open(cam.uprightRotation(ui.quarterTurns), pfd,
-                if (hasPermission(Manifest.permission.RECORD_AUDIO)) AudioPump.create(clock) else null) { ok -> onVideoFinished(uri, ok) }
+                microphone(clock)) { ok -> onVideoFinished(uri, ok) }
             rec.start()
         } catch (e: Exception) {
             Log.e("FilmCam", "10-bit start", e)

@@ -117,6 +117,14 @@ object Kinetic {
         }
         val parts = text.split(Regex("\\s+")).filter { it.isNotBlank() }
         if (parts.isEmpty()) return@mapIndexed emptyList()
+        // Aligned to the sound: each word starts when it is said.
+        if (c.timedText == text && c.wordStarts.size == parts.size) {
+            return@mapIndexed parts.mapIndexed { wi, w ->
+                val s = c.wordStarts[wi].coerceIn(c.startMs, c.endMs)
+                val e = (c.wordStarts.getOrNull(wi + 1) ?: c.endMs).coerceIn(s, c.endMs)
+                Word("$ci:$wi", w, s, e, ci, wi)
+            }
+        }
         // Longer words take longer to say; a comma or full stop adds a breath after the word.
         val weights = parts.map { w -> 1.5f + bare(w).length.coerceAtLeast(1) + if (w.last() in ",.;:!?") 2.5f else 0f }
         val total = weights.sum()
@@ -204,7 +212,7 @@ object Kinetic {
     // ------------------------------------------------------------------ measuring
 
     /** Text widths as a fraction of the frame width, for a size given as a fraction of the short side. */
-    private class Ruler(val fonts: FontLibrary?, aspect: Float) {
+    private class Ruler(val fonts: FontLibrary?, aspect: Float, val tracking: Float = 0f) {
         val w = 1000f * max(aspect, 0.05f)
         val h = 1000f
         val short = min(w, h)
@@ -215,11 +223,12 @@ object Kinetic {
             val f = fonts
             if (f == null) {
                 // No fonts (tests): a bold sans is about 0.56 em a letter, the italic serif 0.45.
-                val em = if (font.contains("Serif")) 0.45f else 0.56f
+                val em = (if (font.contains("Serif")) 0.45f else 0.56f) + tracking
                 return text.length * em * size * short / w
             }
             paint.typeface = faces.getOrPut(font) { f.typeface(font) }
             paint.textSize = size * short
+            paint.letterSpacing = tracking
             return paint.measureText(text) / w
         }
 
@@ -280,7 +289,7 @@ object Kinetic {
     fun place(track: SubtitleTrack, p: Phrase, aspect: Float, fonts: FontLibrary?, stackOf: List<Phrase> = emptyList()): List<Placed> {
         val plan = plan(track)
         val st = track.style
-        val ruler = Ruler(fonts, aspect)
+        val ruler = Ruler(fonts, aspect, st.tracking)
         val telugu = st.language == SubtitleLanguage.TELUGU
         val sans = if (telugu) st.teluguFont else st.captionFont
         val serif = if (telugu) st.teluguFont else st.accentFont
@@ -459,7 +468,8 @@ object Kinetic {
                 out += TextLayer(
                     id = layerId(pl.word), text = pl.word.text, font = pl.font, size = pl.size * scale,
                     x = pl.x, y = pl.y + dy * r.lineH(pl.size), color = pl.color, opacity = alpha,
-                    shadow = true, behind = pl.behind, reveal = reveal, blur = blur,
+                    tracking = st.tracking, fx = st.effect, fxAmount = st.effectAmount, fxColor = st.effectColor,
+                    behind = pl.behind, reveal = reveal, blur = blur,
                 )
             }
         }
