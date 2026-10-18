@@ -27,7 +27,11 @@ enum class VideoResolution(val label: String, val width: Int, val height: Int) {
  * A still size the sensor offers. [maxRes] sizes need the sensor's full-resolution pixel mode
  * (the 50/108/200 MP modes of quad-Bayer sensors); [highRes] ones are slow "burst-less" sizes.
  */
-data class PhotoSize(val width: Int, val height: Int, val highRes: Boolean = false, val maxRes: Boolean = false) {
+data class PhotoSize(
+    val width: Int, val height: Int, val highRes: Boolean = false, val maxRes: Boolean = false,
+    /** The physical sensor of a multi-lens camera this full-resolution size comes from. */
+    val physicalId: String? = null,
+) {
     val pixels get() = width.toLong() * height
     val mp: Int get() = ((pixels + 500_000) / 1_000_000).toInt().coerceAtLeast(1)
     val label get() = "$mp MP"
@@ -133,11 +137,12 @@ class CameraCaps(val id: String, ch: CameraCharacteristics) {
      * The photo sizes worth offering, smallest first: about 12 MP, then every larger size the
      * sensor really has (e.g. 12, 50 and 200 MP on a 200 MP phone). 4:3 only, the sensor shape.
      */
-    val photoSizes: List<PhotoSize> = run {
+    val photoSizes: List<PhotoSize> by lazy {
         val all = jpegStandard.filter(::is43).map { PhotoSize(it.width, it.height) } +
             jpegHighRes.filter(::is43).map { PhotoSize(it.width, it.height, highRes = true) } +
-            jpegMaxRes.filter(::is43).map { PhotoSize(it.width, it.height, maxRes = true) }
-        if (all.isEmpty()) return@run listOf(PhotoSize(4000, 3000))
+            jpegMaxRes.filter(::is43).map { PhotoSize(it.width, it.height, maxRes = true) } +
+            physicalMaxRes
+        if (all.isEmpty()) return@lazy listOf(PhotoSize(4000, 3000))
         val base = all.filter { !it.highRes && !it.maxRes }.ifEmpty { all }
             .minBy { abs(it.pixels - 12_000_000L) }
         val out = arrayListOf(base)
@@ -147,6 +152,12 @@ class CameraCaps(val id: String, ch: CameraCharacteristics) {
             .forEach { s -> if (out.none { abs(it.pixels - s.pixels) < s.pixels * 0.15 }) out += s }
         out.sortedBy { it.pixels }
     }
+
+    /**
+     * Full-resolution sizes of the main physical sensor behind this (logical) camera. Many phones
+     * list their 50/200 MP mode only there, not on the camera apps open; set by [LensCatalog].
+     */
+    internal var physicalMaxRes: List<PhotoSize> = emptyList()
 
     /** The offered size closest to [mp] megapixels. */
     fun photoSize(mp: Int): PhotoSize = photoSizes.minBy { abs(it.pixels - mp * 1_000_000L) }
@@ -209,6 +220,22 @@ class LensCatalog(manager: CameraManager) {
             runCatching { all[id] = CameraCaps(id, manager.getCameraCharacteristics(id)) }
                 .onFailure { Log.w(TAG, "camera $id", it) }
         }
+        // Full-resolution modes that only the main physical sensor lists.
+        if (Build.VERSION.SDK_INT >= 31) for (c in all.values.filter { it.logical }) runCatching {
+            val focal = manager.getCameraCharacteristics(c.id).get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)?.firstOrNull()
+            val main = c.physicalIds.mapNotNull { pid ->
+                runCatching { pid to manager.getCameraCharacteristics(pid) }.getOrNull()
+            }.minByOrNull { (_, ch) -> kotlin.math.abs((ch.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)?.firstOrNull() ?: 0f) - (focal ?: 0f)) }
+            if (main != null) {
+                val (pid, ch) = main
+                val capsOf = ch.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES) ?: IntArray(0)
+                if (CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_ULTRA_HIGH_RESOLUTION_SENSOR in capsOf) {
+                    c.physicalMaxRes = ch.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP_MAXIMUM_RESOLUTION)
+                        ?.getOutputSizes(ImageFormat.JPEG)?.filter { abs(it.width.toFloat() / it.height - 4f / 3f) < 0.02f }
+                        ?.map { PhotoSize(it.width, it.height, maxRes = true, physicalId = pid) } ?: emptyList()
+                }
+            }
+        }.onFailure { Log.w(TAG, "physical sizes", it) }
         caps = all
         lenses = buildLenses(manager, all)
     }

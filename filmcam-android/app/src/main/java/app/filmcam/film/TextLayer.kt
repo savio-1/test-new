@@ -225,63 +225,170 @@ data class TextPose(
     companion object { val REST = TextPose() }
 }
 
-/** A typeface the user can pick, and which scripts it has its own letters for. */
-class FontEntry(val key: String, val label: String, val typeface: Typeface, val latin: Boolean = true, val telugu: Boolean = false)
+/**
+ * One face the user can pick (Inter Tight Bold, Instrument Italic...), in a [family]. The
+ * typeface is made the first time it is drawn, so a long list costs nothing until it is used.
+ */
+class FontEntry(
+    val key: String, val family: String, val style: String, val weight: Int = 400, val italic: Boolean = false,
+    val latin: Boolean = true, val telugu: Boolean = false, private val make: () -> Typeface,
+) {
+    val typeface: Typeface by lazy { runCatching(make).getOrDefault(Typeface.DEFAULT) }
+    val label: String get() = if (style.isBlank() || style.equals("Regular", true)) family else "$family $style"
+}
+
+/** A font family and its faces, lightest first, uprights before italics. */
+class FontFamilyGroup(val name: String, val faces: List<FontEntry>) {
+    /** The face shown for the family: its regular, or the one nearest it. */
+    val main: FontEntry = faces.minBy { kotlin.math.abs(it.weight - 400) + if (it.italic) 1000 else 0 }
+    val latin get() = faces.any { it.latin }
+    val telugu get() = faces.any { it.telugu }
+}
 
 /**
- * Fonts for text overlays: a few system faces, a curated set bundled with the app (SIL Open
- * Font Licence, see assets/fonts/licenses) and any .ttf/.otf the user imports.
+ * Fonts for text and subtitles, grouped into families: a few system faces, the bundled set
+ * (SIL Open Font Licence, see assets/fonts/licenses), and anything the user imports (font
+ * files or a .zip of a font folder). Each file's own name table gives its family and style; a
+ * variable font offers every named instance it carries (Inter Tight: Thin to Black).
  */
 class FontLibrary(private val context: Context) {
     private val dir = File(context.filesDir, "fonts").apply { mkdirs() }
+    private val made = HashMap<String, Typeface>()
 
     var fonts: List<FontEntry> = load()
         private set
+    var families: List<FontFamilyGroup> = group(fonts)
+        private set
+
+    private fun group(all: List<FontEntry>): List<FontFamilyGroup> =
+        all.groupBy { it.family }.map { (name, faces) -> FontFamilyGroup(name, faces.sortedWith(compareBy({ it.italic }, { it.weight }))) }
+
+    /** Faces of a font file, read once and remembered (the bundled set is 18 MB to scan). */
+    private fun metaOf(name: String, bytes: () -> ByteArray): List<FontMeta.Face> {
+        val cache = File(dir.parentFile, "font-meta-v1.json")
+        val json = runCatching { JSONObject(cache.readText()) }.getOrElse { JSONObject() }
+        json.optJSONArray(name)?.let { a ->
+            return List(a.length()) { i ->
+                val o = a.getJSONObject(i)
+                FontMeta.Face(o.getString("family"), o.getString("style"), o.optInt("weight", 400), o.optBoolean("italic"),
+                    if (o.has("variation")) o.getString("variation") else null)
+            }
+        }
+        val faces = FontMeta.read(bytes())
+        json.put(name, JSONArray().apply {
+            faces.forEach { f -> put(JSONObject().put("family", f.family).put("style", f.style).put("weight", f.weight).put("italic", f.italic).apply { f.variation?.let { put("variation", it) } }) }
+        })
+        runCatching { cache.writeText(json.toString()) }
+        return faces
+    }
+
+    /** "file#700" for a weight-only instance, "file@'wght' 700, 'ital' 1" otherwise. */
+    private fun specOf(file: String, variation: String?): String = when {
+        variation == null -> file
+        Regex("^'wght' (\\d+)$").matches(variation) -> "$file#${variation.substringAfter("'wght' ")}"
+        else -> "$file@$variation"
+    }
 
     private fun load(): List<FontEntry> {
         val out = ArrayList<FontEntry>()
-        out += FontEntry("sys:sans", "Sans", Typeface.create("sans-serif", Typeface.NORMAL))
-        out += FontEntry("sys:sans-bold", "Sans Bold", Typeface.create("sans-serif", Typeface.BOLD))
-        out += FontEntry("sys:serif", "Serif", Typeface.SERIF)
-        for ((file, label) in BUNDLED) {
-            runCatching { Typeface.createFromAsset(context.assets, "fonts/$file") }
-                .onSuccess { out += FontEntry("asset:$file", label, it, latin = file !in TELUGU_ONLY, telugu = file in TELUGU) }
-        }
-        // Variable fonts at a chosen weight: "file#weight".
-        for ((spec, label) in WEIGHTED) {
-            val (file, weight) = spec.split('#')
-            runCatching {
-                Typeface.Builder(context.assets, "fonts/$file").setFontVariationSettings("'wght' $weight").build()
-            }.onSuccess { out += FontEntry("asset:$spec", label, it, latin = file !in TELUGU_ONLY, telugu = file in TELUGU) }
-        }
-        // Imported fonts: their scripts aren't known, so they are offered for both.
-        dir.listFiles()?.sortedBy { it.name }?.forEach { f ->
-            runCatching { Typeface.createFromFile(f) }.onSuccess {
-                out += FontEntry("file:${f.name}", f.nameWithoutExtension.take(18), it, latin = true, telugu = true)
+        // Imported fonts first: they are the person's own.
+        dir.listFiles { f -> f.extension.lowercase() in FONT_EXT }?.sortedBy { it.name }?.forEach { f ->
+            val faces = metaOf("file:${f.name}:${f.length()}") { f.readBytes() }
+                .ifEmpty { listOf(FontMeta.Face(f.nameWithoutExtension.take(24), "Regular", 400, false)) }
+            for (face in faces) {
+                val spec = specOf(f.name, face.variation)
+                out += FontEntry("file:$spec", face.family, face.style, face.weight, face.italic, latin = true, telugu = true) { build(null, f, face.variation) }
             }
         }
+        val files = (BUNDLED.map { it.first } + WEIGHTED.map { it.first.substringBefore('#') }).distinct()
+        for (file in files) {
+            val faces = metaOf("asset:$file") { context.assets.open("fonts/$file").use { it.readBytes() } }
+            val family = FAMILY[file] ?: faces.firstOrNull()?.family ?: continue
+            val latin = file !in TELUGU_ONLY
+            val telugu = file in TELUGU
+            for (face in faces.ifEmpty { listOf(FontMeta.Face(family, "Regular", 400, false)) }) {
+                val spec = specOf(file, face.variation)
+                out += FontEntry("asset:$spec", family, face.style, face.weight, face.italic, latin, telugu) { build("fonts/$file", null, face.variation) }
+            }
+        }
+        out += FontEntry("sys:sans", "System Sans", "Regular") { Typeface.create("sans-serif", Typeface.NORMAL) }
+        out += FontEntry("sys:sans-bold", "System Sans", "Bold", 700) { Typeface.create("sans-serif", Typeface.BOLD) }
+        out += FontEntry("sys:serif", "System Serif", "Regular") { Typeface.SERIF }
         return out
     }
 
-    fun typeface(key: String): Typeface = fonts.firstOrNull { it.key == key }?.typeface ?: fonts.first().typeface
+    private fun build(asset: String?, file: File?, variation: String?): Typeface {
+        val b = if (asset != null) Typeface.Builder(context.assets, asset) else Typeface.Builder(file!!)
+        if (variation != null) b.setFontVariationSettings(variation)
+        return b.build() ?: Typeface.DEFAULT
+    }
+
+    /** The typeface for [key]; keys from before families (any weight of a variable font) still work. */
+    fun typeface(key: String): Typeface {
+        fonts.firstOrNull { it.key == key }?.let { return it.typeface }
+        return made.getOrPut(key) {
+            runCatching {
+                val (kind, rest) = key.split(':', limit = 2)
+                val file = rest.substringBefore('#').substringBefore('@')
+                val variation = when {
+                    '#' in rest -> "'wght' ${rest.substringAfter('#')}"
+                    '@' in rest -> rest.substringAfter('@')
+                    else -> null
+                }
+                if (kind == "asset") build("fonts/$file", null, variation) else build(null, File(dir, file), variation)
+            }.getOrElse { fonts.first().typeface }
+        }
+    }
 
     fun label(key: String): String = fonts.firstOrNull { it.key == key }?.label ?: "Sans"
 
-    /** Copies a font the user picked into app storage. Returns its key, or null if unreadable. */
-    fun import(uri: Uri): String? = try {
-        val name = (uri.lastPathSegment ?: "font").substringAfterLast('/').substringAfterLast(':')
-            .replace(Regex("[^A-Za-z0-9._ -]"), "_").let { if (it.contains('.')) it else "$it.ttf" }
-        val target = File(dir, name)
-        context.contentResolver.openInputStream(uri)?.use { input -> target.outputStream().use { input.copyTo(it) } }
-        val tf = Typeface.createFromFile(target)
-        if (tf == Typeface.DEFAULT) { target.delete(); null } else {
-            fonts = load()
-            "file:${target.name}"
-        }
-    } catch (e: Exception) {
-        Log.w("FontLibrary", "import", e)
-        null
+    /** The family [key] belongs to. */
+    fun familyOf(key: String): FontFamilyGroup? = fonts.firstOrNull { it.key == key }?.let { e -> families.firstOrNull { it.name == e.family } }
+
+    /** The face in [family] closest to [like] (same weight and slant if it has them). */
+    fun nearest(family: FontFamilyGroup, like: String?): FontEntry {
+        val ref = like?.let { k -> fonts.firstOrNull { it.key == k } } ?: return family.main
+        return family.faces.minBy { kotlin.math.abs(it.weight - ref.weight) + if (it.italic != ref.italic) 1000 else 0 }
     }
+
+    /**
+     * Adds fonts the user picked: font files, or .zip files of a font folder (every .ttf/.otf
+     * inside is taken, whatever folders it is in). Returns the keys of the faces added.
+     */
+    fun importAll(uris: List<Uri>): List<String> {
+        val before = fonts.map { it.key }.toSet()
+        for (uri in uris) try {
+            val name = (uri.lastPathSegment ?: "font").substringAfterLast('/').substringAfterLast(':')
+            val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: continue
+            if (bytes.size > 4 && bytes[0] == 'P'.code.toByte() && bytes[1] == 'K'.code.toByte()) {
+                java.util.zip.ZipInputStream(bytes.inputStream()).use { zip ->
+                    while (true) {
+                        val e = zip.nextEntry ?: break
+                        val entry = e.name.substringAfterLast('/')
+                        if (e.isDirectory || e.name.contains("__MACOSX") || entry.startsWith(".")) continue
+                        if (entry.substringAfterLast('.').lowercase() !in FONT_EXT) continue
+                        save(entry, zip.readBytes())
+                    }
+                }
+            } else {
+                save(if (name.contains('.')) name else "$name.ttf", bytes)
+            }
+        } catch (e: Exception) {
+            Log.w("FontLibrary", "import", e)
+        }
+        fonts = load()
+        families = group(fonts)
+        return fonts.map { it.key }.filter { it !in before }
+    }
+
+    private fun save(name: String, bytes: ByteArray) {
+        if (FontMeta.read(bytes).isEmpty()) return   // not a font we can read
+        val safe = name.replace(Regex("[^A-Za-z0-9._ -]"), "_")
+        File(dir, safe).writeBytes(bytes)
+    }
+
+    /** Copies one font file in. Returns its key, or null if unreadable. */
+    fun import(uri: Uri): String? = importAll(listOf(uri)).firstOrNull()
 
     companion object {
         const val DEFAULT = "asset:InstrumentSerif.ttf"
@@ -340,6 +447,22 @@ class FontLibrary(private val context: Context) {
             "AnekTelugu.ttf#800" to "అనేక్ Heavy",
             "BalooTammudu2.ttf#700" to "బాలూ తమ్ముడు",
             "NotoSerifTelugu.ttf#700" to "తెలుగు Serif",
+        )
+        private val FONT_EXT = setOf("ttf", "otf", "ttc")
+        /** Names the picker shows for the bundled families (Telugu ones in Telugu). */
+        val FAMILY = mapOf(
+            "InstrumentSerif.ttf" to "Instrument", "InstrumentSerif-Italic.ttf" to "Instrument",
+            "Inter.ttf" to "Inter", "InterBold.ttf" to "Inter", "InterTight.ttf" to "Inter Tight", "InterTight-Italic.ttf" to "Inter Tight",
+            "DMSerifDisplay.ttf" to "DM Serif", "PlayfairDisplay.ttf" to "Playfair", "BebasNeue.ttf" to "Bebas",
+            "SpaceMono.ttf" to "Space Mono", "CourierPrime.ttf" to "Typewriter", "VT323.ttf" to "VHS", "Caveat.ttf" to "Handwritten",
+            "Poppins-SemiBold.ttf" to "Poppins", "Poppins-Bold.ttf" to "Poppins",
+            "NotoSansTelugu.ttf" to "తెలుగు Sans", "NotoSerifTelugu.ttf" to "తెలుగు Serif", "Ramabhadra.ttf" to "రామభద్ర",
+            "Mandali.ttf" to "మండలి", "Gurajada.ttf" to "గురజాడ", "TenaliRamakrishna.ttf" to "తెనాలి",
+            "HindGuntur-SemiBold.ttf" to "హింద్ గుంటూరు", "HindGuntur-Bold.ttf" to "హింద్ గుంటూరు", "NTR-Regular.ttf" to "ఎన్టీఆర్",
+            "Suravaram-Regular.ttf" to "సురవరం", "Ponnala-Regular.ttf" to "పొన్నాల", "Mallanna-Regular.ttf" to "మల్లన్న",
+            "Gidugu-Regular.ttf" to "గిడుగు", "Dhurjati-Regular.ttf" to "ధూర్జటి", "Timmana-Regular.ttf" to "తిమ్మన",
+            "SreeKrushnadevaraya-Regular.ttf" to "శ్రీకృష్ణదేవరాయ", "Peddana-Regular.ttf" to "పెద్దన", "LakkiReddy-Regular.ttf" to "లక్కిరెడ్డి",
+            "AnekTelugu.ttf" to "అనేక్", "BalooTammudu2.ttf" to "బాలూ తమ్ముడు",
         )
         /** Fonts with Telugu letters, and those with none of their own Latin ones. */
         val TELUGU = setOf(

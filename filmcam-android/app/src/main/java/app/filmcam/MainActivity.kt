@@ -112,14 +112,20 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
 
     private lateinit var fonts: FontLibrary
 
-    private val fontPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri == null) return@registerForActivityResult
+    /** Font files, or .zip files of a font folder: every face inside is added, grouped by family. */
+    private val fontPicker = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isEmpty()) return@registerForActivityResult
         io.execute {
-            val key = fonts.import(uri)
+            val added = fonts.importAll(uris)
             runOnUiThread {
-                if (key == null) { ui.message = "That file isn't a font this phone can read"; return@runOnUiThread }
+                if (added.isEmpty()) { ui.message = "No fonts this phone can read in that"; return@runOnUiThread }
                 ui.fontsVersion++
-                ui.selectedLayer?.let { l -> setTextLayers(ui.textLayers.map { if (it.id == l.id) it.copy(font = key) else it }) }
+                val fams = added.mapNotNull { k -> fonts.fonts.firstOrNull { it.key == k }?.family }.distinct()
+                ui.message = if (fams.size == 1) "Added ${fams[0]} (${added.size} style${if (added.size == 1) "" else "s"})"
+                    else "Added ${fams.size} font families"
+                // The first new family's regular goes on the selected text.
+                val first = fams.firstOrNull()?.let { f -> fonts.families.firstOrNull { it.name == f }?.main?.key }
+                if (first != null) ui.selectedLayer?.let { l -> setTextLayers(ui.textLayers.map { if (it.id == l.id) it.copy(font = first) else it }) }
             }
         }
     }
@@ -602,7 +608,8 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
     }
 
     override fun importFont() {
-        fontPicker.launch(arrayOf("font/ttf", "font/otf", "font/sfnt", "application/x-font-ttf", "application/x-font-otf", "application/octet-stream"))
+        fontPicker.launch(arrayOf("font/ttf", "font/otf", "font/sfnt", "font/collection", "application/x-font-ttf", "application/x-font-otf",
+            "application/zip", "application/x-zip-compressed", "application/octet-stream"))
     }
 
     override fun shutter() {
@@ -956,10 +963,28 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         ui.logActive -> "Log"
         ui.isOriginal -> "No look"
         else -> ui.camera.name
-    }) = shots.edit { putString(uri.toString(), "$id\t$name") }
+    }) {
+        shots.edit { putString(uri.toString(), "$id\t$name") }
+        // Also in the file's own gallery record, so it survives clearing the app's data.
+        io.execute {
+            runCatching {
+                contentResolver.update(uri, android.content.ContentValues().apply {
+                    put(android.provider.MediaStore.Video.VideoColumns.DESCRIPTION, "$SHOT_TAG$id\t$name")
+                }, null, null)
+            }
+        }
+    }
 
-    override fun lookOf(item: MediaItem): Pair<String, String>? =
-        shots.getString(item.uri.toString(), null)?.split('\t', limit = 2)?.takeIf { it.size == 2 }?.let { it[0] to it[1] }
+    override fun lookOf(item: MediaItem): Pair<String, String>? {
+        val saved = shots.getString(item.uri.toString(), null) ?: runCatching {
+            contentResolver.query(item.uri, arrayOf(android.provider.MediaStore.Video.VideoColumns.DESCRIPTION), null, null, null)?.use { c ->
+                if (c.moveToFirst()) c.getString(0)?.takeIf { it.startsWith(SHOT_TAG) }?.removePrefix(SHOT_TAG) else null
+            }
+        }.getOrNull()
+        return saved?.split('\t', limit = 2)?.takeIf { it.size == 2 }?.let { it[0] to it[1] }
+    }
+
+    private val SHOT_TAG = "S film look: "
 
     override fun useLookOf(item: MediaItem) {
         val id = lookOf(item)?.first ?: return
@@ -1389,6 +1414,8 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
                     engine.logEncode = saved[7] as Int
                     if (out == null) { ui.message = "Couldn't add the subtitles"; return@runOnUiThread }
                     ui.message = "Saved a copy with subtitles"
+                    // The copy was shot with the same look as the clip.
+                    lookOf(s.item)?.let { (id, name) -> tagShot(out, id, name) }
                     ui.lastUri = out
                     ui.lastIsVideo = true
                     io.execute {

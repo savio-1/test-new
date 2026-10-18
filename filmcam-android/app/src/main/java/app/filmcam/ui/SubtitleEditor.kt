@@ -756,34 +756,46 @@ private fun SubSwatches(colors: List<Int>, selected: Int, pick: (Int) -> Unit) {
     }
 }
 
-/** A drop-down of every font that has the script's letters, each shown in its own face. */
+/**
+ * Fonts by family: a drop-down of the families that have the script's letters, each shown in
+ * its own face, and the chosen family's weights and styles underneath.
+ */
 @Composable
 private fun SubFontMenu(fonts: FontLibrary, selected: String, telugu: Boolean, pick: (String) -> Unit) {
     var open by remember { mutableStateOf(false) }
-    val options = fonts.fonts.filter { if (telugu) it.telugu else it.latin }
+    val families = fonts.families.filter { if (telugu) it.telugu else it.latin }
+    val current = fonts.familyOf(selected)
     val sample = if (telugu) "తెలుగు ఉపశీర్షికలు" else "Subtitles Aa"
-    Box {
-        Row(
-            Modifier.fillMaxWidth().clip(Corners.medium).background(Panel)
-                .border(1.dp, Color.White.copy(alpha = 0.15f), Corners.medium)
-                .clickable { open = true }.padding(horizontal = 12.dp, vertical = 9.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(fonts.label(selected), color = Color.White, fontSize = 15.sp, fontFamily = FontFamily(fonts.typeface(selected)), maxLines = 1)
-            Spacer(Modifier.weight(1f))
-            Text("${options.size} fonts  ▾", color = Muted, fontSize = 12.sp)
+    Column {
+        Box {
+            Row(
+                Modifier.fillMaxWidth().clip(Corners.medium).background(Panel)
+                    .border(1.dp, Color.White.copy(alpha = 0.15f), Corners.medium)
+                    .clickable { open = true }.padding(horizontal = 12.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(fonts.label(selected), color = Color.White, fontSize = 15.sp, fontFamily = FontFamily(fonts.typeface(selected)), maxLines = 1)
+                Spacer(Modifier.weight(1f))
+                Text("${families.size} families  ▾", color = Muted, fontSize = 12.sp)
+            }
+            DropdownMenu(expanded = open, onDismissRequest = { open = false }, modifier = Modifier.background(Color(0xFF1C1C1C))) {
+                families.forEach { f ->
+                    DropdownMenuItem(
+                        text = {
+                            Column {
+                                Text(if (f.faces.size > 1) "${f.name}  ·  ${f.faces.size} styles" else f.name,
+                                    color = if (f.name == current?.name) Accent else Color.White, fontSize = 16.sp, fontFamily = FontFamily(f.main.typeface), maxLines = 1)
+                                Text(sample, color = Muted, fontSize = 12.sp, fontFamily = FontFamily(f.main.typeface), maxLines = 1)
+                            }
+                        },
+                        onClick = { pick(fonts.nearest(f, selected).key); open = false },
+                    )
+                }
+            }
         }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }, modifier = Modifier.background(Color(0xFF1C1C1C))) {
-            options.forEach { f ->
-                DropdownMenuItem(
-                    text = {
-                        Column {
-                            Text(f.label, color = if (f.key == selected) Accent else Color.White, fontSize = 16.sp, fontFamily = FontFamily(f.typeface), maxLines = 1)
-                            Text(sample, color = Muted, fontSize = 12.sp, fontFamily = FontFamily(f.typeface), maxLines = 1)
-                        }
-                    },
-                    onClick = { pick(f.key); open = false },
-                )
+        if (current != null && current.faces.size > 1) {
+            Row(Modifier.padding(top = 6.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                current.faces.forEach { f -> SubChip(f.style, f.key == selected, FontFamily(f.typeface)) { pick(f.key) } }
             }
         }
     }

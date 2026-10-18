@@ -543,6 +543,16 @@ fun SettingsSheet(ui: UiState, actions: CameraActions) {
             } else if (ui.photoSizes.isNotEmpty()) {
                 SettingLabel("Photo size")
                 Segmented(ui.photoSizes, ui.photoSize ?: ui.photoSizes.last(), { it.label }, Modifier.fillMaxWidth()) { actions.setPhotoSize(it) }
+                if (ui.photoSizes.size == 1) {
+                    Text(
+                        "This lens gives other apps only this size. Switch to the 1× lens for the main sensor's larger sizes; " +
+                            "if they still don't show, the phone keeps its 50/200 MP mode for its own camera app.",
+                        color = p.muted, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp),
+                    )
+                } else if (ui.photoSizes.size > 1) {
+                    Text("The larger sizes read every pixel of the sensor: most detail in good light, more noise in low light.",
+                        color = p.muted, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
+                }
             }
             if (ui.manualSupported) {
                 SettingSwitch("Real shutter speed", "The sensor exposes for the chosen speed", ui.realShutter) { actions.setRealShutter(it) }

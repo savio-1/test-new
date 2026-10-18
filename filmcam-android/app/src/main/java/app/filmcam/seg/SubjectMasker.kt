@@ -54,6 +54,7 @@ class SubjectMasker(private val context: Context) {
     private var peopleTs = 0L
     private var objectsTs = 0L
     private var seq = 0L
+    private var prevMatte: ByteArray? = null
     private var frame = 0L
     private var target: Target = Target.AllPeople
     /** DeepLab's last class map, and the subject region in it (kept between DeepLab runs). */
@@ -238,6 +239,14 @@ class SubjectMasker(private val context: Context) {
                 for (i in 0 until n) if (reg[i]) { out.put(i, 255.toByte()); any = true }
             }
         }
+        // Firm it up so text set behind never shows through the subject: uncertain edges
+        // (hair, a busy background) count as subject, the outline grows a little, and the last
+        // frame's subject is held faintly so a moving head never leaves a gap.
+        val raw = ByteArray(n).also { out.position(0); out.get(it) }
+        val firm = solidify(raw, prevMatte?.takeIf { it.size == n }, w, h)
+        prevMatte = firm
+        out.position(0)
+        out.put(firm)
         out.position(0)
         latest = Matte(out, w, h, ++seq, empty = !any)
         status(when {
@@ -303,6 +312,31 @@ class SubjectMasker(private val context: Context) {
         private const val TAG = "SubjectMasker"
         /** Longest side of the frames the models see. */
         const val INPUT_SIDE = 256
+
+        /**
+         * A matte that holds text back firmly: confidence lifted (0.1 and up counts, 0.48 is
+         * solid), grown by about 1% of the frame, and at least 60% of [prev] (the frame before).
+         */
+        fun solidify(src: ByteArray, prev: ByteArray?, w: Int, h: Int): ByteArray {
+            val n = w * h
+            val lifted = IntArray(n) { i -> (((src[i].toInt() and 0xFF) - 25) * 2.6f).toInt().coerceIn(0, 255) }
+            val r = max(1, (max(w, h) + 127) / 128)
+            // Grow: a max filter, across then down.
+            val across = IntArray(n)
+            for (y in 0 until h) for (x in 0 until w) {
+                var m = 0
+                for (k in max(0, x - r)..min(w - 1, x + r)) m = max(m, lifted[y * w + k])
+                across[y * w + x] = m
+            }
+            val out = ByteArray(n)
+            for (y in 0 until h) for (x in 0 until w) {
+                var m = 0
+                for (k in max(0, y - r)..min(h - 1, y + r)) m = max(m, across[k * w + x])
+                if (prev != null) m = max(m, ((prev[y * w + x].toInt() and 0xFF) * 0.6f).toInt())
+                out[y * w + x] = m.toByte()
+            }
+            return out
+        }
         private const val PEOPLE_MODEL = "seg/selfie_segmenter.tflite"
         private const val OBJECT_MODEL = "seg/deeplab_v3.tflite"
         private const val PERSON = 15

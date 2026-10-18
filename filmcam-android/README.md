@@ -1,9 +1,10 @@
-# SavioCam (Android)
+# S film (Android)
 
-*Formerly FilmCam.* The app is called **SavioCam** on the phone, with its own icon: a bold
-geometric S in a white square, with a thin + in its upper counter, on black (a vector adaptive
-icon, with a monochrome layer for themed icons). New photos and clips go to `Pictures/SavioCam`
-and `Movies/SavioCam`; the gallery still shows everything saved under the old `FilmCam` albums.
+*Formerly SavioCam and FilmCam.* The app is called **S film** on the phone, with its own icon:
+a bold geometric S in a white square, with a thin + in its upper counter, on black (a vector
+adaptive icon, with a monochrome layer for themed icons). New photos and clips go to
+`Pictures/S film` and `Movies/S film`. The gallery still shows everything saved under the old
+`SavioCam` and `FilmCam` albums.
 The package id stays `app.filmcam`, so it installs over the old app and keeps its settings,
 favourites and imported looks.
 
@@ -54,6 +55,8 @@ colour.
   look's colour), Temp, Tint, Contrast, Highlights, Shadows, Saturation, Vibrance, Clarity,
   Sharpness and Fade. Then come Light, Motion, Film, Lens and Retro. Turning on a blur in
   Motion starts gentle: 25% strength with a 75% sharp centre.
+  - **Your values stay.** Whatever you set in Adjust (grain, halation, bloom...) carries over
+    when you change looks, until you set it back to the look's own value or tap reset.
   While you drag, everything else fades away so you can judge the picture; only the ruler and
   its value stay. Double-tap the ruler to go back to the camera's own setting. A dot marks the
   tools you've changed.
@@ -83,7 +86,13 @@ Burn text into video while you record, and into photos.
   Mandali, Gurajada, Tenali Ramakrishna, NTR, Suravaram, Ponnala, Mallanna, Gidugu, Dhurjati,
   Timmana, Sree Krushnadevaraya, Peddana, Lakki Reddy), the system fonts, and any
   `.ttf`/`.otf` you import. All bundled fonts are under the SIL Open Font Licence
-  (`assets/fonts/licenses`). The picker shows each one in a tile of the same size.
+  (`assets/fonts/licenses`).
+  - **By family.** The picker shows one tile per family, with how many styles it has. The
+    chosen family's weights and styles show as a row under it. Variable fonts offer every named
+    instance they carry, so Inter Tight has Thin to Black.
+  - **Import** takes several font files at once, or a `.zip` of a font folder (every .ttf, .otf
+    or .ttc inside, in any folder). Each file's own name table gives its family and style, so
+    a whole family arrives grouped as one.
 - **New text** starts in the middle of the frame, with no shadow.
 - **On the viewfinder:** drag a text to move it (it snaps to the centre lines, with guides), pinch
   to resize, twist to rotate (it snaps to level and to 90°), and double-tap to retype. The red ×
@@ -156,12 +165,29 @@ grows back. Lines gets a taller panel, because you type in it.
     - *Stack* builds up to three lines in the middle, mixing Inter Tight, the serif and the
       italic.
     - *Focus* shows one or two words at a time, centred.
-    The face is Inter Tight Bold, with Instrument Serif Italic for the odd accent word.
+    - *Sides* stacks the words down the left and right edges, alternating sides, with the key
+      word bigger. The middle stays clear for a centred subject.
+    - *Cascade* steps each phrase down diagonally, word by word, alternating direction.
+    - *Highlight* shows the whole line low in the frame. Words not yet said are dim, the word
+      being said is in a highlight colour (yellow by default, set in Text) and pops a little,
+      and words already said are white.
+    - *Lower third* builds lines low on the left, with the key word in the serif.
+    - *Headline* sets big capitals across the top of the frame.
+    - *Punch* shows one huge word at a time, with a small word above it if it has one.
+    The face is Inter Tight Bold, with Instrument Serif Italic for the odd accent word. New
+    captions have no shadow; add one in Effects.
   - **Text behind subject** (kinetic templates) sends some of the big words behind the
     person: about two phrases in five, never all of them, and never the small words. Those
     words are set wide across the top of the head, so the hair hides part of them and both
     ends still show. The editor's preview shows them faded, because it has no cut-out. The
     burnt-in clip cuts the person out of every frame and puts those words behind them.
+    - **The cut-out is firm.** Uncertain edges (hair, a busy background) count as the subject,
+      the outline is grown by about 1% of the frame, and the last frame's subject is held
+      faintly. Words don't show through a moving head or moving hair.
+  - **Blend modes** (Effects): normal, screen, add, overlay, soft light, multiply, difference or
+    colour dodge mix the words with the picture under them. The preview plays the clip on a
+    texture so it blends exactly as the burnt-in clip, where the film shader does the same
+    maths.
   - *Shuffle layout* (in Style) picks other spots and accents. *Original* goes back to the
     first layout.
 - **Text:** size and letter spacing on sliders, text colour, and the fonts. Kinetic captions
@@ -468,7 +494,7 @@ describe looks; none of them is a real product or brand.
 | **Cine** | Kino (teal and amber), Cine 800T, Cine 250D, Scope (anamorphic 2.39), Bleach Bypass, Super 8, Super 8 Reel, 16mm, K-64 Reel, 1929 Color (two-strip), Technicolour (three-strip) |
 | **Instant** | Instant, Instant SQ, Instant Mini, Peel-Apart |
 | **B&W** | Mono 400, Street Mono, Noir, Silver, Medium Format, Sepia, Silent Film (orthochromatic, 16 fps) |
-| **Toy & Fun** | Fun Vivid, Toy Lens, Pinhole, 4-Lens Sampler, Fisheye, Stereo 3D, Prism, Flash Party |
+| **Toy & Fun** | Fun Vivid, Toy Lens, Pinhole, 4-Lens Sampler, Fisheye, Stereo 3D, Prism, Flash Party, Viral Flash (the direct-flash look: bright, crisp subject, glossy highlights, the background falling into the dark, a cool flash white), Y2K Flash (the same on an early-2000s pocket camera, with a date) |
 | **Motion & Dream** | Golden Hour (mist filter), Summer Reel (Super 8 holiday, deep teal), Step Print, Panning, Spin (with a rainbow arc), Zoom Burst, Dreamy Soft, Stop Motion (6 fps) |
 | **Retro video** | Camcorder '98 (VHS), Mini DV, CCD 2005 |
 
@@ -599,6 +625,9 @@ optimiser), so a phone's own app can still look cleaner in hard light.
   that H.264, at high bitrates so the grain survives (about 50 Mb/s at 4K24, more at 8K). Audio is
   48 kHz AAC.
 - **Photos**: every size the sensor offers, e.g. 12, 50 and 200 MP on a Galaxy S23 Ultra.
+  Many multi-lens phones list their full-resolution mode only on the main physical sensor, not
+  on the combined camera apps open; the app reads that sensor too and shoots through it. If a
+  phone still offers only 12 MP, Settings says so (some makers keep 50/200 MP for their own app).
   Sizes from the sensor's full-resolution mode (the 50/108/200 MP modes of quad-Bayer sensors)
   are shot in that mode, with any digital zoom applied on the GPU. Which sizes appear depends on
   what the phone opens to other apps; some makers keep their biggest mode for their own camera.
@@ -642,11 +671,17 @@ the best path the phone allows and says which one it is in the log panel and und
    the camera's processor, with sharpening off. Rec.709 colours, 8-bit HEVC. 18% grey lands at
    41%, and the camera exposes a stop under so highlights keep a stop more room. In your
    editor: S-Log3 gamma, Rec.709 colour space.
-3. **S-Log3 approx.** For phones that won't apply a custom curve: the same encoding made on the
-   GPU from the camera's normal picture, with less highlight range.
+3. **S-Log3 on the GPU.** For phones that won't apply a custom curve, the camera is asked for
+   its plain sRGB curve instead of its picture style. The shader inverts that exactly back to
+   sensor light and encodes S-Log3. The phone's own style crushed the shadows, which is why
+   this path's footage used to come out dark. There's no added sharpening in any log path.
+
+HLG (path 1) is an HDR format, not a flat log: on an HDR screen it plays bright and
+contrasty, as it should. It keeps the most range for grading. For a flat picture straight out
+of the camera, choose S-Log3.
 
 *View assist* (on by default) shows log graded on screen while the file stays flat. *Save LUT*
-writes a .cube to `Download/FilmCam` that matches it, for HLG or S-Log3.
+writes a .cube to `Download/S film` that matches it, for HLG or S-Log3.
 
 **Why log could look dark before.** Some phones list custom tone curves but
 quietly don't apply them. The app then decoded a normal picture as if it were log, which made

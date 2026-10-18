@@ -213,6 +213,8 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
                     outputs[0].streamUseCase = CameraMetadata.SCALER_AVAILABLE_STREAM_USE_CASES_PREVIEW.toLong()
                 }
                 if (js.maxRes && Build.VERSION.SDK_INT >= 31) {
+                    // A size from the physical main sensor: the stream goes to that sensor.
+                    js.physicalId?.let { out.setPhysicalCameraId(it) }
                     out.addSensorPixelModeUsed(CameraMetadata.SENSOR_PIXEL_MODE_MAXIMUM_RESOLUTION)
                 }
                 outputs += out
@@ -593,7 +595,9 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
         val r = reader ?: return failStill()
         val cfg = config ?: return failStill()
         try {
-            val b = dev.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
+            val pid = cfg.photo.physicalId?.takeIf { cfg.photo.maxRes && Build.VERSION.SDK_INT >= 31 }
+            val b = if (pid != null) dev.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE, setOf(pid))
+                else dev.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
             b.addTarget(r.surface)
             val maxRes = cfg.photo.maxRes && Build.VERSION.SDK_INT >= 31
             // Full-resolution captures can only go to streams set up for that mode.
@@ -604,6 +608,7 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
             pendingZoomCrop = 1f
             if (maxRes) {
                 b.set(CaptureRequest.SENSOR_PIXEL_MODE, CameraMetadata.SENSOR_PIXEL_MODE_MAXIMUM_RESOLUTION)
+                if (pid != null) b.setPhysicalCameraKey(CaptureRequest.SENSOR_PIXEL_MODE, CameraMetadata.SENSOR_PIXEL_MODE_MAXIMUM_RESOLUTION, pid)
                 // The sensor's full mode reads the whole array; the GPU crops the zoom instead.
                 if (caps?.zoomRange != null) b.set(CaptureRequest.CONTROL_ZOOM_RATIO, 1f)
                 b.set(CaptureRequest.CONTROL_AF_REGIONS, null)

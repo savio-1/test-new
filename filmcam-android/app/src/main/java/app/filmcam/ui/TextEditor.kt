@@ -505,20 +505,40 @@ private fun TextRuler(ui: UiState, label: String, value: Float, min: Float, max:
 @Composable
 private fun FontRow(ui: UiState, actions: CameraActions, fonts: FontLibrary, layer: TextLayer, chrome: Float) {
     val p = LocalPalette.current
-    LazyRow(Modifier.alpha(chrome), contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        items(fonts.fonts, key = { it.key }) { f ->
-            val sel = f.key == layer.font
-            FontTile(f.label, sel, onClick = { replace(ui, actions, layer.copy(font = f.key)) }) {
-                // Every face gets the same box, whatever its own line height.
-                Text(
-                    "Aa", color = if (sel) p.bg else p.text, fontSize = 21.sp, fontFamily = FontFamily(f.typeface), maxLines = 1,
-                    style = TextStyle(lineHeight = 24.sp, platformStyle = PlatformTextStyle(includeFontPadding = false)),
-                )
+    val current = fonts.familyOf(layer.font)
+    Column {
+        // Families: one tile each, in its own regular face.
+        LazyRow(Modifier.alpha(chrome), contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item {
+                FontTile("Import", selected = false, outlined = true, onClick = { actions.importFont() }) {
+                    Icon(Ico.Import, null, tint = p.text, modifier = Modifier.size(20.dp))
+                }
+            }
+            items(fonts.families, key = { it.name }) { fam ->
+                val sel = fam.name == current?.name
+                val n = fam.faces.size
+                FontTile(if (n > 1) "${fam.name} · $n" else fam.name, sel,
+                    onClick = { replace(ui, actions, layer.copy(font = fonts.nearest(fam, layer.font).key)) }) {
+                    // Every face gets the same box, whatever its own line height.
+                    Text(
+                        "Aa", color = if (sel) p.bg else p.text, fontSize = 21.sp, fontFamily = FontFamily(fam.main.typeface), maxLines = 1,
+                        style = TextStyle(lineHeight = 24.sp, platformStyle = PlatformTextStyle(includeFontPadding = false)),
+                    )
+                }
             }
         }
-        item {
-            FontTile("Import", selected = false, outlined = true, onClick = { actions.importFont() }) {
-                Icon(Ico.Import, null, tint = p.text, modifier = Modifier.size(20.dp))
+        // The chosen family's weights and styles.
+        if (current != null && current.faces.size > 1) {
+            Spacer(Modifier.height(8.dp))
+            LazyRow(Modifier.alpha(chrome), contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(current.faces, key = { it.key }) { f ->
+                    val sel = f.key == layer.font
+                    Text(
+                        f.style, color = if (sel) p.bg else p.text, fontSize = 13.sp, fontFamily = FontFamily(f.typeface), maxLines = 1,
+                        modifier = Modifier.clip(Corners.small).background(if (sel) p.text else p.surfaceHigh)
+                            .clickable { replace(ui, actions, layer.copy(font = f.key)) }.padding(horizontal = 10.dp, vertical = 6.dp),
+                    )
+                }
             }
         }
     }
