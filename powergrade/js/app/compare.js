@@ -32,7 +32,7 @@
         const end = Math.min(cells.length, i + 6);
         for (; i < end; i++) {
           const [id, tp] = cells[i].dataset.cell.split('|'), sz = size(tp), d = PG.byId(PG.DIRECTIONS, id), tn = App.tune(id);
-          if (isK(tp)) { cells[i].innerHTML = `<div style="position:relative;width:${sz.w}px;height:${sz.h}px">${PG.Mockups.slot(tp, (tn.objects && tn.objects[tp]) || PG.Mockups.defaultObject(tp, S.brief), { w: 960, h: 720, dir: id }).replace('class="m3d loading"', 'class="m3d loading" style="position:absolute;inset:0"')}</div>`; App.hydrate(cells[i]); }
+          if (isK(tp)) { cells[i].innerHTML = `<div style="position:relative;width:${sz.w}px;height:${sz.h}px">${PG.Mockups.slot(tp, (tn.objects && tn.objects[tp]) || PG.Mockups.defaultObject(tp, S.brief), { w: 960, h: 720, dir: id, quality: 'draft' }).replace('class="m3d loading"', 'class="m3d loading" style="position:absolute;inset:0"')}</div>`; App.hydrate(cells[i]); }
           else { const r = PG.renderBoard(tp, d, tn, S.brief, sz); cells[i].innerHTML = r.html + `<span class="c2">${esc(PG.TEMPLATES[tp].layouts[r.layout].name)}</span>`; }
         }
         if (i < cells.length && S.view === 'compare') setTimeout(step, 0);

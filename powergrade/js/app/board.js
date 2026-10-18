@@ -118,7 +118,7 @@
     openItem(el) {
       const it = ITEMS.find((x) => x.id === el.dataset.it), d = App.dir(), tn = App.tune();
       if (it.type === '3d') {
-        const m = App.modal(`${esc(it.kind[0].toUpperCase() + it.kind.slice(1))} · ${esc(PG.Mockups.NAMES[currentObject(it.kind)])}`, `<div class="lightbox">${PG.Mockups.slot(it.kind, currentObject(it.kind), { w: 2000, h: 1500 })}</div>
+        const m = App.modal(`${esc(it.kind[0].toUpperCase() + it.kind.slice(1))} · ${esc(PG.Mockups.NAMES[currentObject(it.kind)])}`, `<div class="lightbox">${PG.Mockups.slot(it.kind, currentObject(it.kind), { w: 2000, h: 1500, quality: 'high' })}</div>
           <div class="row" style="display:flex;gap:8px;flex-wrap:wrap">${(PG.Studio3D && PG.Studio3D.CAMERAS ? Object.keys(PG.Studio3D.CAMERAS) : ['hero']).map((c) => `<button class="tbtn sm" data-a="cam" data-k="${it.kind}" data-c="${c}">${c}</button>`).join('')}</div>`, true);
         App.hydrate(m);
         return;
@@ -130,7 +130,7 @@
     },
     cam(el) {
       const lb = $('#modal .lightbox'); if (!lb) return;
-      lb.innerHTML = PG.Mockups.slot(el.dataset.k, currentObject(el.dataset.k), { w: 2000, h: 1500, camera: el.dataset.c });
+      lb.innerHTML = PG.Mockups.slot(el.dataset.k, currentObject(el.dataset.k), { w: 2000, h: 1500, camera: el.dataset.c, quality: 'high' });
       App.hydrate(lb);
     }
   });

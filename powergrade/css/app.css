@@ -402,6 +402,10 @@ table.tbl { border-collapse: collapse; width: 100%; min-width: 980px; font-size:
   .only-narrow { display: grid; }
   .top .hide-sm { display: none; }
   .logo span { display: none; }
+  .top .mid { display: none; }
+  .nav { flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .nav::-webkit-scrollbar { display: none; }
+  .nav button { white-space: nowrap; flex: none; }
   .gal { --cols: 1; } .gi.wide, .gi.full { grid-column: auto; }
   .gi.wide .frame, .gi.full .frame { aspect-ratio: 4 / 3; }
   .irow { grid-template-columns: 1fr; }

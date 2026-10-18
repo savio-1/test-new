@@ -8,7 +8,7 @@ window.PG = window.PG || {};
     packaging: ['can', 'box', 'bottle', 'jar', 'tube', 'pouch', 'cup', 'bag', 'paycard'],
     stationery: ['cards', 'book'],
     devices: ['phone', 'laptop'],
-    outdoor: ['poster', 'billboard']
+    outdoor: ['billboard', 'poster']
   };
   const IND_PACK = {
     finance: 'paycard', insurance: 'paycard', health: 'box', wellness: 'jar', beauty: 'bottle', fashion: 'bag', food: 'can',
@@ -30,6 +30,7 @@ window.PG = window.PG || {};
   /* Which painter draws which texture slot. */
   function roleFor(obj, tex) {
     const k = tex.toLowerCase();
+    if (obj === 'jar' && k.includes('top')) return 'top';
     if (obj === 'can' || obj === 'jar' || obj === 'cup') return 'wrap';
     if (obj === 'bag') return k.includes('side') ? 'side' : 'bagFront';
     if (obj === 'cards' || obj === 'businesscards') return k.includes('back') ? 'cardBack' : 'cardFront';
@@ -57,6 +58,28 @@ window.PG = window.PG || {};
     return { preset, backdrop };
   }
 
+  /* Object variant that suits the direction: slim cans and droppers read premium, pumps and tall cans read everyday. */
+  function variantFor(obj, kit, tier) {
+    const premium = tier === 'premium' || tier === 'luxury';
+    if (obj === 'can') return premium || kit === 'minimal' ? 'slim' : 'standard';
+    if (obj === 'bottle') return kit === 'minimal' || kit === 'editorial' || premium ? 'dropper' : 'pump';
+    if (obj === 'box') return kit === 'tech' ? 'flat' : kit === 'bold' || kit === 'friendly' ? 'cube' : 'tall';
+    if (obj === 'poster') return kit === 'bold' ? 'hanger' : kit === 'minimal' ? 'mat' : 'frame';
+    return undefined;
+  }
+  /* Paint the artwork inside the object's safe area (the part visible from the front), then extend
+     its edge colour to fill the rest. 360° wraps use the whole canvas on purpose (side panels, barcode). */
+  async function paintSafe(role, d, ctx) {
+    if (role === 'wrap' || !d.safe) return PG.paintSurface(role, d.w, d.h, ctx);
+    const [sx, sy, sw, sh] = d.safe;
+    const inner = await PG.paintSurface(role, Math.round(sw), Math.round(sh), ctx);
+    const cv = document.createElement('canvas'); cv.width = d.w; cv.height = d.h;
+    const g = cv.getContext('2d');
+    const px = inner.getContext('2d').getImageData(2, 2, 1, 1).data;
+    g.fillStyle = `rgb(${px[0]},${px[1]},${px[2]})`; g.fillRect(0, 0, d.w, d.h);
+    g.drawImage(inner, sx, sy);
+    return cv;
+  }
   const cache = new Map();
   let queue = Promise.resolve();
 
@@ -73,21 +96,25 @@ window.PG = window.PG || {};
       await PG.Studio3D.ready;
       const obj = objId(name); if (!obj) throw new Error('No 3D object ' + name);
       const t = PG.tokens(dir, tune, brief);
-      const key = JSON.stringify([obj, dir.id, tune, brief.name, brief.industry, brief.audiences, brief.logo, opts.camera, opts.w, opts.h, t.bg, t.primary]);
+      const key = JSON.stringify([obj, opts.quality, opts.variant, dir.id, tune, brief.name, brief.industry, brief.audiences, brief.logo, opts.camera, opts.w, opts.h, t.bg, t.primary]);
       if (cache.has(key)) return cache.get(key);
       const job = queue.then(async () => {
-        const spec = PG.Studio3D.OBJECTS[obj];
+        const kit = PG.kitOf(dir.id), tier = brief.tier;
+        const variant = opts.variant || variantFor(obj, kit, tier);
+        const texSpec = PG.Studio3D.textureSpec ? PG.Studio3D.textureSpec(obj, variant) : PG.Studio3D.OBJECTS[obj].textures;
         const ind = PG.byId(PG.INDUSTRIES, brief.industry);
         const pick = PG.photoPicker(brief, t, (tune.seed || 1) + '|3d|' + obj);
         const ctx = { t, c: ind.copy, b: PG.brandFor(brief), dir, kit: PG.kitOf(dir.id), grade: PG.gradeFor(dir.id, tune), pick: (r, n) => pick(r, n || 0) };
         const textures = {};
-        for (const [tex, d] of Object.entries(spec.textures || {})) textures[tex] = await PG.paintSurface(roleFor(obj, tex), d.w, d.h, ctx);
+        for (const [tex, d] of Object.entries(texSpec || {})) textures[tex] = await paintSafe(roleFor(obj, tex), d, ctx);
         const glass = ctx.kit === 'minimal' || ctx.kit === 'editorial' ? 'frosted' : ctx.kit === 'tech' ? 'amber' : 'clear';
         return PG.Studio3D.render({
           object: obj, textures, key,
           colors: { body: t.primary, metal: '#C8CBD0', accent: t.accent, glass, paper: t.bg, ink: t.ink },
-          scene: sceneFor(t, ctx.kit, opts.wall ? 'outdoor-wall' : kind === 'outdoor' && obj === 'billboard' ? 'outdoor' : kind),
-          camera: opts.camera || 'hero', width: opts.w || 1600, height: opts.h || 1200, count: opts.count
+          scene: sceneFor(t, ctx.kit, obj === 'poster' ? 'outdoor-wall' : obj === 'billboard' ? 'outdoor' : kind),
+          camera: opts.camera || 'hero', width: opts.w || 1600, height: opts.h || 1200, count: opts.count,
+          variant, finish: kit === 'bold' || kit === 'friendly' ? 'gloss' : kit === 'tech' ? 'satin' : 'matte',
+          quality: opts.quality || 'final'
         });
       });
       queue = job.catch(() => null);

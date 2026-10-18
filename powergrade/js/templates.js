@@ -75,7 +75,7 @@ window.PG = window.PG || {};
         const { t, c, b } = x, [a, z] = lastWord(c.headline);
         return `<div class="abs" style="background:${t.mode === 'dark' ? 'var(--bg)' : 'var(--ink)'};color:${t.mode === 'dark' ? 'var(--ink)' : 'var(--bg)'};padding:34px 44px">
           <div class="row" style="justify-content:space-between">${x.word(22, 'inverse')}<span class="row" style="gap:10px"><span class="circ">≡</span><span class="tag inv">${esc(c.nav[3])}</span></span></div>
-          <div class="h" style="color:inherit;font-size:${hs(t, 64)}px;line-height:1.04;margin-top:56px;max-width:1320px">${esc(b.name)}® ${esc(c.tagline.toLowerCase())}. ${esc(a)} <em class="ital">${esc(z)}</em></div>
+          <div class="h" style="color:inherit;font-size:${hs(t, 64)}px;line-height:1.04;margin-top:56px;max-width:1320px">${esc(b.name)}® ${esc(c.tagline.toLowerCase().replace(/\.$/, ''))}. ${esc(a)} <em class="ital">${esc(z)}</em></div>
           <div style="position:absolute;left:44px;right:0;bottom:0;display:flex;gap:28px;align-items:flex-end">${[150, 210, 170, 230, 160, 190].map((h, i) => `<div style="width:${[150, 200, 220, 170, 240, 160][i]}px;height:${h}px;border-radius:12px 12px 0 0;overflow:hidden;position:relative;flex:none">${PG.photoImg(x.pick(['people', 'place', 'product', 'detail'][i % 4], 10 + i), t, { grade: x.grade })}${i % 3 === 1 ? `<span class="tag" style="position:absolute;left:10px;top:10px">${i === 1 ? '✦ New' : '✦ Update'}</span>` : ''}</div>`).join('')}</div></div>`;
       } },
       magazine: { name: 'Magazine spread', ref: 'Centred portrait photograph with set text (editorial studios)', render(x) {
@@ -336,7 +336,7 @@ window.PG = window.PG || {};
     layouts: {
       photo: { name: 'Photo + line', ref: '48-sheet outdoor', render(x) {
         const { t, c } = x;
-        return `<div class="abs" style="display:grid;grid-template-columns:1.1fr 1fr"><div style="padding:70px 90px;display:flex;flex-direction:column;justify-content:space-between">${H(t, 'div', c.billboard, 150)}<div class="row" style="justify-content:space-between">${x.lockup(40)}${tiny(c.tagline, 'font-size:24px;color:var(--muted)')}</div></div>${pic(x, 'hero', 'height:100%')}</div>`;
+        return `<div class="abs" style="display:grid;grid-template-columns:1.1fr 1fr"><div style="padding:70px 90px;display:flex;flex-direction:column;justify-content:space-between">${H(t, 'div', c.billboard, 150)}<div class="row" style="justify-content:space-between;gap:40px">${x.lockup(32)}${tiny(c.tagline, 'font-size:22px;color:var(--muted);text-align:right;max-width:38%')}</div></div>${pic(x, 'hero', 'height:100%')}</div>`;
       } },
       type: { name: 'Type only', ref: 'Copy-led outdoor on colour', render(x) {
         const { t, c } = x;

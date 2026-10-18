@@ -95,7 +95,7 @@
     let inner, foot;
     if (is3D(o.tp)) {
       const name = o.obj || PG.Mockups.defaultObject(o.tp, S.brief);
-      inner = PG.Mockups.slot(o.tp, name, { w: 1200, h: 900 }).replace('class="m3d loading"', 'class="m3d loading" style="position:relative;height:260px;width:100%"');
+      inner = PG.Mockups.slot(o.tp, name, { w: 1000, h: 750, quality: 'draft' }).replace('class="m3d loading"', 'class="m3d loading" style="position:relative;height:260px;width:100%"');
       foot = `<span>3D · ${esc(PG.Mockups.NAMES[name])}</span><select data-c="outObj" data-o="${o.id}" aria-label="Object">${PG.Mockups.available(o.tp).map((n) => opt(n, PG.Mockups.NAMES[n], n === name)).join('')}</select>`;
     } else {
       const T = PG.TEMPLATES[o.tp], r = PG.renderBoard(o.tp, d, tn, S.brief, { w: W.out - 26, h: 320 }, { layout: o.layout });
