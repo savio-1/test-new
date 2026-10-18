@@ -75,7 +75,7 @@ slightly from it. (The photographic *Styles* tab has been removed; the looks cov
 ## Text overlays
 
 Burn text into video while you record, and into photos.
-- **Fonts:** bundled fonts (Inter and Inter Bold, Instrument Serif, DM Serif, Playfair, Bebas,
+- **Fonts:** bundled fonts (Inter and Inter Bold, Inter Tight, Instrument Serif and its italic, DM Serif, Playfair, Bebas,
   Space Mono, a typewriter, a VHS face, a handwritten one, Montserrat, Poppins, Oswald, Anton,
   Archivo Black, Nunito, Rubik, Lora, Bangers, Righteous, Lobster and Pacifico), twenty Telugu
   faces (Noto Sans and Serif Telugu, Hind Guntur, Anek Telugu, Baloo Tammudu, Ramabhadra,
@@ -121,7 +121,8 @@ Burn text into video while you record, and into photos.
 ## Subtitles
 
 After a clip is shot, open it and tap **Subtitles** (or, after a take with live subtitles,
-tap *Edit live subtitles* on the camera screen). The editor has three tabs over the clip.
+tap *Edit live subtitles* on the camera screen). The editor has three tabs over the clip:
+Lines, Style, and Position (Classic) or Words (kinetic templates).
 - **Generate:** the clip's speech is written out as timed subtitle lines, in English and in
   Telugu (Telugu script). It handles speech in either language, and Telugu with English words
   mixed in. The language spoken in most lines decides which one shows first.
@@ -131,12 +132,42 @@ tap *Edit live subtitles* on the camera screen). The editor has three tabs over 
   - *Start* and *End*: − / + move them by a tenth of a second (hold to keep going), *Now*
     sets them to the playhead, and tapping a time jumps there.
   - Delete a line, or *+ Add a line* at the playhead.
-- **Style:** English, తెలుగు or Both (stacked: Telugu above English).
+- **Style:** the template first, then the language: English, తెలుగు or Both (stacked: Telugu
+  above English).
+  - **Templates.** *Classic* shows a line at a time. The other three are kinetic captions,
+    modelled on podcast and talking-head reels. Each word comes in as it is said, revealed
+    left to right out of a soft blur in about a quarter of a second. Words are grouped into
+    short phrases the way an editor would cut them: a quotation stands alone, a phrase closes
+    on its key word, and "struggles with?" stays together. Each phrase is replaced whole by
+    the next.
+    - *Scatter* (the default for new subtitles) sets each phrase like a small poster. The word
+      that carries the meaning is big, and the small words sit tight on its shoulder. Phrases
+      jump between the top corners, beside the head, the chest and lower down, never the same
+      spot twice running.
+    - *Stack* builds up to three lines in the middle, mixing Inter Tight, the serif and the
+      italic.
+    - *Focus* shows one or two words at a time, centred.
+    The face is Inter Tight Bold, with Instrument Serif Italic for the odd accent word.
+  - **Text behind subject** (kinetic templates) sends some of the big words behind the
+    person: about two phrases in five, never all of them, and never the small words. Those
+    words are set wide across the top of the head, so the hair hides part of them and both
+    ends still show. The editor's preview shows them faded, because it has no cut-out. The
+    burnt-in clip cuts the person out of every frame and puts those words behind them.
+  - Kinetic options: how words come in (blur, fade, rise, pop, type or cut), size (70–130%),
+    colour, the main, accent and italic fonts, and *Shuffle layout*, which picks other spots
+    and accents. *Original layout* goes back to the first one.
   - Fonts from a drop-down, each shown in its own face, one list for English and one for
     Telugu (a font only appears where it has that script's letters).
   - Size, text colour (ten swatches), and the background: none, shadow, outline or box,
     with the outline or box colour and the box's opacity.
-- **Position:** drag the subtitles on the video to put them anywhere (the centre snaps, and
+- **Words** (kinetic templates): tap any word on the video to pick it, or pick it from the
+  phrase's words below the video. ‹ and › step through phrases, holding the clip on each.
+  Drag a word to put it anywhere; the centre line snaps. A picked word can change its font
+  (Sans, Italic, Serif or any font), its size, its colour, how it comes in, and its depth:
+  Auto, In front or Behind. *Reset word* undoes that word's changes, and *Undo N word changes*
+  in Style undoes them all. Changes are kept with the clip. A change is dropped if you retype
+  that word.
+- **Position** (Classic): drag the subtitles on the video to put them anywhere (the centre snaps, and
   thirds guides show while placing), or tap one of nine spots: top, middle or bottom by left,
   centre or right. *Line up* sets left, centre or right alignment. The block always stays
   inside the frame.

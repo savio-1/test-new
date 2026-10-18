@@ -126,11 +126,29 @@ class ScreenshotTest {
                     app.filmcam.sub.Cue(3100, 5600, "te", "Today we are going to the beach", "ఈరోజు మనం బీచ్‌కి వెళ్తున్నాం"),
                     app.filmcam.sub.Cue(5800, 8000, "en", "It's so sunny!", "ఎంత ఎండగా ఉంది!"),
                 ),
-                app.filmcam.sub.SubtitleStyle(language = app.filmcam.sub.SubtitleLanguage.BOTH),
+                app.filmcam.sub.SubtitleStyle(language = app.filmcam.sub.SubtitleLanguage.BOTH, template = app.filmcam.sub.CaptionTemplate.CLASSIC),
             )
         }
         geminiKey = "set"
     })
+    private fun kinetic(tab: app.filmcam.ui.SubTab, word: String? = null, at: Long = 1500) = state(ThemeMode.DARK) {
+        screen = Screen.SUBTITLES
+        subtitles = app.filmcam.ui.SubtitleSession(app.filmcam.util.MediaItem(android.net.Uri.EMPTY, true, 0L, 12_000L), 9f / 16f, 12_000L).apply {
+            positionMs = at
+            this.tab = tab
+            selectedWord = word
+            track = app.filmcam.sub.SubtitleTrack(
+                listOf(
+                    app.filmcam.sub.Cue(0, 3200, "en", "You know \u201cthe one question\u201d that every single guest on my podcast struggles with?"),
+                    app.filmcam.sub.Cue(3300, 5600, "en", "And I think I know why, but I've never said it out loud."),
+                ),
+                app.filmcam.sub.SubtitleStyle(behindSubject = true),
+            )
+        }
+        geminiKey = "set"
+    }
+    @Test fun subtitlesKineticStyle() = shot(kinetic(app.filmcam.ui.SubTab.STYLE))
+    @Test fun subtitlesKineticWords() = shot(kinetic(app.filmcam.ui.SubTab.WORDS, word = "0:4", at = 900))
     @Test fun subtitlesStart() = shot(state(ThemeMode.DARK) {
         screen = Screen.SUBTITLES
         subtitles = app.filmcam.ui.SubtitleSession(app.filmcam.util.MediaItem(android.net.Uri.EMPTY, true, 0L, 12_000L), 9f / 16f, 12_000L)

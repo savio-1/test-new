@@ -60,7 +60,7 @@ class SubtitlesTest {
     }
 
     @Test fun picksTheCueShowingAndStacksBothLanguages() {
-        val t = SubtitleTrack(listOf(Cue(0, 2000, english = "One", telugu = "ఒకటి")), SubtitleStyle(language = SubtitleLanguage.BOTH))
+        val t = SubtitleTrack(listOf(Cue(0, 2000, english = "One", telugu = "ఒకటి")), SubtitleStyle(template = CaptionTemplate.CLASSIC, language = SubtitleLanguage.BOTH))
         val layers = t.layersAt(1000, 9f / 16f, null)
         assertEquals(listOf("ఒకటి", "One"), layers.map { it.text })
         assertTrue(layers[0].y < layers[1].y)                  // Telugu above English
@@ -70,7 +70,7 @@ class SubtitlesTest {
 
     @Test fun placesTheBlockByItsEdgeOrCentre() {
         fun track(x: Float, align: app.filmcam.film.TextAlign) =
-            SubtitleTrack(listOf(Cue(0, 2000, english = "Hello")), SubtitleStyle(x = x, y = 0.5f, align = align))
+            SubtitleTrack(listOf(Cue(0, 2000, english = "Hello")), SubtitleStyle(template = CaptionTemplate.CLASSIC, x = x, y = 0.5f, align = align))
         // Without fonts a line is taken as 0.6 of the frame wide.
         val left = track(0.05f, app.filmcam.film.TextAlign.LEFT).layersAt(500, 1f, null).single()
         assertEquals(0.05f, left.x - 0.3f, 1e-4f)                     // left edge on the anchor
@@ -79,13 +79,13 @@ class SubtitlesTest {
         assertEquals(0.95f, right.x + 0.3f, 1e-4f)                    // right edge on the anchor
         assertEquals(0.5f, track(0.5f, app.filmcam.film.TextAlign.CENTER).layersAt(500, 1f, null).single().x, 1e-4f)
         // Dragged past the edge, the block stays inside the frame.
-        val off = SubtitleTrack(listOf(Cue(0, 2000, english = "Hello")), SubtitleStyle(x = 1f, y = 0f)).layersAt(500, 1f, null).single()
+        val off = SubtitleTrack(listOf(Cue(0, 2000, english = "Hello")), SubtitleStyle(template = CaptionTemplate.CLASSIC, x = 1f, y = 0f)).layersAt(500, 1f, null).single()
         assertTrue(off.x + 0.3f <= 1f && off.y - 0.045f * 1.4f / 2 >= 0f)
     }
 
     @Test fun backgroundsBecomeBoxOutlineOrShadow() {
         fun layer(b: SubtitleBackground) = SubtitleTrack(listOf(Cue(0, 2000, english = "Hi")),
-            SubtitleStyle(background = b, backColor = 0xFF102030.toInt(), backOpacity = 0.5f, color = 0xFFFFE14D.toInt())).layersAt(0, 1f, null).single()
+            SubtitleStyle(template = CaptionTemplate.CLASSIC, background = b, backColor = 0xFF102030.toInt(), backOpacity = 0.5f, color = 0xFFFFE14D.toInt())).layersAt(0, 1f, null).single()
         val box = layer(SubtitleBackground.BOX)
         assertTrue(box.box && !box.shadow && box.outline == 0)
         assertEquals(0x7F102030, box.boxColor)                        // the colour at half opacity

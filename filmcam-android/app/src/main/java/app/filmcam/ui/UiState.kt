@@ -80,6 +80,9 @@ class SubtitleSession(val item: MediaItem, val aspect: Float, val durationMs: Lo
     /** When transcription started (elapsed time on screen) and lines received so far. */
     var startedAt by mutableLongStateOf(0L)
     var linesSoFar by mutableIntStateOf(0)
+    /** The editor's open tab, and the word picked in Words (kinetic captions, by id). */
+    var tab by mutableStateOf(SubTab.LINES)
+    var selectedWord by mutableStateOf<String?>(null)
 }
 
 /** Everything the screen shows. Owned by the activity, mutated on the main thread. */

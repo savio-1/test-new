@@ -302,8 +302,9 @@ class FilmEngine {
             val persistence = if (simulateShutter) look.shutter.persistence(dt) else 0f
             if (persistence > 0f || look.interlace > 0f) p.keepPrevious()
             develop(look, persistence)
-            // The subject is segmented while the GPU works on the glows.
-            startSubject(liveSource(p), turns)
+            // The subject is segmented while the GPU works on the glows. An export has time to
+            // cut out every frame, so words set behind the subject never lag the person.
+            startSubject(liveSource(p), turns, forStill = rec?.offline == true)
             renderer.glow(liveSource(p), look, turns)
         }
         fx.rollBurn = rollBurn(rec, now)
@@ -322,7 +323,7 @@ class FilmEngine {
         val textSide = if (rec?.offline == true) min(4096, max(p.width, p.height)) else if (animated) 1280 else 2048
         val t = (now - timeBaseNs) / 1e9f
         if (turns % 2 == 0) updateText(p.width, p.height, textSide, t) else updateText(p.height, p.width, textSide, t)
-        finishSubject(waitMs = 12L)
+        finishSubject(waitMs = if (rec?.offline == true) 1_000L else 12L)
         if (disp != null && displayW > 0) {
             GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
             renderer.drawFinal(src, look, fx, displayW, displayH, 0, turns, logMode = logDisplay)

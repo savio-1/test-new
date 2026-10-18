@@ -479,6 +479,22 @@ object Kinetic {
         return out
     }
 
+    /** The phrase holding the word [id] ("cue:word"), if any. */
+    fun phraseOf(track: SubtitleTrack, id: String): Phrase? = plan(track).phrases.firstOrNull { p -> p.words.any { it.id == id } }
+
+    /** The phrase on screen at [timeMs] (or the last one begun before it). */
+    fun phraseAt(track: SubtitleTrack, timeMs: Long): Phrase? {
+        val ps = plan(track).phrases
+        return ps.firstOrNull { timeMs >= it.startMs && timeMs < it.endMs } ?: ps.lastOrNull { it.startMs <= timeMs }
+    }
+
+    /** Where the word [id] settles, with every template rule and edit applied (for the editor). */
+    fun placedWord(track: SubtitleTrack, id: String, aspect: Float, fonts: FontLibrary?): Placed? {
+        val p = phraseOf(track, id) ?: return null
+        val block = if (track.style.template == CaptionTemplate.STACK) stackBlocks(plan(track).phrases, track).firstOrNull { p in it }.orEmpty() else emptyList()
+        return place(track, p, aspect, fonts, stackOf = block).firstOrNull { it.word.id == id }
+    }
+
     /** Layer ids carry the word: cue * 1000 + word + 1. */
     fun layerId(w: Word) = w.cue * 1000L + w.index + 1
     fun wordIdOf(layerId: Long): String = "${(layerId - 1) / 1000}:${(layerId - 1) % 1000}"
