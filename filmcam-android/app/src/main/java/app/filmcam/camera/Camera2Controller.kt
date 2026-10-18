@@ -424,18 +424,31 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
             b.set(CaptureRequest.TONEMAP_MODE, CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE)
             b.set(CaptureRequest.TONEMAP_CURVE, LogCurve.tonemap(min(c.maxCurvePoints, 64), appliedLogUnder))
             if (CameraMetadata.EDGE_MODE_OFF in c.edgeModes) b.set(CaptureRequest.EDGE_MODE, CameraMetadata.EDGE_MODE_OFF)
+        } else if (log) {
+            // Log made on the GPU: the phone's own picture style crushes shadows and rolls off
+            // highlights, which can't be undone (the footage came out dark). Ask for the plain
+            // sRGB curve instead, which the shader inverts exactly back to sensor light.
+            if (c.presetCurve) {
+                b.set(CaptureRequest.TONEMAP_MODE, CameraMetadata.TONEMAP_MODE_PRESET_CURVE)
+                b.set(CaptureRequest.TONEMAP_PRESET_CURVE, CameraMetadata.TONEMAP_PRESET_CURVE_SRGB)
+            } else if (c.gammaCurve) {
+                b.set(CaptureRequest.TONEMAP_MODE, CameraMetadata.TONEMAP_MODE_GAMMA_VALUE)
+                b.set(CaptureRequest.TONEMAP_GAMMA, 2.2f)
+            }
+            if (CameraMetadata.EDGE_MODE_OFF in c.edgeModes) b.set(CaptureRequest.EDGE_MODE, CameraMetadata.EDGE_MODE_OFF)
         }
 
         // The camera's best noise reduction and sharpening, in the viewfinder too, so the picture
         // is as clean as the system camera's. Video gets them as well at up to 30 fps, and drops
         // back to the fast modes if the phone can't hold the frame rate with them.
-        val hqVideo = video && !still && !hqVideoRejected && cfg.fps <= 30 && !logInIsp
+        val hqVideo = video && !still && !hqVideoRejected && cfg.fps <= 30
         if (video && !still) { hqActive = hqVideo; hqFrames = 0 }
         if (!video || still || hqVideo) {
             if (CameraMetadata.NOISE_REDUCTION_MODE_HIGH_QUALITY in c.noiseModes) {
                 b.set(CaptureRequest.NOISE_REDUCTION_MODE, CameraMetadata.NOISE_REDUCTION_MODE_HIGH_QUALITY)
             }
-            if (!logInIsp && CameraMetadata.EDGE_MODE_HIGH_QUALITY in c.edgeModes) {
+            // No added sharpening in log: it bakes in halos a grade can't take out.
+            if (!log && CameraMetadata.EDGE_MODE_HIGH_QUALITY in c.edgeModes) {
                 b.set(CaptureRequest.EDGE_MODE, CameraMetadata.EDGE_MODE_HIGH_QUALITY)
             }
         }

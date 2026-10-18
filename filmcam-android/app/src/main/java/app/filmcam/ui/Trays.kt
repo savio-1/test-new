@@ -45,6 +45,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.runtime.key
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
@@ -189,11 +190,17 @@ fun LooksTray(ui: UiState, actions: CameraActions, chrome: Float) {
             }
             // Looks sit on top of the Original camera: "None" takes the look off, and so does
             // tapping the chosen look again.
-            val start = (cams.indexOfFirst { it.id == ui.camera.id } + 1).coerceAtLeast(0)
-            val state = rememberLazyListState(start)
-            LaunchedEffect(shelf) { state.scrollToItem((cams.indexOfFirst { it.id == ui.camera.id } + 1).coerceAtLeast(0)) }
-            Box(Modifier.alpha(chrome)) {
-                LazyRow(state = state, contentPadding = PaddingValues(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Each shelf is its own row, faded in when it opens: one shelf's tiles never animate
+            // across into another's (that left two categories on screen at once).
+            Box(Modifier.alpha(chrome)) { key(shelf) {
+                val start = (cams.indexOfFirst { it.id == ui.camera.id } + 1).coerceAtLeast(0)
+                val state = rememberLazyListState(start)
+                val shown = remember { androidx.compose.animation.core.Animatable(0f) }
+                LaunchedEffect(Unit) { shown.animateTo(1f, tween(160)) }
+                LazyRow(
+                    Modifier.graphicsLayer { alpha = shown.value },
+                    state = state, contentPadding = PaddingValues(horizontal = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     item(key = "none") { NoLookCard(ui.isOriginal) { actions.removeLook() } }
                     items(cams, key = { it.id }) { cam ->
                         val sel = cam.id == ui.camera.id
@@ -201,7 +208,6 @@ fun LooksTray(ui: UiState, actions: CameraActions, chrome: Float) {
                         LookCard(
                             cam, sel, favourite = cam.id in ui.favourites,
                             onRemove = if (sel && imported) ({ actions.removeUserLook(cam.id) }) else null,
-                            modifier = Modifier.animateItem(),
                         ) { if (sel) actions.removeLook() else actions.selectCamera(cam) }
                     }
                     // Custom: any .cube LUT (a creator's look you bought, or your own grade).
@@ -210,10 +216,10 @@ fun LooksTray(ui: UiState, actions: CameraActions, chrome: Float) {
                 if (cams.isEmpty() && shelf.first == LookShelf.FAVOURITES) {
                     Text(
                         "Tap the heart under a look to keep it here", color = p.muted, fontSize = 12.sp,
-                        modifier = Modifier.align(Alignment.CenterStart).padding(start = 96.dp),
+                        modifier = Modifier.padding(start = 96.dp, top = 30.dp),
                     )
                 }
-            }
+            } }
             // The chosen look's own controls: favourite, and how strongly it applies.
             AnimatedVisibility(!ui.isOriginal, enter = fadeIn(tween(180)) + expandVertically(tween(220)), exit = fadeOut(tween(120)) + shrinkVertically(tween(180))) {
                 LookStrength(ui, actions, chrome)
@@ -375,7 +381,7 @@ fun AdjustTray(ui: UiState, actions: CameraActions, chrome: Float) {
                 Ruler(
                     value = tool.get(ui.look), min = tool.min, max = tool.max, default = tool.get(preset),
                     format = tool.format, options = tool.options,
-                    onChange = { v -> actions.updateLook(tool.set(ui.look, v)) },
+                    onChange = { v -> actions.adjustTool(tool.id, v) },
                     onActive = { ui.adjusting = it },
                 )
             }

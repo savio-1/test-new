@@ -209,6 +209,10 @@ class UiState {
     var shutterSound by mutableStateOf(true)
     /** Video: background noise taken out of the voice as it is recorded. */
     var voiceDenoise by mutableStateOf(false)
+    /** A text layer is being moved on the viewfinder: every control steps out of the way. */
+    var movingText by mutableStateOf(false)
+    /** Adjust values the person set (tool id to value); they carry over when the look changes. */
+    var lookOverrides by mutableStateOf<Map<String, Float>>(emptyMap())
     /** Some countries require the shutter sound; then it can't be turned off. */
     var shutterSoundRequired by mutableStateOf(false)
     var rawSupported by mutableStateOf(false)
@@ -256,6 +260,8 @@ interface CameraActions {
     /** Back to the Original camera. */
     fun removeLook()
     fun updateLook(look: FilmLook)
+    /** An Adjust tool moved: the value is kept for every look until it is set back or reset. */
+    fun adjustTool(id: String, value: Float)
     fun resetLook()
     fun setFrame(frame: FrameStyle)
     fun setStamp(stamp: StampStyle)

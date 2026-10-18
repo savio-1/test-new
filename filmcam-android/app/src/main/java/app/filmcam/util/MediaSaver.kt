@@ -14,7 +14,7 @@ import java.util.Locale
 
 /** Writes into the shared gallery under Pictures/FilmCam and Movies/FilmCam. */
 object MediaSaver {
-    private const val ALBUM = "SavioCam"
+    private const val ALBUM = "S film"
 
     private fun stamp() = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(Date())
 
@@ -99,7 +99,7 @@ object MediaSaver {
         }
     }
 
-    /** Writes a text file (the log LUT) to Download/SavioCam. */
+    /** Writes a text file (the log LUT) to Download/S film. */
     fun saveDownload(context: Context, name: String, mime: String, text: String): Uri? {
         val resolver = context.contentResolver
         val values = ContentValues().apply {

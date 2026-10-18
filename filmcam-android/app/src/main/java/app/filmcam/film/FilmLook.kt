@@ -410,6 +410,16 @@ object FilmCameras {
         cam("party", "Flash Party", "Direct flash · night out", CameraCategory.TOY,
             FilmLook(stock = FilmStocks.VIVID_100, halation = 0.3f, bloom = 0.25f, grain = 0.45f, grainSize = 1.5f,
                 vignette = 0.6f, flash = 0.75f, aberration = 0.2f, stamp = StampStyle.DATE)),
+        // The direct-flash look all over social feeds: a bright, crisp subject, glossy skin
+        // highlights, a background that drops away into the dark, a cool flash white.
+        cam("viralflash", "Viral Flash", "Direct flash · glossy and crisp", CameraCategory.TOY,
+            FilmLook(stock = FilmStocks.NEUTRAL, flash = 0.7f, contrast = 0.35f, shadows = -0.35f, highlights = 0.12f,
+                clarity = 0.35f, sharpness = 0.3f, warmth = -0.12f, saturation = 0.06f, bloom = 0.18f, halation = 0.1f,
+                vignette = 0.25f, aberration = 0.04f)),
+        // The same flash on an early-2000s pocket camera: warmer, softer, a date in the corner.
+        cam("y2kflash", "Y2K Flash", "Pocket digicam flash · date stamp", CameraCategory.TOY,
+            FilmLook(stock = FilmStocks.DIGICAM, flash = 0.65f, contrast = 0.2f, shadows = -0.25f, warmth = 0.08f,
+                bloom = 0.22f, halation = 0.15f, vignette = 0.3f, aberration = 0.12f, softness = 0.1f, stamp = StampStyle.DATE)),
 
         // ------------------------------------------------------------ motion and dream
         cam("golden", "Golden Hour", "Mist filter · glowing haze", CameraCategory.MOTION,

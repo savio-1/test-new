@@ -119,11 +119,13 @@ fun QuickPanel(q: Quick, ui: UiState, actions: CameraActions, modifier: Modifier
                     PanelHelp(
                         when (ui.logPath) {
                             LogPath.HLG10 -> "10-bit HLG straight from the sensor into the encoder (HEVC Main10, 16:9). " +
-                                "Most range and no banding. In your editor: Rec.2100 HLG, Rec.2020 colour."
+                                "HLG is an HDR format, not a flat log: on an HDR screen it plays bright and contrasty, as it should. " +
+                                "Most range and no banding for grading. In your editor: Rec.2100 HLG, Rec.2020 colour. " +
+                                "For a flat picture straight out of the camera, choose S-Log3."
                             LogPath.ISP -> "8-bit S-Log3, applied to the sensor signal by the camera itself. " +
                                 "In your editor: S-Log3 gamma, Rec.709 colour."
-                            LogPath.GPU -> "This camera won't apply a custom curve, so S-Log3 is made from its normal picture: " +
-                                "flat and gradeable, with less range in the highlights."
+                            LogPath.GPU -> "This camera won't apply a custom curve, so S-Log3 is made on the GPU from its plain sRGB " +
+                                "picture (no phone picture style, so the shadows aren't crushed): flat and gradeable, 8-bit."
                         } + if (ui.hlgFailed) " (The camera refused a 10-bit session at this size.)" else "",
                     )
                     Spacer(Modifier.height(8.dp))

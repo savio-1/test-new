@@ -24,7 +24,7 @@ data class VideoInfo(val width: Int, val height: Int, val rotation: Int, val dur
 }
 
 /**
- * Lists what the app has saved (Pictures/SavioCam and Movies/SavioCam, and the FilmCam albums
+ * Lists what the app has saved (Pictures/S film and Movies/S film, and the SavioCam and FilmCam albums
  * from before it was renamed). On Android 10+ an app sees its own files in the shared album
  * without any storage permission.
  */
@@ -42,12 +42,12 @@ object MediaLibrary {
         val cols = arrayListOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DATE_ADDED,
             MediaStore.MediaColumns.WIDTH, MediaStore.MediaColumns.HEIGHT)
         if (video) cols += MediaStore.Video.VideoColumns.DURATION
-        // SavioCam's album, and FilmCam's from before the app was renamed.
+        // S film's album, and SavioCam's and FilmCam's from before the app was renamed.
         val root = if (video) "Movies" else "Pictures"
         context.contentResolver.query(
             base, cols.toTypedArray(),
-            "(${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ? OR ${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?) AND ${MediaStore.MediaColumns.IS_PENDING} = 0",
-            arrayOf("$root/SavioCam%", "$root/FilmCam%"), "${MediaStore.MediaColumns.DATE_ADDED} DESC",
+            "(${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ? OR ${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ? OR ${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?) AND ${MediaStore.MediaColumns.IS_PENDING} = 0",
+            arrayOf("$root/S film%", "$root/SavioCam%", "$root/FilmCam%"), "${MediaStore.MediaColumns.DATE_ADDED} DESC",
         )?.use { c ->
             val id = c.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
             val date = c.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED)

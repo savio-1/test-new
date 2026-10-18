@@ -178,6 +178,11 @@ class CameraCaps(val id: String, ch: CameraCharacteristics) {
     val contrastCurve: Boolean = (ch.get(CameraCharacteristics.TONEMAP_AVAILABLE_TONE_MAP_MODES) ?: IntArray(0))
         .contains(CameraMetadata.TONEMAP_MODE_CONTRAST_CURVE) && (ch.get(CameraCharacteristics.TONEMAP_MAX_CURVE_POINTS) ?: 0) >= 32
     val maxCurvePoints: Int = ch.get(CameraCharacteristics.TONEMAP_MAX_CURVE_POINTS) ?: 0
+    /** A plain sRGB (or gamma) tone curve can be asked for: the GPU log path can then undo it exactly. */
+    val presetCurve: Boolean = (ch.get(CameraCharacteristics.TONEMAP_AVAILABLE_TONE_MAP_MODES) ?: IntArray(0))
+        .contains(CameraMetadata.TONEMAP_MODE_PRESET_CURVE)
+    val gammaCurve: Boolean = (ch.get(CameraCharacteristics.TONEMAP_AVAILABLE_TONE_MAP_MODES) ?: IntArray(0))
+        .contains(CameraMetadata.TONEMAP_MODE_GAMMA_VALUE)
     val edgeModes: IntArray = ch.get(CameraCharacteristics.EDGE_AVAILABLE_EDGE_MODES) ?: IntArray(0)
 
     /** Exact size for a resolution choice, or null if this camera can't stream it. */

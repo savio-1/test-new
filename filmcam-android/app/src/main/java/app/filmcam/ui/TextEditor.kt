@@ -193,7 +193,9 @@ fun TextEditorLayer(ui: UiState, actions: CameraActions) {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     val map = FrameMap(size.width.toFloat(), size.height.toFloat(), turns)
                     val pad = 12.dp.toPx()
-                    val hit = latestUi.textLayers.lastOrNull { map.hit(it, fonts, down.position, pad) }
+                    // A touch on a text picks it; with one picked, a drag anywhere on the picture
+                    // moves it (the finger needn't cover the text to move it).
+                    val hit = latestUi.textLayers.lastOrNull { map.hit(it, fonts, down.position, 2 * pad) }
                     if (hit != null) latestUi.selectedText = hit.id
                     val start = latestUi.selectedLayer ?: return@awaitEachGesture
                     // Raw values follow the fingers; shown values snap to centre lines and right angles.
@@ -210,6 +212,7 @@ fun TextEditorLayer(ui: UiState, actions: CameraActions) {
                         if (!moved && (pan.getDistance() > viewConfiguration.touchSlop || abs(zoom - 1f) > 0.01f || abs(rotation) > 1f)) {
                             moved = true
                             latestUi.adjusting = true
+                            latestUi.movingText = true
                         }
                         if (moved) {
                             val centreView = map.toView(Offset(rawX, rawY))
@@ -234,6 +237,7 @@ fun TextEditorLayer(ui: UiState, actions: CameraActions) {
                     } while (event.changes.any { it.pressed })
                     if (moved) {
                         latestUi.adjusting = false
+                        latestUi.movingText = false
                         latestUi.guideX = false
                         latestUi.guideY = false
                     }

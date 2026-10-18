@@ -167,7 +167,11 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
         val saved = FilmCameras.byId(prefs.getString("camera", null))
         ui.camera = saved
         ui.category = if (saved.category == app.filmcam.film.CameraCategory.ORIGINAL) app.filmcam.film.CameraCategory.FUJI else saved.category
-        ui.look = saved.look
+        ui.lookOverrides = runCatching {
+            val o = org.json.JSONObject(prefs.getString("lookOverrides", null) ?: "{}")
+            o.keys().asSequence().associateWith { o.getDouble(it).toFloat() }
+        }.getOrDefault(emptyMap())
+        ui.look = withOverrides(saved.look)
         ui.mode = enumPref("mode", CaptureMode.PHOTO)
         ui.videoRes = enumPref("videoRes", VideoResolution.UHD)
         ui.photoRatio = enumPref("photoRatio", AspectRatio.R3_4)
@@ -759,7 +763,7 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
             val hlg = ui.logPath == app.filmcam.ui.LogPath.HLG10
             val name = if (hlg) "FilmCam HLG to Rec709.cube" else "FilmCam S-Log3 to Rec709.cube"
             val uri = MediaSaver.saveDownload(this, name, "application/octet-stream", LogCurve.cube(hlg))
-            runOnUiThread { ui.message = if (uri != null) "LUT saved to Download/SavioCam" else "Couldn't save the LUT" }
+            runOnUiThread { ui.message = if (uri != null) "LUT saved to Download/S film" else "Couldn't save the LUT" }
         }
     }
 
@@ -829,8 +833,27 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
     override fun selectCamera(camera: FilmCamera) {
         ui.camera = camera
         dropHalfFrame()
-        updateLook(camera.look.copy(exposureEv = ui.look.exposureEv))
+        updateLook(withOverrides(camera.look.copy(exposureEv = ui.look.exposureEv)))
         prefs.edit { putString("camera", camera.id) }
+    }
+
+    /** [look] with the person's own Adjust values on top (grain, halation... stay as they set them). */
+    private fun withOverrides(look: FilmLook): FilmLook {
+        val tools = app.filmcam.ui.Tools.all(ui.evMin, ui.evMax)
+        return ui.lookOverrides.entries.fold(look) { l, (id, v) -> tools.firstOrNull { it.id == id && it.id != "exposure" }?.set?.invoke(l, v) ?: l }
+    }
+
+    override fun adjustTool(id: String, value: Float) {
+        val tool = app.filmcam.ui.Tools.all(ui.evMin, ui.evMax).firstOrNull { it.id == id } ?: return
+        // Back at the look's own value: no longer the person's setting.
+        val own = tool.get(ui.camera.look)
+        ui.lookOverrides = if (id == "exposure" || kotlin.math.abs(value - own) < 1e-4f) ui.lookOverrides - id else ui.lookOverrides + (id to value)
+        saveOverrides()
+        updateLook(tool.set(ui.look, value))
+    }
+
+    private fun saveOverrides() = prefs.edit {
+        putString("lookOverrides", org.json.JSONObject().apply { ui.lookOverrides.forEach { (k, v) -> put(k, v.toDouble()) } }.toString())
     }
 
     override fun updateLook(look: FilmLook) {
@@ -848,7 +871,11 @@ class MainActivity : ComponentActivity(), CameraActions, Camera2Controller.Liste
 
     override fun removeLook() = selectCamera(FilmCameras.ORIGINAL)
 
-    override fun resetLook() = updateLook(ui.camera.look.copy(exposureEv = 0f))
+    override fun resetLook() {
+        ui.lookOverrides = emptyMap()
+        saveOverrides()
+        updateLook(ui.camera.look.copy(exposureEv = 0f))
+    }
 
     override fun setFrame(frame: FrameStyle) = updateLook(ui.look.copy(frame = frame))
 

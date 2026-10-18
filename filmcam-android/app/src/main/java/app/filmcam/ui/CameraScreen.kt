@@ -60,6 +60,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
@@ -134,6 +135,7 @@ private fun CameraPage(ui: UiState, actions: CameraActions, chrome: Float) {
             tween(260), label = "iconRotation",
         )
 
+        val trayShown by animateFloatAsState(if (ui.movingText) 0f else 1f, tween(140), label = "trayShown")
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
             TopBar(ui, actions, iconRotation, Modifier.alpha(chrome))
             QuickBar(ui, actions, Modifier.alpha(chrome))
@@ -159,7 +161,9 @@ private fun CameraPage(ui: UiState, actions: CameraActions, chrome: Float) {
                         (fadeIn(tween(180)) + slideInVertically(tween(220)) { it / 4 }) togetherWith
                             (fadeOut(tween(120)) + slideOutVertically(tween(160)) { it / 4 })
                     },
-                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp),
+                    // Moving text: the tray steps out of the way so the whole picture is free.
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp)
+                        .graphicsLayer { alpha = trayShown },
                     label = "tray",
                 ) { dock ->
                     when (dock) {
@@ -229,7 +233,7 @@ private fun PermissionPrompt(ui: UiState, actions: CameraActions) {
     ) {
         Icon(Ico.Film, null, tint = p.text, modifier = Modifier.size(36.dp))
         Spacer(Modifier.height(18.dp))
-        Text("SavioCam", color = p.text, fontSize = 32.sp, fontWeight = FontWeight.Medium)
+        Text("S film", color = p.text, fontSize = 32.sp, fontWeight = FontWeight.Medium)
         Spacer(Modifier.height(10.dp))
         Text(
             "Photos and video through a live film emulsion. It needs the camera, and the microphone for sound.",
