@@ -20,6 +20,8 @@ window.PG = window.PG || {};
   const H = (t, tag, text, base, extra) => `<${tag} class="h" style="font-size:${hs(t, base)}px;${extra || ''}">${esc(text)}</${tag}>`;
   const url = (b) => b.name.toLowerCase().replace(/[^a-z0-9]+/g, '') + '.com';
   const initials = (n) => n.split(' ').map((x) => x[0]).join('').slice(0, 2);
+  /* Split a stat line into its figure and the rest ("In 4,000 stores" → "4,000", "In stores"). */
+  const statParts = (s) => { const m = String(s).match(/[£$€]?\d[\d.,]*\s?[kKMB%]?(?:\s?★)?/); if (!m) return [s.split(' ')[0], s.split(' ').slice(1).join(' ')]; return [m[0].trim(), (s.slice(0, m.index) + s.slice(m.index + m[0].length)).replace(/\s+/g, ' ').replace(/^[\s·]+|[\s·]+$/g, '')]; };
   const lastWord = (s) => { const i = s.trim().lastIndexOf(' '); return i < 0 ? ['', s] : [s.slice(0, i), s.slice(i + 1)]; };
 
   /* Photo box filling its parent cell. */
@@ -118,7 +120,7 @@ window.PG = window.PG || {};
           <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr;grid-template-rows:240px 210px;gap:12px">
             ${pic(x, 'people', 'grid-row:span 2;border-radius:var(--r)')}
             <div class="tile" style="background:var(--surface)"><span class="xs" style="color:var(--muted)">${esc(c.app.metricLabel)}</span><div class="h" style="font-size:${hs(t, 46)}px;margin-top:8px">${esc(c.app.metric)}</div><svg viewBox="0 0 200 60" style="width:100%;height:70px;margin-top:14px"><path d="M0 50 C30 45 40 20 70 28 S120 10 140 18 180 4 200 8" fill="none" stroke="var(--primary)" stroke-width="3"/></svg></div>
-            <div class="tile" style="background:var(--primary);color:var(--on-primary)"><div class="h" style="color:inherit;font-size:${hs(t, 64)}px">${esc(c.stat.split(' ')[0])}</div><div class="s" style="margin-top:auto">${esc(c.stat.split(' ').slice(1).join(' '))}</div></div>
+            <div class="tile" style="background:var(--primary);color:var(--on-primary)"><div class="h" style="color:inherit;font-size:${hs(t, 64)}px">${esc(statParts(c.stat)[0])}</div><div class="s" style="margin-top:auto">${esc(c.stat)}</div></div>
             <div class="tile" style="background:var(--surface);grid-column:span 2;display:grid;grid-template-columns:repeat(3,1fr);gap:18px">${c.features.map(([k, v], i) => `<div><span class="ic" style="background:${['var(--primary)', 'var(--secondary)', 'var(--accent)'][i]}"></span><b class="s" style="display:block;margin-top:14px">${esc(k)}</b><span class="xs" style="color:var(--muted)">${esc(v)}</span></div>`).join('')}</div></div></div>`;
       } },
       colorfield: { name: 'Colour field', ref: 'Oversized cropped type on a brand colour (agency sites)', render(x) {
@@ -292,7 +294,7 @@ window.PG = window.PG || {};
       data: { name: 'Key number', ref: 'Big figure beside a photograph', render(x) {
         const { t, c } = x;
         return `<div class="abs" style="display:grid;grid-template-columns:1fr 1fr">${pic(x, 'people', 'height:100%')}
-          <div style="padding:110px;display:flex;flex-direction:column;justify-content:center;gap:28px">${tiny('Impact', 'font-size:22px;color:var(--muted)')}<div class="h" style="font-size:${hs(t, 220)}px;color:var(--primary-text);line-height:.9">${esc(c.stat.split(' ')[0])}</div><div style="font-size:36px;line-height:1.3">${esc(c.stat.split(' ').slice(1).join(' '))}</div><p style="font-size:24px;color:var(--muted);line-height:1.5;margin:0">${esc(c.sub)}</p></div></div>`;
+          <div style="padding:110px;display:flex;flex-direction:column;justify-content:center;gap:28px">${tiny('Impact', 'font-size:22px;color:var(--muted)')}<div class="h" style="font-size:${hs(t, 220)}px;color:var(--primary-text);line-height:.9">${esc(statParts(c.stat)[0])}</div><div style="font-size:36px;line-height:1.3">${esc(c.stat)}</div><p style="font-size:24px;color:var(--muted);line-height:1.5;margin:0">${esc(c.sub)}</p></div></div>`;
       } }
     }
   };
@@ -352,10 +354,10 @@ window.PG = window.PG || {};
         const sw = [['Primary', t.primary, t.onPrimary], ['Ink', t.ink, t.bg], ['Paper', t.bg, t.ink], ['Secondary', t.secondary, t.onSecondary], ['Accent', t.accent, t.ink]];
         return `<div class="abs" style="display:grid;grid-template-columns:1fr 1fr;background:var(--line);gap:1px">
           <div style="background:var(--bg);display:grid;grid-template-rows:1.2fr 1fr">
-            <div style="display:grid;place-items:center;position:relative">${x.lockup(64)}${tiny('01 — Logo', 'position:absolute;left:34px;top:28px;color:var(--muted)')}</div>
+            <div style="display:grid;place-items:center;position:relative;padding:0 60px">${x.lockup(52)}${tiny('01 — Logo', 'position:absolute;left:34px;top:28px;color:var(--muted)')}</div>
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr">
-              <div style="background:var(--primary);display:grid;place-items:center">${x.lockup(26, 'reverse')}</div>
-              <div style="background:var(--ink);display:grid;place-items:center">${x.lockup(26, 'inverse')}</div>
+              <div style="background:var(--primary);display:grid;place-items:center;padding:0 24px;min-width:0">${x.lockup(22, 'reverse')}</div>
+              <div style="background:var(--ink);display:grid;place-items:center;padding:0 24px;min-width:0">${x.lockup(22, 'inverse')}</div>
               <div style="background:var(--surface);display:grid;place-items:center">${x.mark(110) || x.word(40)}</div></div></div>
           <div style="background:var(--bg);display:grid;grid-template-rows:auto 1fr auto">
             <div style="display:grid;grid-template-columns:repeat(5,1fr);height:300px">${sw.map(([k, v, on]) => `<div style="background:${v};color:${on};padding:20px;display:flex;flex-direction:column;justify-content:flex-end;font-size:13px;border-left:1px solid var(--line)"><b>${k}</b><span style="font-family:var(--fm);font-size:12px;opacity:.85">${v}</span></div>`).join('')}</div>

@@ -54,6 +54,14 @@ function art(obj, name, spec, pi) {
   // circle in safe centre
   const cx = sx + sw / 2, cy = sy + sh / 2, rr = Math.min(sw, sh) * 0.32;
   x.fillStyle = ac; x.beginPath(); x.arc(cx, cy - rr * 0.2, rr * 0.45, 0, Math.PI * 2); x.fill();
+  // tall narrow canvases (spines) get type rotated 90° clockwise, as a designer would set it
+  if (h > w * 3) {
+    x.save(); x.translate(w / 2, h / 2); x.rotate(Math.PI / 2);
+    const f2 = Math.min(w * 0.55, h / (obj.length + name.length + 4) * 1.6);
+    x.fillStyle = fg; x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = `800 ${f2}px "Helvetica Neue", Arial, sans-serif`;
+    x.fillText(`${obj.toUpperCase()} · ${name}`, 0, 0); x.fillStyle = ac; x.fillRect(-h * 0.45, -w * 0.3, h * 0.06, w * 0.6); x.restore();
+    return c;
+  }
   // type
   const fs = Math.min(sw / (Math.max(obj.length, 4) * 0.62), sh / 4.2);
   x.fillStyle = fg; x.textAlign = 'center'; x.textBaseline = 'middle';
@@ -70,7 +78,7 @@ function art(obj, name, spec, pi) {
   return c;
 }
 
-const CASES = [
+const CASES = qs.get('cases') ? JSON.parse(qs.get('cases')) : [
   { object: 'can', variant: 'standard' },
   { object: 'can', variant: 'slim', count: 3, scene: 'concrete' },
   { object: 'can', camera: 'close' },
@@ -81,17 +89,26 @@ const CASES = [
   { object: 'bottle', variant: 'pump', colors: { glass: 'frosted' } },
   { object: 'bottle', variant: 'dropper', colors: { glass: 'clear' }, count: 2, scene: 'wall' },
   { object: 'jar' },
+  { object: 'jar', count: 3, scene: 'linen', colors: { glass: 'amber', accent: '#c9a96e' } },
   { object: 'tube' },
+  { object: 'tube', count: 3, scene: 'concrete' },
   { object: 'pouch' },
+  { object: 'pouch', count: 2, scene: 'table' },
   { object: 'cup' },
+  { object: 'cup', count: 2, scene: 'table' },
   { object: 'bag' },
   { object: 'cards' },
   { object: 'cards', camera: 'top', scene: 'linen' },
-  { object: 'paycard' }, { object: 'paycard', count: 2 },
+  { object: 'paycard' },
+  { object: 'paycard', count: 2, scene: 'concrete' },
   { object: 'book' },
+  { object: 'book', count: 3, camera: 'close' },
   { object: 'phone' },
+  { object: 'phone', count: 2, camera: 'top', scene: 'table' },
   { object: 'laptop' },
   { object: 'poster' },
+  { object: 'poster', variant: 'mat', camera: 'front' },
+  { object: 'poster', variant: 'hanger', scene: 'concrete' },
   { object: 'billboard' }
 ];
 

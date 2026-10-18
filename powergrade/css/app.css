@@ -266,7 +266,8 @@ input[type=range].manual::-moz-range-thumb { background: var(--ui-accent); borde
 .ab .opt.on { border-color: var(--ink); }
 .ab .tile { border-radius: var(--r); padding: 22px; display: flex; flex-direction: column; overflow: hidden; }
 .ab .ic { display: inline-block; width: 34px; height: 34px; border-radius: min(var(--r), 17px); flex: none; }
-.ab .lk { display: inline-flex; align-items: center; white-space: nowrap; }
+.ab .lk { display: inline-flex; align-items: center; white-space: nowrap; max-width: 100%; min-width: 0; }
+.ab .lk svg.wm { max-width: 100%; height: auto; flex-shrink: 1; min-width: 0; }
 .ab .lk.stk { flex-direction: column; }
 .ab .lk-w { font-family: var(--fd); font-weight: var(--fdw); text-transform: var(--tt); letter-spacing: var(--trk); font-style: var(--fst); line-height: 1; }
 .ab svg.mk, .ab svg.wm { display: block; flex: none; }

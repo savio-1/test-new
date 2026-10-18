@@ -20,9 +20,9 @@ window.PG = window.PG || {};
     health: ['health', 'portrait', 'lifestyle'], wellness: ['lifestyle', 'landscape', 'texture', 'still'],
     beauty: ['beauty', 'still', 'portrait'], fashion: ['fashion', 'portrait', 'city'], food: ['food', 'still'],
     restaurant: ['food', 'interior', 'lifestyle'], hospitality: ['travel', 'interior', 'landscape'],
-    realestate: ['architecture', 'interior'], saas: ['tech', 'lifestyle', 'portrait'], ai: ['tech', 'abstract', 'architecture', 'texture'],
+    realestate: ['architecture', 'interior'], saas: ['tech', 'lifestyle', 'portrait'], ai: ['tech', 'texture', 'architecture'],
     devtools: ['tech', 'texture'], edu: ['lifestyle', 'kids', 'portrait'], media: ['portrait', 'city', 'lifestyle'],
-    gaming: ['tech', 'city', 'sport'], sports: ['sport', 'portrait', 'landscape'], auto: ['mobility', 'city', 'landscape'],
+    gaming: ['tech', 'city', 'sport'], sports: ['sport', 'portrait', 'landscape'], auto: ['auto', 'city', 'landscape'],
     energy: ['energy', 'landscape', 'architecture'], retail: ['still', 'interior', 'lifestyle'], industrial: ['architecture', 'energy', 'city'],
     professional: ['architecture', 'portrait', 'interior'], nonprofit: ['lifestyle', 'kids', 'portrait'], culture: ['architecture', 'texture', 'portrait'],
     kids: ['kids', 'lifestyle'], crypto: ['tech', 'texture', 'city']

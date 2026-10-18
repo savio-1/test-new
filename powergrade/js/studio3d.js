@@ -7,7 +7,22 @@
 
    The module sets window.PG.Studio3D and then fires `pg:studio3d-ready` on window.
    Assets (HDRIs, surface textures) load from assets/3d/ next to index.html. Override the base with
-   window.PG_STUDIO3D_ASSETS = 'some/url/' before the module runs. Units are centimetres. */
+   window.PG_STUDIO3D_ASSETS = 'some/url/' before the module runs. Units are centimetres.
+
+   API (PG.Studio3D)
+     OBJECTS[id]   { name, textures: {name: {w, h, safe:[x,y,w,h], wrap?, optional?}}, colors: [...roles], colorRoles,
+                     variants: {id: {name, textures}}, defaultVariant, finishes, defaults, cameras, maxCount }
+     SCENES[id]    { name, backdrop }        studio | table | concrete | linen | wall | outdoor
+     CAMERAS[id]   { name }                  hero | front | top | close (each object tunes its own angles)
+     ready         Promise, resolves when the HDRIs and surface textures are loaded
+     textureSpec(object, variant) -> the textures map for that variant
+     render(spec)  -> Promise<string> blob: URL (or data URL with output:'dataurl')
+       spec = { object, variant?, textures: {name: canvas}, colors?: {body, metal, accent, glass, paper},
+                finish?: 'matte'|'satin'|'gloss'|..., scene?: 'studio' | {preset, backdrop, light, lightAz, lightEl,
+                envIntensity, exposure, vignette, gobo}, camera?: 'hero' | {preset?, az, el, fov, fill, zoom, focus},
+                width=1600, height=1200, count=1..3, quality?: 'draft'|'final'|'high', samples?, dof?, grain?,
+                format?: 'jpeg'|'png', output?: 'blob'|'dataurl', key? }
+     Calls are queued on one renderer and cached by JSON(spec minus textures) + key (or a canvas fingerprint). */
 import * as THREE from 'three';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
@@ -27,6 +42,9 @@ const ASSET_BASE = (() => {
   return new URL('assets/3d/', document.baseURI).href;
 })();
 
+/* window.PG_STUDIO3D_ASSET_URLS = { 'file.hdr': 'data:...' } overrides single files (used by the bundled artifact). */
+const assetUrl = (f) => (window.PG_STUDIO3D_ASSET_URLS && window.PG_STUDIO3D_ASSET_URLS[f]) || ASSET_BASE + f;
+
 /* Poly Haven HDRIs. `key` is the main light in equirect image coords (u across, r = row from top). */
 const HDRS = {
   studio: { file: 'studio_small_03_1k.hdr', key: { u: 0.675, r: 0.46 }, rig: { base: 0.3 } },
@@ -34,7 +52,7 @@ const HDRS = {
 };
 const SURFACES = {
   plaster: { diff: 'plastered_wall_04_diff_1k.jpg', nor: 'plastered_wall_04_nor_gl_1k.jpg', tint: true, contrast: 1.6 },
-  concrete: { diff: 'concrete_floor_02_diff_1k.jpg', nor: 'concrete_floor_02_nor_gl_1k.jpg', tint: true, contrast: 1.0 },
+  concrete: { diff: 'concrete_floor_02_diff_1k.jpg', nor: 'concrete_floor_02_nor_gl_1k.jpg', tint: true, contrast: 0.7 },
   oak: { diff: 'oak_veneer_01_diff_1k.jpg', nor: 'oak_veneer_01_nor_gl_1k.jpg', tint: false },
   linen: { diff: 'rough_linen_diff_1k.jpg', nor: 'rough_linen_nor_gl_1k.jpg', tint: true, contrast: 1.4 }
 };
@@ -143,7 +161,7 @@ function buildProcedural() {
     let x = rnd() * N, y = rnd() * N; const a = rnd() * Math.PI * 2, len = 6 + rnd() * 18, s = (rnd() - 0.5) * 0.35;
     for (let t = 0; t < len; t++) { x += Math.cos(a); y += Math.sin(a); const i = ((Math.floor(y) + N) % N) * N + ((Math.floor(x) + N) % N); h[i] += s; }
   }
-  PROC.paperNormal = shared(canvasTex(normalCanvas(h, N, 2.2), false, true));
+  PROC.paperNormal = shared(canvasTex(normalCanvas(h, N, 1.2), false, true));
   PROC.paperRough = shared(canvasTex(grayCanvas(fbm(N, 6, 4, 21), N, 0.82, 1.12), false, true));
   // brushed metal: streaks along u
   const bm = new Float32Array(N * N), row = fbm(N, 128, 3, 31);
@@ -219,7 +237,9 @@ function buildRig(hdr, keyDir, o) {
   add(118, 18, 20, 4.5, 26, 7);       // strip light, rim
   add(-110, 14, 20, 5, 22, 4.5);      // second strip, far side
   add(65, 6, 20, 18, 14, 1.5);        // white bounce card (fill)
-  add(30, -35, 20, 30, 18, 1.1);      // floor bounce, lifts undersides and can bottoms
+  // bright sweep floor: what glossy undersides would really reflect
+  const floorDisc = new THREE.Mesh(new THREE.CircleGeometry(60, 48), new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 1, 1).multiplyScalar(0.75), side: THREE.DoubleSide }));
+  floorDisc.rotation.x = -Math.PI / 2; floorDisc.position.y = -4; sc.add(floorDisc);
   const top = new THREE.Mesh(new THREE.PlaneGeometry(26, 26), new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 1, 1).multiplyScalar(2.2), map: panelTex, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
   top.position.set(0, 20, 0); top.lookAt(0, 0, 0); sc.add(top);
   const rt = pmrem.fromScene(sc, 0, 0.1, 100);
@@ -236,7 +256,7 @@ async function loadAssets() {
   const rgbe = new RGBELoader().setDataType(THREE.HalfFloatType);
   const hdrJobs = Object.entries(HDRS).map(async ([name, h]) => {
     try {
-      const tex = await rgbe.loadAsync(ASSET_BASE + h.file);
+      const tex = await rgbe.loadAsync(assetUrl(h.file));
       tex.mapping = THREE.EquirectangularReflectionMapping;
       const keyDir = dirFromEquirect(h.key.u, h.key.r);
       const env = h.rig ? buildRig(tex, keyDir, h.rig) : pmrem.fromEquirectangular(tex).texture;
@@ -249,7 +269,7 @@ async function loadAssets() {
   });
   const surfJobs = Object.entries(SURFACES).map(async ([name, s]) => {
     try {
-      const [di, ni] = await Promise.all([loadImage(ASSET_BASE + s.diff), loadImage(ASSET_BASE + s.nor)]);
+      const [di, ni] = await Promise.all([loadImage(assetUrl(s.diff)), loadImage(assetUrl(s.nor))]);
       const map = s.tint ? canvasTex(detailize(di, s.contrast), true, true) : (() => { const t = new THREE.Texture(di); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = maxAniso; t.needsUpdate = true; return t; })();
       const normal = new THREE.Texture(ni); normal.wrapS = normal.wrapT = THREE.RepeatWrapping; normal.anisotropy = maxAniso; normal.needsUpdate = true;
       SURF[name] = { map: shared(map), normal: shared(normal), tint: s.tint };
@@ -298,11 +318,12 @@ const M = {
     if (type === 'amber') return new THREE.MeshPhysicalMaterial({ ...base, color: col('#f6c27a'), roughness: 0.04, attenuationColor: col('#b8681c'), attenuationDistance: 1.6 * thickness });
     if (type === 'opal') return new THREE.MeshPhysicalMaterial({ color: col('#f4f2ee'), roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.04, sheen: 0.2 });
     if (type === 'smoke') return new THREE.MeshPhysicalMaterial({ ...base, color: col('#9a9894'), roughness: 0.05, attenuationColor: col('#3a3836'), attenuationDistance: 1.2 * thickness });
+    if (typeof type === 'string' && /^#|^rgb/.test(type)) return new THREE.MeshPhysicalMaterial({ ...base, color: col(type).lerp(new THREE.Color(1, 1, 1), 0.55), roughness: 0.04, attenuationColor: col(type), attenuationDistance: 1.4 * thickness });
     return new THREE.MeshPhysicalMaterial({ ...base, color: col('#ffffff'), roughness: 0.02, attenuationColor: col('#e9f2ee'), attenuationDistance: 8 });
   },
   rubber(color = '#1c1c1c') { return new THREE.MeshPhysicalMaterial({ color: col(color), roughness: 0.55, metalness: 0, sheen: 0.4, sheenRoughness: 0.6, sheenColor: col('#ffffff') }); },
   screen(map) {
-    return new THREE.MeshPhysicalMaterial({ color: 0x000000, emissive: 0xffffff, emissiveMap: map, emissiveIntensity: 1.25, roughness: 0.04, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.02, envMapIntensity: 0.55 });
+    return new THREE.MeshPhysicalMaterial({ color: 0x000000, emissive: 0xffffff, emissiveMap: map, emissiveIntensity: 1.25, roughness: 0.05, metalness: 0, clearcoat: 0.35, clearcoatRoughness: 0.03, envMapIntensity: 0.3 });
   }
 };
 
@@ -431,7 +452,7 @@ function canTextures(v) {
 }
 O.can = {
   name: 'Drinks can', colors: { metal: 'lid, rim and tab (aluminium)', body: 'unused (neck carries the label edge colour)' },
-  defaults: { variant: 'standard', finish: 'gloss', scene: 'studio', camera: 'hero', count: 1, colors: { metal: '#c9ccd2' } },
+  defaults: { variant: 'standard', finish: 'gloss', scene: 'studio', camera: 'hero', count: 1, colors: { metal: '#d4d7db' } },
   variants: { standard: { name: CAN_DIMS.standard.name, textures: canTextures('standard') }, slim: { name: CAN_DIMS.slim.name, textures: canTextures('slim') } },
   cameras: { hero: { az: 0, el: 9, fov: 24, fill: 0.74 }, front: { az: 0, el: 2, fov: 22, fill: 0.78 }, top: { az: 0, el: 89, fov: 26, fill: 0.7 }, close: { az: -12, el: 18, fov: 22, fill: 0.74, zoom: 1.9, focus: [0.5, 0.8, 0.5] } },
   arrange: [[[0, 0, 0, 0]], [[0, 0, 0, 0], [0.92, 0, -0.75, 35]], [[0, 0, 0, 0], [-0.98, 0, -0.95, -35], [0.98, 0, -0.95, 35]]],
@@ -597,8 +618,8 @@ O.tube = {
   name: 'Squeeze tube', colors: { body: 'tube plastic (back, sides, shoulder)', accent: 'cap' },
   defaults: { variant: 'standard', finish: 'satin', scene: 'studio', camera: 'hero', count: 1, colors: { body: '#f3f1ec', accent: '#f3f1ec' } },
   variants: { standard: { name: 'Tube 100 ml', textures: (() => { const w = Math.PI * TUBE.r, h = TUBE.body + TUBE.crimp; const [W, Hh] = fit(w, h, 2048); return { front: tex(W, Hh, [W * 0.1, Hh * 0.1, W * 0.8, Hh * 0.78]), back: tex(W, Hh, [W * 0.1, Hh * 0.1, W * 0.8, Hh * 0.78], { optional: true }) }; })() } },
-  cameras: { hero: { az: 0, el: 9, fov: 24, fill: 0.76 }, front: { az: 0, el: 2, fov: 22, fill: 0.8 }, top: { az: 0, el: 60, fov: 24, fill: 0.74 }, close: { az: -10, el: 12, fov: 22, fill: 0.74, zoom: 1.6, focus: [0.5, 0.62, 0.5] } },
-  arrange: [[[0, 0, 0, 0]], [[-0.62, 0, 0.2, -6], [0.62, 0, -0.6, 18]], [[0, 0, 0, 0], [-1.05, 0, -1.0, -18], [1.05, 0, -1.0, 18]]],
+  cameras: { hero: { az: -24, el: 11, fov: 24, fill: 0.76 }, front: { az: 0, el: 2, fov: 22, fill: 0.8 }, top: { az: 0, el: 60, fov: 24, fill: 0.74 }, close: { az: -30, el: 14, fov: 22, fill: 0.74, zoom: 1.7, focus: [0.5, 0.8, 0.5] } },
+  arrange: [[[0, 0, 0, 14]], [[-0.62, 0, 0.2, -6], [0.62, 0, -0.6, 18]], [[0, 0, 0, 0], [-1.05, 0, -1.0, -18], [1.05, 0, -1.0, 18]]],
   build({ t, c, finish }) {
     const { r, cap, shoulder, body, crimp, capR } = TUBE;
     const g = new THREE.Group();
@@ -661,9 +682,20 @@ O.pouch = {
       o.set(rw.xs[i], v * H, side * rw.zz[i] + side * 0.004);
     }, (u, v) => [u, v]);
     const f = finish === 'gloss' ? 'gloss' : finish === 'satin' ? 'satin' : 'matte';
-    const film = (map, color) => { const m = M.printed({ map, color, finish: f, size: [W, H], grain: 0 }); m.normalMap = tiled(PROC.crinkle, 1.1, 1.6); m.normalScale.set(0.22, 0.22); return m; };
+    // die-cut outline: rounded top corners and tear notches, as an alpha mask
+    const AW = 520, AH = Math.round((AW * H) / W), ac = mkCanvas(AW, AH), ax = ac.getContext('2d'), k = AW / W;
+    ax.fillStyle = '#000'; ax.fillRect(0, 0, AW, AH); ax.fillStyle = '#fff';
+    ax.beginPath(); ax.roundRect(0, 0, AW, AH, [0.7 * k, 0.7 * k, 0.25 * k, 0.25 * k]); ax.fill();
+    ax.fillStyle = '#000'; const ny = (zip - 1.15) * k;
+    [[0, 1], [AW, -1]].forEach(([x0, d]) => { ax.beginPath(); ax.moveTo(x0, ny - 0.18 * k); ax.lineTo(x0 + d * 0.32 * k, ny); ax.lineTo(x0, ny + 0.18 * k); ax.fill(); });
+    const alpha = new THREE.CanvasTexture(ac);
+    const film = (map, color, mirror) => {
+      const m = M.printed({ map, color, finish: f, size: [W, H], grain: 0 }); m.normalMap = tiled(PROC.crinkle, 1.1, 1.6); m.normalScale.set(0.22, 0.22);
+      m.alphaMap = mirror ? (() => { const a = alpha.clone(); a.wrapS = THREE.RepeatWrapping; a.repeat.x = -1; a.needsUpdate = true; return a; })() : alpha; m.alphaTest = 0.5; m.side = THREE.DoubleSide;
+      return m;
+    };
     g.add(mesh(panel(1), film(t.front, '#ffffff')));
-    g.add(mesh(panel(-1), film(t.back || null, t.back ? '#ffffff' : c.body)));
+    g.add(mesh(panel(-1), film(t.back || null, t.back ? '#ffffff' : c.body, true)));
     // base gusset
     const base = new THREE.Shape(), r0 = rows[0];
     r0.xs.forEach((x, i) => (i ? base.lineTo(x, r0.zz[i]) : base.moveTo(x, r0.zz[i])));
@@ -892,7 +924,7 @@ O.phone = {
     sg.rotateX(-Math.PI / 2); sg.translate(0, P.t + 0.0015, 0);
     g.add(mesh(sg, M.screen(t.screen), false));
     const isl = new THREE.ShapeGeometry(roundRect(1.95, 0.56, 0.28, 12)); isl.rotateX(-Math.PI / 2); isl.translate(0, P.t + 0.0025, -(P.sh / 2 - 0.62));
-    g.add(mesh(isl, new THREE.MeshPhysicalMaterial({ color: 0x020202, roughness: 0.1, clearcoat: 1 }), false));
+    g.add(mesh(isl, new THREE.MeshPhysicalMaterial({ color: 0x000000, roughness: 0.35, envMapIntensity: 0.15 }), false));
     const btn = (len, x, z) => { const b = new RoundedBoxGeometry(0.08, 0.26, len, 2, 0.035); b.translate(x, P.t / 2, z); g.add(mesh(b, frame)); };
     btn(1.7, P.w / 2 + 0.02, -2.6); btn(1.05, -P.w / 2 - 0.02, -2.9); btn(1.05, -P.w / 2 - 0.02, -1.6); btn(0.55, -P.w / 2 - 0.02, -4.3);
     return g;
@@ -909,12 +941,12 @@ O.laptop = {
   arrange: [[[0, 0, 0, 0]]],
   build({ t, c }) {
     const g = new THREE.Group(), L = LAP;
-    const alu = M.metal(c.metal, 0.38, 0.25, 0);
+    const alu = M.metal(c.metal, 0.3, 0.45, 0);
     const base = new RoundedBoxGeometry(L.w, L.t, L.d, 3, 0.32); base.translate(0, L.t / 2, 0);
     g.add(mesh(base, alu));
     // keyboard well + keys
-    const kw = new THREE.ShapeGeometry(roundRect(28.2, 11.6, 0.35, 8)); kw.rotateX(-Math.PI / 2); kw.translate(0, L.t + 0.001, -3.9);
-    g.add(mesh(kw, new THREE.MeshStandardMaterial({ color: col(c.metal).multiplyScalar(0.55), roughness: 0.6, metalness: 0.6 }), false));
+    const kw = new THREE.ShapeGeometry(roundRect(28.2, 11.6, 0.35, 8)); kw.rotateX(-Math.PI / 2); kw.translate(0, L.t + 0.006, -3.9);
+    g.add(mesh(kw, new THREE.MeshStandardMaterial({ color: col(c.metal).multiplyScalar(0.18), roughness: 0.7, metalness: 0.3 }), false));
     const u = 1.86, rows = [[[14, 1]], [[13, 1], [1, 1.5]], [[1, 1.5], [13, 1]], [[1, 1.8], [11, 1], [1, 1.8]], [[1, 2.35], [10, 1], [1, 2.35]], [[3, 1], [1, 1.25], [1, 5.05], [1, 1.25], [1, 1], [3, 1]]];
     const keys = [];
     rows.forEach((row, ri) => {
@@ -928,7 +960,7 @@ O.laptop = {
     const mtx = new THREE.Matrix4();
     keys.forEach(([x, z, w, d], i) => { mtx.compose(new THREE.Vector3(x, L.t + 0.03, z), new THREE.Quaternion(), new THREE.Vector3(w, 1, d)); inst.setMatrixAt(i, mtx); });
     g.add(inst);
-    const tp = new THREE.ShapeGeometry(roundRect(12.4, 7.8, 0.5, 10)); tp.rotateX(-Math.PI / 2); tp.translate(0, L.t + 0.0015, L.d / 2 - 1.0 - 3.9);
+    const tp = new THREE.ShapeGeometry(roundRect(12.4, 7.8, 0.5, 10)); tp.rotateX(-Math.PI / 2); tp.translate(0, L.t + 0.006, L.d / 2 - 1.0 - 3.9);
     g.add(mesh(tp, new THREE.MeshPhysicalMaterial({ color: col(c.metal).multiplyScalar(0.92), roughness: 0.22, metalness: 0.7, clearcoat: 0.3 }), false));
     // lid on a hinge
     const hinge = new THREE.Group(); hinge.position.set(0, L.t, -L.d / 2 + 0.25);
@@ -1002,7 +1034,7 @@ O.billboard = {
   name: 'Billboard', colors: { metal: 'structure' },
   defaults: { variant: 'standard', finish: 'matte', scene: 'outdoor', camera: 'hero', count: 1, colors: { metal: '#6f7378' } },
   variants: { standard: { name: '12 × 4 m', textures: { art: tex(3072, 1024, insetSafe(3072, 1024, 0.04, 0.08)) } } },
-  cameras: { hero: { az: -26, el: -9, fov: 26, fill: 0.8, yBias: 0.02 }, front: { az: 0, el: -6, fov: 24, fill: 0.82, yBias: 0 }, top: { az: -10, el: -20, fov: 30, fill: 0.7, yBias: 0 }, close: { az: -34, el: -8, fov: 22, fill: 0.8, zoom: 1.8, focus: [0.3, 0.6, 0.8] } },
+  cameras: { hero: { az: -26, el: -12, fov: 26, fill: 0.8, yBias: 0.04 }, front: { az: 0, el: -6, fov: 24, fill: 0.82, yBias: 0 }, top: { az: -10, el: -20, fov: 30, fill: 0.7, yBias: 0 }, close: { az: -34, el: -8, fov: 22, fill: 0.8, zoom: 1.8, focus: [0.3, 0.6, 0.8] } },
   arrange: [[[0, 0, 0, 0]]],
   shadowScale: 0.8,
   contact: 0,
@@ -1050,9 +1082,9 @@ O.billboard = {
 /* ------------------------------------------------------------------ scenes */
 const SC = {
   studio: { name: 'Studio sweep', env: 'studio', envIntensity: 0.8, floorEnv: 0.1, floorGain: 1.4, backdrop: '#EDEBE6', floor: 'cyc', surface: 'plaster', detail: 0.25, key: { az: -48, el: 52, intensity: 3.4, color: '#fff7ee', soft: 0.12 }, exposure: 0.9, vignette: 0.16, contact: 0.9 },
-  table: { name: 'Oak table', env: 'studio', envIntensity: 0.75, backdrop: '#E4DED4', floor: 'table', surface: 'oak', key: { az: -55, el: 42, intensity: 2.6, color: '#fff1e0', soft: 0.14 }, exposure: 1.0, vignette: 0.2, contact: 0.95 },
-  concrete: { name: 'Concrete', env: 'studio', envIntensity: 0.8, backdrop: '#C8C5C0', floor: 'slab', surface: 'concrete', key: { az: -40, el: 50, intensity: 2.5, color: '#f7f8ff', soft: 0.12 }, exposure: 1.0, vignette: 0.2, contact: 0.95 },
-  linen: { name: 'Linen', env: 'studio', envIntensity: 0.8, backdrop: '#E7E1D7', floor: 'slab', surface: 'linen', key: { az: -50, el: 48, intensity: 2.4, color: '#fff6ea', soft: 0.16 }, exposure: 1.0, vignette: 0.18, contact: 0.95 },
+  table: { name: 'Oak table', env: 'studio', envIntensity: 0.8, floorEnv: 0.25, backdrop: '#E4DED4', floor: 'table', surface: 'oak', key: { az: -55, el: 42, intensity: 3.2, color: '#fff1e0', soft: 0.12 }, exposure: 0.9, vignette: 0.2, contact: 1.0, dof: 1.6 },
+  concrete: { name: 'Concrete', env: 'studio', envIntensity: 0.8, floorEnv: 0.12, floorGain: 1.3, backdrop: '#C9C6C1', floor: 'cyc', surface: 'concrete', detail: 0.55, tile: 120, key: { az: -42, el: 50, intensity: 3.4, color: '#f6f7ff', soft: 0.1 }, exposure: 0.9, vignette: 0.22, contact: 1.0 },
+  linen: { name: 'Linen sweep', env: 'studio', envIntensity: 0.8, floorEnv: 0.12, floorGain: 1.35, backdrop: '#E6DFD4', floor: 'cyc', surface: 'linen', detail: 1, tile: 26, key: { az: -50, el: 50, intensity: 3.4, color: '#fff5e8', soft: 0.14 }, exposure: 0.9, vignette: 0.18, contact: 1.0 },
   wall: { name: 'Wall and floor', env: 'studio', envIntensity: 0.75, backdrop: '#E9E5DE', floor: 'wall', surface: 'plaster', key: { az: -42, el: 38, intensity: 2.6, color: '#fff3e4', soft: 0.1 }, exposure: 1.0, vignette: 0.18, contact: 0.9, gobo: 'window' },
   outdoor: { name: 'Outdoor sky', env: 'sky', envIntensity: 1.0, backdrop: '#9DB7D5', floor: 'ground', surface: 'concrete', key: { az: -35, el: 48, intensity: 3.2, color: '#fff4e2', soft: 0.04 }, exposure: 0.9, vignette: 0.1, contact: 0.7, sky: true }
 };
@@ -1104,7 +1136,7 @@ function buildSetting(root, def, spec, b, S, envInfo) {
   if (def.floor === 'cyc') {
     const g = cycGeometry(F * 2, F, b.min.z - 1.6 * S, 2.2 * S, 30 * S);
     g.translate(cx, 0, 0);
-    add(new THREE.Mesh(g, surfaceMaterial(def.surface, backdrop.clone().multiplyScalar(gain), 60, def.detail)));
+    add(new THREE.Mesh(g, surfaceMaterial(def.surface, backdrop.clone().multiplyScalar(gain), def.tile || 60, def.detail)));
   } else if (def.floor === 'table' || def.floor === 'slab') {
     const fl = new THREE.Mesh(cmPlane(F, F), surfaceMaterial(def.surface, def.floor === 'table' && !(spec.scene && spec.scene.backdrop) ? new THREE.Color(1, 1, 1) : backdrop, def.surface === 'oak' ? 70 : def.surface === 'linen' ? 22 : 60, 1));
     if (def.surface === 'oak') fl.material.color.set(0xffffff), fl.material.roughness = 0.6;
@@ -1118,7 +1150,7 @@ function buildSetting(root, def, spec, b, S, envInfo) {
     const wall = new THREE.Mesh(cmPlane(F, F), surfaceMaterial(def.surface || 'plaster', backdrop.clone().multiplyScalar(gain), 70, 1));
     wall.position.set(cx, F / 2, wallZ); add(wall);
   } else if (def.floor === 'ground') {
-    const fl = new THREE.Mesh(cmPlane(60 * S, 60 * S), surfaceMaterial('concrete', col('#9a9b93'), 400, 1));
+    const fl = new THREE.Mesh(cmPlane(60 * S, 60 * S), surfaceMaterial('concrete', col('#7f8572'), 900, 0.6));
     fl.rotation.x = -Math.PI / 2; fl.position.set(cx, spec._groundY || 0, cz); add(fl);
   }
   return { env, backdrop };
@@ -1299,7 +1331,8 @@ function resolveSpec(spec) {
   const camVar = (obj.cameraVariant && obj.cameraVariant[variant] && obj.cameraVariant[variant][camName]) || {};
   const camOver = typeof spec.camera === 'object' ? spec.camera : {};
   const cam = { ...camBase, ...camVar, ...camOver };
-  const colors = { ...obj.defaults.colors, ...(spec.colors || {}) };
+  const colors = { ...obj.defaults.colors };
+  for (const [k, v] of Object.entries(spec.colors || {})) if (v != null && v !== '') colors[k] = v;
   const count = clamp(Math.round(spec.count || obj.defaults.count || 1), 1, (obj.arrange && obj.arrange.length) || 1);
   return { obj, variant, preset, sceneIn: { ...sceneIn, preset }, camName, cam, colors, count, finish: spec.finish || obj.defaults.finish, width: Math.round(spec.width || 1600), height: Math.round(spec.height || 1200) };
 }
@@ -1410,16 +1443,18 @@ async function renderNow(spec) {
   const Y = new THREE.Vector3(0, 1, 0);
   const basePos = fitRes.target.clone().addScaledVector(fitRes.dir, fitRes.dist).applyAxisAngle(Y, yaw);
   const targetW = fitRes.target.clone().applyAxisAngle(Y, yaw);
+  // focus a little in front of the centre (the face the viewer reads)
+  const focusW = basePos.clone().add(targetW.clone().sub(basePos).normalize().multiplyScalar(Math.max(fitRes.dist * 0.5, fitRes.dist - 0.3 * Math.min(size.x, size.z))));
   cam.up.applyAxisAngle(Y, yaw);
   root.rotation.y = yaw; root.updateMatrixWorld(true);
-  cam.near = Math.max(0.05, fitRes.dist * 0.05); cam.far = fitRes.dist * 80; cam.updateProjectionMatrix();
+  cam.near = Math.max(0.05, fitRes.dist * 0.15); cam.far = fitRes.dist + S * (def.sky ? 40 : 14); cam.updateProjectionMatrix();
 
   // accumulate
   r.setSize(W, H, false);
   r.toneMappingExposure = (def.exposure || 1) * (userScene.exposure || 1);
   const k = ensureTargets(W, H);
-  const N = clamp(Math.round(spec.samples || (W * H > 2.5e6 ? 10 : 14)), 1, 64);
-  const aperture = (spec.dof != null ? spec.dof : camDef.dof != null ? camDef.dof : 0.25) * fitRes.dist * 0.004;
+  const N = clamp(Math.round(spec.samples || ({ draft: 4, final: 14, high: 32 }[spec.quality] || (W * H > 2.5e6 ? 10 : 14))), 1, 64);
+  const aperture = (spec.dof != null ? spec.dof : camDef.dof != null ? camDef.dof : def.dof != null ? def.dof : 0.25) * fitRes.dist * 0.004;
   const right = new THREE.Vector3(), upv = new THREE.Vector3(), lightRight = new THREE.Vector3(), lightUp = new THREE.Vector3();
   lightRight.crossVectors(keyDir, new THREE.Vector3(0, 1, 0)).normalize(); lightUp.crossVectors(lightRight, keyDir).normalize();
   r.setRenderTarget(k.rtA); r.setClearColor(0x000000, 1); r.clear();
@@ -1434,7 +1469,7 @@ async function renderNow(spec) {
     right.setFromMatrixColumn(cam.matrixWorld, 0); upv.setFromMatrixColumn(cam.matrixWorld, 1);
     const ab = (i * 1.7 + 0.3) * 2.39996, arr = Math.sqrt(((i * 7) % N + 0.5) / N) * aperture;
     cam.position.addScaledVector(right, Math.cos(ab) * arr).addScaledVector(upv, Math.sin(ab) * arr);
-    cam.lookAt(targetW);
+    cam.lookAt(focusW);
     cam.setViewOffset(W, H, halton(i + 1, 2) - 0.5, halton(i + 1, 3) - 0.5, W, H);
     root.updateMatrixWorld(true);
     r.setRenderTarget(k.rtF); r.setClearColor(scene.background && scene.background.isColor ? scene.background : 0x000000, 1); r.clear();
