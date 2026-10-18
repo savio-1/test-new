@@ -54,6 +54,13 @@ data class TextLayer(
     val lineSpacing: Float = 1f,
     /** How the text moves in video (and the viewfinder); stills show it at rest. */
     val anim: TextAnim = TextAnim.NONE,
+    /**
+     * How much of the text shows, left to right, 0..1: letters fade in one after another
+     * (kinetic captions). Not saved: it is a moment of an animation.
+     */
+    val reveal: Float = 1f,
+    /** Soft focus on the letters, as a fraction of the text size (kinetic captions). Not saved. */
+    val blur: Float = 0f,
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("id", id).put("text", text).put("font", font).put("size", size.toDouble())
@@ -222,6 +229,7 @@ class FontLibrary(private val context: Context) {
         const val DEFAULT = "asset:InstrumentSerif.ttf"
         val BUNDLED = listOf(
             "InstrumentSerif.ttf" to "Instrument",
+            "InstrumentSerif-Italic.ttf" to "Instrument Italic",
             "Inter.ttf" to "Inter",
             "InterBold.ttf" to "Inter Bold",
             "DMSerifDisplay.ttf" to "DM Serif",
@@ -259,6 +267,10 @@ class FontLibrary(private val context: Context) {
             "LakkiReddy-Regular.ttf" to "లక్కిరెడ్డి",
         )
         val WEIGHTED = listOf(
+            "InterTight.ttf#500" to "Inter Tight",
+            "InterTight.ttf#700" to "Inter Tight Bold",
+            "InterTight.ttf#800" to "Inter Tight Heavy",
+            "InterTight-Italic.ttf#700" to "Inter Tight Italic",
             "NotoSansTelugu.ttf#700" to "తెలుగు Bold",
             "Montserrat.ttf#600" to "Montserrat",
             "Montserrat.ttf#800" to "Montserrat Heavy",
@@ -283,6 +295,10 @@ class FontLibrary(private val context: Context) {
         /** Subtitle defaults: a bold sans for Latin, a bold Telugu face. */
         const val SUBTITLE_LATIN = "asset:InterBold.ttf"
         const val SUBTITLE_TELUGU = "asset:NotoSansTelugu.ttf#700"
+        /** Kinetic captions: Inter Tight for the words, an italic serif for the odd accent. */
+        const val CAPTION_SANS = "asset:InterTight.ttf#700"
+        const val CAPTION_SANS_ITALIC = "asset:InterTight-Italic.ttf#700"
+        const val CAPTION_SERIF = "asset:InstrumentSerif-Italic.ttf"
     }
 }
 
@@ -334,9 +350,11 @@ object TextRenderer {
     fun draw(canvas: Canvas, layers: List<TextLayer>, fonts: FontLibrary, w: Float, h: Float, t: Float = -1f) {
         for (layer in layers) {
             if (layer.text.isBlank()) continue
+            if (layer.reveal <= 0f || layer.opacity <= 0f) continue
             val pose = layer.anim.pose(t, layer.id, layer.text.length)
             val p = paint(layer, fonts, min(w, h))
             if (pose.alpha < 1f) p.alpha = (p.alpha * pose.alpha).toInt()
+            if (layer.blur > 0.002f) p.maskFilter = android.graphics.BlurMaskFilter(layer.blur * p.textSize, android.graphics.BlurMaskFilter.Blur.NORMAL)
             val full = layout(layer, p, w)
             // Typewriter: the letters so far, laid out in the same block as the whole text.
             val l = if (pose.chars < layer.text.length) layout(layer.copy(text = layer.text.take(pose.chars)), p, w, full.width) else full
@@ -345,6 +363,13 @@ object TextRenderer {
             canvas.rotate(layer.rotation + pose.rotation)
             if (pose.scale != 1f) canvas.scale(pose.scale, pose.scale)
             canvas.translate(-full.width / 2f, -full.height / 2f)
+            // Letter by letter: draw the block into a layer, then fade it out to the right of
+            // the reveal edge (so shadows and outlines go with their letters).
+            val revealing = layer.reveal < 1f
+            if (revealing) {
+                val pad = p.textSize
+                canvas.saveLayer(-pad, -pad, full.width + pad, full.height + pad, null)
+            }
             if (layer.box) {
                 val (px, py) = boxPad(p)
                 // The box hugs the lines actually used, not the full wrap width.
@@ -372,6 +397,18 @@ object TextRenderer {
                 p.alpha = fillAlpha
             }
             l.draw(canvas)
+            if (revealing) {
+                val pad = p.textSize
+                val soft = max(full.width * 0.35f, p.textSize * 0.6f)
+                // The edge travels from fully left of the text to fully past it.
+                val edge = -soft + layer.reveal * (full.width + soft)
+                val mask = android.graphics.Paint().apply {
+                    shader = android.graphics.LinearGradient(edge, 0f, edge + soft, 0f, Color.BLACK, Color.TRANSPARENT, android.graphics.Shader.TileMode.CLAMP)
+                    xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_IN)
+                }
+                canvas.drawRect(-pad, -pad, full.width + pad, full.height + pad, mask)
+                canvas.restore()
+            }
             canvas.restore()
         }
     }

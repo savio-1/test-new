@@ -53,11 +53,29 @@ data class SubtitleStyle(
     /** Colour of the box or outline (opaque), and the box's opacity. */
     val backColor: Int = 0xFF000000.toInt(),
     val backOpacity: Float = 0.6f,
+    /** Classic lines, or one of the kinetic templates (see [Kinetic]). */
+    val template: CaptionTemplate = CaptionTemplate.SCATTER,
+    /** Kinetic captions: the main face, its italic, and the serif used for accent words. */
+    val captionFont: String = FontLibrary.CAPTION_SANS,
+    val captionItalic: String = FontLibrary.CAPTION_SANS_ITALIC,
+    val accentFont: String = FontLibrary.CAPTION_SERIF,
+    /** Kinetic captions: overall size (1 = the template's own) and how each word comes in. */
+    val captionScale: Float = 1f,
+    val wordAnim: WordAnim = WordAnim.BLUR,
+    /** Kinetic captions: some big words pass behind the subject (a mix, never all of them). */
+    val behindSubject: Boolean = false,
+    /** Kinetic captions: changes the spots and accents the template picks ("Shuffle"). */
+    val seed: Int = 0,
 ) {
+    val kinetic get() = template != CaptionTemplate.CLASSIC
+
     fun toJson(): JSONObject = JSONObject().put("language", language.name).put("latinFont", latinFont)
         .put("teluguFont", teluguFont).put("size", size.toDouble()).put("x", x.toDouble()).put("y", y.toDouble())
         .put("align", align.name).put("color", color).put("background", background.name)
         .put("backColor", backColor).put("backOpacity", backOpacity.toDouble())
+        .put("template", template.name).put("captionFont", captionFont).put("captionItalic", captionItalic)
+        .put("accentFont", accentFont).put("captionScale", captionScale.toDouble()).put("wordAnim", wordAnim.name)
+        .put("behindSubject", behindSubject).put("seed", seed)
 
     companion object {
         fun fromJson(o: JSONObject?) = if (o == null) SubtitleStyle() else SubtitleStyle(
@@ -75,12 +93,21 @@ data class SubtitleStyle(
             },
             backColor = o.optInt("backColor", 0xFF000000.toInt()),
             backOpacity = o.optDouble("backOpacity", 0.6).toFloat(),
+            // Tracks saved before templates existed keep their classic lines.
+            template = runCatching { CaptionTemplate.valueOf(o.optString("template")) }.getOrDefault(CaptionTemplate.CLASSIC),
+            captionFont = o.optString("captionFont", FontLibrary.CAPTION_SANS),
+            captionItalic = o.optString("captionItalic", FontLibrary.CAPTION_SANS_ITALIC),
+            accentFont = o.optString("accentFont", FontLibrary.CAPTION_SERIF),
+            captionScale = o.optDouble("captionScale", 1.0).toFloat(),
+            wordAnim = runCatching { WordAnim.valueOf(o.optString("wordAnim")) }.getOrDefault(WordAnim.BLUR),
+            behindSubject = o.optBoolean("behindSubject", false),
+            seed = o.optInt("seed", 0),
         )
     }
 }
 
-/** A clip's subtitles: the cues and their style. */
-data class SubtitleTrack(val cues: List<Cue>, val style: SubtitleStyle = SubtitleStyle()) {
+/** A clip's subtitles: the cues, their style, and changes to single words (kinetic captions, by word id). */
+data class SubtitleTrack(val cues: List<Cue>, val style: SubtitleStyle = SubtitleStyle(), val edits: Map<String, WordEdit> = emptyMap()) {
 
     fun at(timeMs: Long): Cue? = cues.firstOrNull { timeMs >= it.startMs && timeMs < it.endMs }
 
@@ -90,7 +117,12 @@ data class SubtitleTrack(val cues: List<Cue>, val style: SubtitleStyle = Subtitl
      * and lined up on [SubtitleStyle.x] by [SubtitleStyle.align], kept inside the frame.
      */
     fun layersAt(timeMs: Long, aspect: Float, fonts: FontLibrary?): List<TextLayer> =
-        at(timeMs)?.let { layersFor(it, aspect, fonts) } ?: emptyList()
+        if (style.kinetic) Kinetic.layersAt(this, timeMs, aspect, fonts)
+        else at(timeMs)?.let { layersFor(it, aspect, fonts) } ?: emptyList()
+
+    /** Sets (or clears, when empty) the change to word [id]. */
+    fun withEdit(id: String, edit: WordEdit): SubtitleTrack =
+        copy(edits = if (edit.isEmpty) edits - id else edits + (id to edit))
 
     fun layersFor(cue: Cue, aspect: Float, fonts: FontLibrary?): List<TextLayer> {
         val s = style
@@ -140,6 +172,7 @@ data class SubtitleTrack(val cues: List<Cue>, val style: SubtitleStyle = Subtitl
     fun toJson(): JSONObject = JSONObject()
         .put("cues", JSONArray().apply { cues.forEach { put(it.toJson()) } })
         .put("style", style.toJson())
+        .put("edits", JSONObject().apply { edits.forEach { (k, v) -> put(k, v.toJson()) } })
 
     /** SubRip (.srt) text in [language] (BOTH writes the two lines together). */
     fun toSrt(language: SubtitleLanguage = style.language): String = buildString {
@@ -158,7 +191,9 @@ data class SubtitleTrack(val cues: List<Cue>, val style: SubtitleStyle = Subtitl
     companion object {
         fun fromJson(o: JSONObject): SubtitleTrack {
             val a = o.optJSONArray("cues") ?: JSONArray()
-            return SubtitleTrack(List(a.length()) { Cue.fromJson(a.getJSONObject(it)) }, SubtitleStyle.fromJson(o.optJSONObject("style")))
+            val e = o.optJSONObject("edits")
+            val edits = e?.keys()?.asSequence()?.associateWith { WordEdit.fromJson(e.getJSONObject(it)) } ?: emptyMap()
+            return SubtitleTrack(List(a.length()) { Cue.fromJson(a.getJSONObject(it)) }, SubtitleStyle.fromJson(o.optJSONObject("style")), edits)
         }
 
         fun srtTime(ms: Long): String {
