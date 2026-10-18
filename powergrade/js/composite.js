@@ -38,22 +38,26 @@ window.PG = window.PG || {};
   const FS = `#version 300 es
   precision highp float;
   in vec2 vPx; out vec4 o;
-  uniform sampler2D uBase, uArt; uniform mat3 uH; uniform vec2 uSize;
+  uniform sampler2D uBase, uArt, uLight; uniform mat3 uH; uniform vec2 uSize;
   uniform float uWhite, uMode, uCurve, uMul, uGloss;
   void main(){
     vec2 buv = vPx / uSize;
     vec4 base = texture(uBase, buv);
     vec3 q = uH * vec3(vPx, 1.0);
     vec2 uv = q.xy / q.z;
-    if (uCurve > 0.0) { float c = clamp(uCurve, 0.0, 0.95); float x = uv.x * 2.0 - 1.0; uv.x = 0.5 + 0.5 * asin(clamp(x * sin(c * 1.5707963), -1.0, 1.0)) / (c * 1.5707963); }
-    // Soft edge: fade over ~1 output pixel at the quad border.
+    // Soft edge: fade over ~1 output pixel at the quad border (tested on the flat quad, before any curve).
     vec2 fw = fwidth(uv);
     vec2 e = smoothstep(vec2(0.0), fw, uv) * (1.0 - smoothstep(vec2(1.0) - fw, vec2(1.0), uv));
     float inside = e.x * e.y;
     if (inside <= 0.0) { o = base; return; }
+    // Cylinder: the quad is the projected outline, so compress the artwork towards the sides.
+    if (uCurve > 0.0) { float c = clamp(uCurve, 0.0, 0.95); float x = clamp(uv.x, 0.0, 1.0) * 2.0 - 1.0; uv.x = 0.5 + 0.5 * asin(x * sin(c * 1.5707963)) / (c * 1.5707963); }
     vec4 art = texture(uArt, vec2(uv.x, uv.y));
     float lum = dot(base.rgb, vec3(0.299, 0.587, 0.114));
-    vec3 shade = vec3(clamp(lum / max(uWhite, 0.05), 0.0, 1.35));
+    // Light for replaced surfaces comes from a blurred copy, so print already on the surface
+    // (an old poster, a screen's content) doesn't show through, only the broad fall-off and glare.
+    float llum = dot(texture(uLight, buv).rgb, vec3(0.299, 0.587, 0.114));
+    vec3 shade = vec3(clamp(llum / max(uWhite, 0.05), 0.0, 1.35));
     vec3 col;
     if (uMode < 0.5) {
       // Multiply: light surfaces. White artwork reproduces the surface exactly.
@@ -62,7 +66,7 @@ window.PG = window.PG || {};
       // Normal + relight: dark or coloured surfaces. Keep the photo's light falloff and folds.
       col = art.rgb * mix(vec3(1.0), shade, uMul);
       // Specular highlights from the photo (bright spots above the surface's white point).
-      float spec = smoothstep(uWhite * 1.02, 1.0, lum) * uGloss;
+      float spec = smoothstep(max(uWhite * 1.25, 0.6), 1.0, llum) * uGloss;
       col = col + (1.0 - col) * spec;
     }
     o = vec4(mix(base.rgb, col, inside * art.a), 1.0);
@@ -109,6 +113,15 @@ window.PG = window.PG || {};
     return { white: L[Math.floor(L.length * 0.92)] || 1, mean: L[Math.floor(L.length * 0.5)] || 0.5 };
   }
 
+  /* A blurred copy of the scene, radius scaled to the surface, for low-frequency lighting. */
+  function blurred(src, quad) {
+    const xs = quad.map((p) => p[0]), ys = quad.map((p) => p[1]);
+    const r = Math.max(2, Math.min(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) * 0.3);
+    const c = document.createElement('canvas'); c.width = src.width; c.height = src.height;
+    const g = c.getContext('2d'); g.filter = `blur(${Math.round(r)}px)`; g.drawImage(src, 0, 0); g.filter = 'none';
+    return c;
+  }
+
   /* Render: base image + artwork on each surface. Returns a 2D canvas. */
   function render(baseImg, surfaces, opts) {
     opts = opts || {};
@@ -128,18 +141,20 @@ window.PG = window.PG || {};
       const H3 = homography(dst, [[0, 0], [1, 0], [1, 1], [0, 1]]);
       const wp = whitePoint(baseImg, s.quad, scale);
       const dark = s.blend === 'normal' || wp.white < 0.45;
-      const t0 = tex(0, base), t1 = tex(1, s.art);
+      const light = dark ? blurred(base, dst) : base;
+      const t0 = tex(0, base), t1 = tex(1, s.art), t2 = tex(2, light);
       gl.uniform1i(gl.getUniformLocation(prog, 'uBase'), 0);
       gl.uniform1i(gl.getUniformLocation(prog, 'uArt'), 1);
+      gl.uniform1i(gl.getUniformLocation(prog, 'uLight'), 2);
       gl.uniformMatrix3fv(gl.getUniformLocation(prog, 'uH'), true, new Float32Array(H3));
       gl.uniform2f(gl.getUniformLocation(prog, 'uSize'), W, H);
       gl.uniform1f(gl.getUniformLocation(prog, 'uWhite'), dark ? Math.max(wp.mean, 0.08) : wp.white);
       gl.uniform1f(gl.getUniformLocation(prog, 'uMode'), dark ? 1 : 0);
       gl.uniform1f(gl.getUniformLocation(prog, 'uCurve'), s.curve || 0);
-      gl.uniform1f(gl.getUniformLocation(prog, 'uMul'), s.shading != null ? s.shading : 0.9);
+      gl.uniform1f(gl.getUniformLocation(prog, 'uMul'), s.shading != null ? s.shading : dark ? 0.55 : 0.9);
       gl.uniform1f(gl.getUniformLocation(prog, 'uGloss'), s.gloss != null ? s.gloss : 0.5);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-      gl.deleteTexture(t0); gl.deleteTexture(t1);
+      gl.deleteTexture(t0); gl.deleteTexture(t1); gl.deleteTexture(t2);
       const next = document.createElement('canvas'); next.width = W; next.height = H;
       next.getContext('2d').drawImage(cvs, 0, 0);
       base = next;

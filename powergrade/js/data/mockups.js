@@ -124,6 +124,13 @@ PG.MOCKUP_PHOTOS = [
       { id:'front', quad:[[812,997],[1433,995],[1435,1913],[808,1925]], aspect:0.68, curve:0.0, blend:'multiply', role:'bag' }
     ],
     credit:{ author:'Nilo Velez', source:'WordPress Photo Directory', license:'CC0 1.0', url:'https://wordpress.org/photos/photo/6677d6653b/' } },
+  { id:'bottles-milk-glass', file:'assets/mockups/bottles-milk-glass.jpg', thumb:'assets/mockups/thumb/bottles-milk-glass.jpg', w:2400, h:1600,
+    category:'packaging', name:'Plain glass milk bottles on a wooden table',
+    surfaces:[
+      { id:'label', quad:[[1665,1080],[2120,1080],[2120,1330],[1665,1330]], aspect:2.2, curve:0.85, blend:'multiply', role:'label' }
+    ],
+    credit:{ author:'Pasita Wanseng', source:'ISO Republic', license:'CC0 1.0', url:'https://isorepublic.com/photo/milk-bottles/' },
+    notes:'Front bottle takes a wrap-around label; curve 0.85.' },
   { id:'cup-latte-cafe', file:'assets/mockups/cup-latte-cafe.jpg', thumb:'assets/mockups/thumb/cup-latte-cafe.jpg', w:2400, h:1953,
     category:'packaging', name:'Kraft takeaway cup with latte in a café',
     surfaces:[

@@ -270,7 +270,7 @@
       await d.font('Anton');
       d.fill(d.t.secondary);
       await d.photo('people', 0.12, 0.2, 0.76, 0.8, { n: 71 });
-      d.g.save(); d.g.globalCompositeOperation = 'multiply'; d.rect(0.12, 0.2, 0.76, 0.8, d.t.secondary); d.g.restore();
+      if (lum(d.t.secondary) > 0.3) { d.g.save(); d.g.globalCompositeOperation = 'multiply'; d.rect(0.12, 0.2, 0.76, 0.8, d.t.secondary); d.g.restore(); }
       d.text(d.b.name, 0.5, 0.04, { face: 'font:Anton', fit: 0.6, align: 'center', base: 'top', upper: true, col: loud(d) === d.t.secondary ? d.t.primary : loud(d) });
     }
   }]);
@@ -629,7 +629,8 @@
     note: 'Full-bleed duotone on the left; on the right generous margins, a four-line drop cap in the spot colour and a hung italic pull quote.',
     async draw(d) {
       d.fill('#F7F2E8'); await d.photo('people', 0, 0, 0.5, 1, { n: 130, grade: 'mono' });
-      d.g.save(); d.g.globalCompositeOperation = 'multiply'; d.rect(0, 0, 0.5, 1, d.t.primary); d.g.restore();
+      const tint = [d.t.primary, d.t.secondary, d.t.accent].find((c) => lum(c) > 0.3 && lum(c) < 0.85);
+      if (tint) { d.g.save(); d.g.globalCompositeOperation = 'multiply'; d.rect(0, 0, 0.5, 1, tint); d.g.restore(); }
       const x = 0.5 + 0.5 * 0.22, w = 0.5 * 0.6, top = 0.12, body = 0.0105;
       d.text(d.c.sub[0], x, top + 0.14, { size: 0.06, face: 'serif', col: d.t.primaryText, upper: false });
       const txt = (d.c.sub.slice(1) + ' ' + d.c.features.map((f) => f[1]).join(' ') + ' ').repeat(3);
