@@ -868,7 +868,7 @@
     async draw(d) {
       d.fill('#000'); const lines = [d.c.poster[0], ...d.c.features.map((f) => f[0]), d.c.poster[1].split(' ')[0]].slice(0, 5);
       let y = 0.06;
-      lines.forEach((l, i) => { y = d.text(l, 0.07, y, { fit: 0.86, base: 'top', upper: true, lh: 0.88, track: 0, weight: i % 2 ? 900 : 500, face: i % 2 ? 'display' : 'body', col: i === 2 ? d.t.primary === '#000000' ? d.t.accent : d.t.primary : '#fff' }) + 0.012; });
+      lines.forEach((l, i) => { y = d.text(l, 0.07, y, { fit: 0.86, base: 'top', upper: true, lh: 0.88, track: 0, weight: i % 2 ? 900 : 500, face: i % 2 ? 'display' : 'body', col: i === 2 ? (lum(d.t.primary) < 0.15 ? d.t.accent : d.t.primary) : '#fff' }) + 0.012; });
       await d.logo(0.07, 0.94, 0.03, { base: 'bottom', variant: 'light', max: 0.3 });
       d.text(d.c.poster[2], 0.93, 0.94, { size: 0.016, face: 'body', col: '#fff', align: 'right' });
     }

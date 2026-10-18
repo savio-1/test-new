@@ -7,10 +7,19 @@
 
   function grid() {
     const list = PG.Mocks.all().filter((m) => M.cat === 'all' || m.category === M.cat);
-    return list.map((m) => `<figure class="mk-card"><div class="mk-th">${m.thumb ? `<img src="${m.thumb}" alt="${esc(m.name)}" loading="lazy">` : `<span class="note">${esc(m.kind === 'psd' ? 'PSD' : 'Photo')}</span>`}</div>
+    return list.map((m) => `<figure class="mk-card"><div class="mk-th">${m.thumb ? `<img src="${m.thumb}" alt="${esc(m.name)}" loading="lazy">` : `<span class="loading" data-mkth="${m.id}"></span>`}</div>
       <figcaption><b>${esc(m.name)}</b><span>${esc(PG.Mocks.roles(m).map((r) => PG.Mocks.ROLE_NAMES[r] || r).join(', '))}</span>
       <span>${m.source === 'imported' ? 'Imported · this browser only' : m.credit ? `${esc(m.credit.license)} · <a href="${esc(m.credit.url)}" target="_blank" rel="noopener">${esc(m.credit.author || 'source')}</a>` : ''}</span></figcaption>
       <div class="mk-acts"><button class="tbtn sm" data-a="mkPreview" data-m="${m.id}">Preview route ${'ABC'[S.route]}</button><button class="tbtn sm" data-a="mkUse" data-m="${m.id}">Add to canvas</button>${m.source === 'imported' ? `<button class="tbtn sm" data-a="mkDel" data-m="${m.id}">Delete</button>` : ''}</div></figure>`).join('') || '<div class="empty">No mockups in this category yet.</div>';
+  }
+
+  /* Imported mockups have no stock thumbnail: show them wearing the current route. */
+  function hydrateThumbs() {
+    $$('[data-mkth]').forEach((el) => {
+      PG.Mocks.render({ id: 'th', mock: el.dataset.mkth }, App.artCtx(S.route), App.tune(), 640)
+        .then((url) => { if (el.isConnected) el.outerHTML = `<img src="${url}" alt="">`; })
+        .catch(() => { if (el.isConnected) { el.classList.remove('loading'); el.textContent = 'PSD'; } });
+    });
   }
 
   App.views.mockups = {
@@ -25,6 +34,7 @@
         ${src.length ? `<h2 class="h2" style="margin-top:46px">Where to get great free mockups</h2><p class="note" style="margin:-4px 0 14px">Download a PSD, drop it above. Most free licences allow use in your own client work but not redistribution, which is why these aren't bundled.</p>
         <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Source</th><th>Best for</th><th>Formats</th><th>Licence</th></tr></thead><tbody>${src.map((s) => `<tr><td><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.name)}</a></td><td>${esc((s.bestFor || []).join(', '))}</td><td>${esc((s.formats || []).join(', '))}</td><td>${esc(s.licenceSummary || '')}</td></tr>`).join('')}</tbody></table></div>` : ''}
       </div></div>`;
+      hydrateThumbs();
       const drop = $('#drop');
       ['dragover', 'dragenter'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); }));
       ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, () => drop.classList.remove('over')));
@@ -80,7 +90,7 @@
   }
 
   Object.assign(App.act, {
-    mkCat(el) { M.cat = el.dataset.c; $('.mk-grid').innerHTML = grid(); $$('.mk .chips button').forEach((b) => b.classList.toggle('on', b.dataset.c === M.cat)); },
+    mkCat(el) { M.cat = el.dataset.c; $('.mk-grid').innerHTML = grid(); hydrateThumbs(); $$('.mk .chips button').forEach((b) => b.classList.toggle('on', b.dataset.c === M.cat)); },
     mkUse(el) { S.apps = S.apps || PG.Mocks.defaults(S.brief.industry); S.apps.push({ id: 'a' + Date.now().toString(36), mock: el.dataset.m }); App.save(); App.toast('Added to the canvas for all three routes'); },
     async mkDel(el) { await PG.Import.remove(el.dataset.m); PG.Mocks.unregister(el.dataset.m); App.renderMain(); },
     mkPreview(el) {

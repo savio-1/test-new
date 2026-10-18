@@ -417,7 +417,7 @@ table.tbl { border-collapse: collapse; width: 100%; min-width: 980px; font-size:
 .drop span { color: var(--ui-fg-2); font-size: 13px; }
 .mk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 30px 20px; }
 .mk-card { margin: 0; display: flex; flex-direction: column; gap: 9px; }
-.mk-th { aspect-ratio: 4 / 3; background: var(--ui-card); border-radius: 0; overflow: hidden; display: grid; place-items: center; }
+.mk-th { position: relative; aspect-ratio: 4 / 3; background: var(--ui-card); border-radius: 0; overflow: hidden; display: grid; place-items: center; }
 .mk-th img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .mk-card figcaption { display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; }
 .mk-card figcaption b { font-weight: 500; font-size: 14px; }
