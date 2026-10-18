@@ -1,0 +1,739 @@
+[
+  {
+    "id": "all-purpose",
+    "name": "All Purpose",
+    "city": "London",
+    "url": "https://allpurpose.studio",
+    "philosophy": "Culture-first branding and digital studio (ex-Our Place, est. 2014) whose work is 'direct and uncompromising'; every client gets a loud, bespoke attitude built on custom type, backed by an in-house foundry and publishing imprint.",
+    "type": {
+      "faces": [
+        "AP All Purpose Grotesk (studio, in-house)",
+        "custom display faces per client (stacked lurid serif, heavy-metal blackletter, ultra-condensed caps)",
+        "old-style serif + blackletter for editorial contrast"
+      ],
+      "notes": "Site: one grotesk at three sizes only — 14px/700 captions, 32px/900 intros, 112px/900 uppercase display, tracking -0.01em. Client display type set enormous, condensed, stacked 2–3 lines, overprinting or bleeding off photos; body text deliberately tiny (9–10px) in a narrow column."
+    },
+    "palette": "Neutral black-on-white frame; each project one acid colour at full saturation (fluoro green #39FF14, safety yellow #FFE600, magenta #FF1F8F, cyan #19C3FF) over photography or black.",
+    "imagery": "In-situ documentary photography with flash/street feel (shop signs on real streets, banners on historic façades, passers-by), hands holding print, lightly styled food still-life, glitch/blur-gradient motion stills.",
+    "presentation": [
+      "Full-bleed hero: OOH/signage in situ",
+      "One-sentence intro in 32px black weight",
+      "Horizontal carousel (signage, shopfront, food) with dash progress bar",
+      "Flat artwork (calendar grid / poster)",
+      "Mobile UI in hand",
+      "Packaging + stationery flat-lay pair",
+      "8-tile mosaic of event, merch and hands",
+      "Small long-copy block",
+      "Related project"
+    ],
+    "signatures": [
+      "Stacked 3-line wordmark that 'hangs' from the top edge of every application",
+      "Fluorescent display type overprinted directly on documentary photographs",
+      "One custom display face per client, used at poster scale",
+      "Huge images with tiny 9px bold captions underneath",
+      "Gutterless 4×2 mosaic of tight crops (hands, merch, crowds)",
+      "Blur-gradient halo / glitch split behind type",
+      "Editorial rhythm: ultra-condensed caps headline across a full-bleed B&W portrait"
+    ],
+    "projects": [
+      {
+        "client": "Royal Academy Schools Show",
+        "year": 2023,
+        "what": "'Un-RA' exhibition identity: fluoro green/pink, heavy-metal type with glitch motion, OOH banners on Burlington House and the AFTERTASTE catalogue.",
+        "url": "https://allpurpose.studio/ra/"
+      },
+      {
+        "client": "Noble Rot magazine",
+        "year": null,
+        "what": "Editorial redesign with custom typefaces, screen-printed collectible covers and clashing serif/condensed spreads (ongoing, c.2023).",
+        "url": "https://allpurpose.studio/noble-rot/"
+      },
+      {
+        "client": "Ancestrel Wines",
+        "year": null,
+        "what": "Lurid stacked wordmark loosely evoking a grape bunch that hangs from the top of every application; 1970s-magazine palette across shopfront, calendar, merch and stickers (c.2024).",
+        "url": "https://allpurpose.studio/ancestrel-wines/"
+      }
+    ],
+    "layouts": [
+      {
+        "name": "Hanging Wordmark Poster",
+        "for": "poster",
+        "recipe": "Canvas 2:3 portrait. Full-bleed in-situ or still-life photo covering 100%. Wordmark stacked in 3 lines (split the name into syllables/chunks), each line set so its width = 88% of canvas, cap-height ≈ 13% of canvas height, line-height 0.82, tracking -0.03em, uppercase, heavy condensed or lurid serif. Block is top-anchored: first line starts at 3% from top, centred horizontally — it must look like it hangs from the top edge. Fill = single acid colour (#39FF14 or #FFE600) with mix-blend-mode: normal (no shadow). Bottom 6% strip: two tiny 1.1%-of-width bold captions (date left, venue right) in the same acid colour at 4% side margins. Feels All Purpose because type is the image and the photo is untouched documentary."
+      },
+      {
+        "name": "Fluoro Overprint Billboard",
+        "for": "signage",
+        "recipe": "Canvas 3:2 (48-sheet) displayed IN SITU: mock as a framed panel occupying 70% width inside an architectural photo (stone façade or railing). Panel content: dark green #0E5A2A ground, radial blur-gradient blob (orange #FF9A1F → pink #FF5FD2, 60% panel width, blur 40px) centred, headline in blackletter/heavy-metal display, 3 stacked lines, width 70% of panel, fluoro green #39FF14 with 3px black outline, centred. Small info lines (dates, 'Free Entry') at bottom-left and bottom-right corners, 2.2% of panel width, cream. Optional 2px horizontal glitch slices offset ±1.5% across the headline."
+      },
+      {
+        "name": "Scattered Index Homepage",
+        "for": "website",
+        "recipe": "Desktop 16:10, white. Top bar: 'PROJECTS INFORMATION' left and studio name centred in 2.2%-of-width black-weight caps; right links. Under it, a 3-line grey (#BDBDBD) category list centred, 2.2% size, comma separated. Below: project tiles each 33% wide, aspect 4:5, alternating x-positions 1% / 66% / 7% / 28% (asymmetric scatter), vertical gap 12% of width. Each tile caption 0.75% bold black, 1-line descriptor, 0.8% below image. No borders, no hover chrome. Huge whitespace is the point."
+      },
+      {
+        "name": "Case Mosaic Spread",
+        "for": "case-study",
+        "recipe": "Canvas 16:9. Top 58%: full-bleed hero photo of the signage in the street. Under it at 1% left margin, intro sentence in black weight at 2.4% of width, max-width 46%, leading 1.1. Bottom row: 4 square tiles flush (each 25% width, no gutters) showing merch/hands/print crops; the colour of the brand's acid accent must appear in at least 3 tiles. Tiny 0.6% body copy column (width 28%) can sit bottom-left on white if space."
+      }
+    ]
+  },
+  {
+    "id": "mother-design",
+    "name": "Mother Design",
+    "city": "London / New York / Los Angeles",
+    "url": "https://www.motherdesign.com",
+    "philosophy": "Strategy-led design arm of Mother that 'designs new worlds in five senses and four dimensions' with Rigor, Rebellion, Depth and Care — every case framed by a business question and closed with results.",
+    "type": {
+      "faces": [
+        "Basis Grotesque (site)",
+        "Basis Mono (labels)",
+        "per-client custom wordmarks (heavy condensed slab for Brooklyn Org, liquid serif for Rollr)"
+      ],
+      "notes": "Body 16px/1.2 at -0.02em; statements 48px/1.1 at -0.04em; display 110px/600 at -0.04em; mono labels 12–14px uppercase +0.06em. Sentence case everywhere except mono labels. Client wordmarks go huge and cropped."
+    },
+    "palette": "Neutral site (white, #F3F3F3, black, some dark #141414 case pages); each brand owns one dominant full-bleed colour (Keen red #9B0E0A, Rollr burgundy #4A0D2E + pastels #DDF3C4/#A9B5F5/#F3A27A, Brooklyn Org coral/sky gradients).",
+    "imagery": "Concept-heavy art-directed photography: sculptural product on silk/liquid textures, illustrated worlds, event/stage photography, environmental renders, motion loops.",
+    "presentation": [
+      "Full-bleed video hero",
+      "Strategic question as title",
+      "'What we did / Industries' metadata rows",
+      "Strategy narrative in label/text columns",
+      "Logo on full colour field",
+      "Logo evolution (previous → new)",
+      "Colour/texture triptych",
+      "Product/packaging still-lifes carousel",
+      "Tote, stationery, annual report in hand",
+      "Large event signage / stage",
+      "Results stats",
+      "Client quote",
+      "Next Project teaser"
+    ],
+    "signatures": [
+      "Case title phrased as a strategic question",
+      "Hairline-ruled grid cells with tiny mono uppercase labels",
+      "Single full-bleed brand colour field with centred wordmark",
+      "Wordmark enlarged until the frame crops it (BKO, HEARTLAND)",
+      "Colour swatch bars sitting on top of macro photographs (triptych)",
+      "Monogram badge inserted into a running marquee line of copy",
+      "Results numbers set as large statements"
+    ],
+    "projects": [
+      {
+        "client": "Brooklyn Org",
+        "year": 2023,
+        "what": "Renamed and rebranded Brooklyn Community Foundation: heavy condensed wordmark, BKO monogram, marquee lines, Changemakers Ball stage.",
+        "url": "https://www.motherdesign.com/work/brooklyn-org"
+      },
+      {
+        "client": "Rollr",
+        "year": 2024,
+        "what": "'Conscious hedonism' refillable deodorant: sculpted glass bottle, liquid custom serif wordmark, burgundy with pastels (Dieline Best of Show 2025).",
+        "url": "https://www.motherdesign.com/work/rollr"
+      },
+      {
+        "client": "Keen",
+        "year": 2026,
+        "what": "Recast a psychic platform as mass-wellness via a red field, folk-art illustrated world, merch and immersive environments.",
+        "url": "https://www.motherdesign.com/work/keen"
+      }
+    ],
+    "layouts": [
+      {
+        "name": "Ruled Values Grid",
+        "for": "website",
+        "recipe": "Desktop 16:10, white. 12-col grid, 1.1% outer margin, 0 gutters; all sections separated by 1px #000 hairlines spanning full width. Top: small nav pills (bordered boxes) top-left. Statement block: 3.3%-of-width sans (Basis-like), tracking -0.04em, leading 1.1, spanning cols 1–12. Below: 2×2 grid of equal cells (each 50% width, aspect 1.25:1) divided by hairlines; each cell has a 0.7% label top-left and one 6%-of-width word centred (e.g. brand values). Only black/white; the colour comes from a project strip elsewhere."
+      },
+      {
+        "name": "Colour Field Wordmark",
+        "for": "social",
+        "recipe": "Canvas 1:1. Entire canvas filled with the brand's single hero colour. Wordmark centred, width 62% of canvas, colour = off-white #F7F2EA. Tagline beneath at 4.5% of width in a contrasting serif, gap 4%. Nothing else. For a series, alternate with: same colour field + 3 vertical swatch bars (each 1/3 width, top 25% flat colour, bottom 75% macro texture photo)."
+      },
+      {
+        "name": "Cropped Monumental Wordmark",
+        "for": "poster",
+        "recipe": "Canvas 2:3. Background = textured material photo (soil, fabric, paper) full-bleed, darkened 30%. Wordmark in heavy condensed slab, broken into 3 lines of 3–4 letters each (e.g. HEA / RTL / AND), each line width 120% of canvas so it bleeds 10% off both sides; letters printed as debossed/ink-on-material (multiply blend, 85% opacity). Small mono caption 1.2% at bottom-left 4% margin. Message: the identity is so confident it can be cropped."
+      },
+      {
+        "name": "Label/Text Case Page",
+        "for": "case-study",
+        "recipe": "Canvas 16:10 white. Row 1 (hairline above): label 'What we did' at x=1%, 0.9% bold; value list at x=25%, 0.9% regular. Row 2: body text block x=25%–60%, 1.1% size, leading 1.5. Row 3: image pair — left image x=1%–60% (aspect 3:2), right image x=67%–99% (aspect 4:5), bottom-aligned, 1.1% gap below for captions in 0.75% grey. Row 4: pull quote at 3.3% across x=1%–66%, attribution 0.75% below. Dark variant: background #141414, text #FFF."
+      }
+    ]
+  },
+  {
+    "id": "not-wk",
+    "name": "NOT Wieden+Kennedy",
+    "city": "London",
+    "url": "https://notwk.london",
+    "philosophy": "W+K London's standalone branding studio (2023): 'Move me, dude' — going beyond the nice, polite and rational to surprise and incite; generative, reactive identities instead of rulebooks.",
+    "type": {
+      "faces": [
+        "NOT Machine generative 3D wordmark (icon-brush tubes)",
+        "thin grotesk lockup 'Wieden+Kennedy' (Inter Light on site)",
+        "Xanh Mono (site footer)",
+        "Cooper Black (Dark Arts Coffee)"
+      ],
+      "notes": "Own identity: an inflated hand-drawn script whose strokes are hundreds of repeated objects (hearts, eyeballs), animated with bounce/orbit/wiggle; paired with a featherweight 2-line grotesk and superscript '+'. Client type: a familiar, slightly kitsch face used deadpan and big, often repeated to fill surfaces."
+    },
+    "palette": "Studio: pastel gradient grounds (#F07CF5 → #3BB8D9 → #DCDCDC) with chrome/black objects. Clients: black-on-black packs punctuated by pop-art colour, or red/cobalt/acid-yellow sports posters.",
+    "imagery": "Glossy 3D renders, piles of product (cans, boxes) shot as abundance, street wild-postings, repetition walls, collectible artist cards.",
+    "presentation": [
+      "Hero pile of product/boxes",
+      "Close-up of collectible window card",
+      "Many-up grid of card artworks",
+      "Icon set on cream",
+      "Tote/tee merch",
+      "Cups/stickers in use",
+      "Street poster in situ",
+      "Animated wordmark loop"
+    ],
+    "signatures": [
+      "Wordmark drawn with an 'icon brush' — 3D tube letters made of repeated emoji/objects",
+      "Logo as a system of many logos (makers, artists, users reinterpret it)",
+      "Fixed black pack + ever-changing artist card in a die-cut window",
+      "Familiar retro face (Cooper Black) used with deadpan dark humour",
+      "Repetition wall: one phrase tiled to fill an entire poster",
+      "Pastel gradient background behind a single glossy 3D object",
+      "Product shot as abundance — dozens of units piled to the frame edges"
+    ],
+    "projects": [
+      {
+        "client": "NOT Wieden+Kennedy (own identity + NOT Machine)",
+        "year": 2023,
+        "what": "Generative identity and free public tool that turns any image/icon into animated custom wordmarks.",
+        "url": "https://notwk.london/machine"
+      },
+      {
+        "client": "Dark Arts Coffee",
+        "year": 2024,
+        "what": "'Joyful Nihilism': Cooper Black, cracked-smiley mark, black windowed boxes holding 50+ collectible artist cards for 100+ coffees (D&AD 2025).",
+        "url": "https://www.dandad.org/work/d-ad-awards-archive/dark-arts-branding"
+      },
+      {
+        "client": "Wieden+Kennedy London",
+        "year": 2025,
+        "what": "Ongoing series where London makers (baker, barber, letterpress printer, school kids) reinterpret the W+K logo.",
+        "url": "https://wklondon.com/2025/01/wiedenkennedy-london-celebrates-londons-eclectic-makers-with-logo-design-project/"
+      }
+    ],
+    "layouts": [
+      {
+        "name": "Icon-Brush Wordmark Hero",
+        "for": "website",
+        "recipe": "Canvas 16:10. Background vertical linear gradient: #F07CF5 (0%) → #9AA7F0 (35%) → #3BB8D9 (55%) → #DCDCDC (100%). Centred square stage 37% of width with 1px #666 border radius 6px. Inside: brand name drawn as a fat script whose stroke is a chain of repeated small icons (render: along an SVG path, stamp an icon every 0.6% of width at 4% icon size, slight 3D shading, each copy rotated along the path tangent). Below stage: a row of 25 small icon chips (2% each) and pill toggles. Bottom bar 4% tall, split 50/50 with mono labels centred. Animate stamps with 'bounce' (translateY ±6%, staggered 40ms)."
+      },
+      {
+        "name": "Collectible Window Pack",
+        "for": "packaging",
+        "recipe": "Canvas 1:1 product render on black (#0B0B0B). Cube box, matte black, all branding black-on-black: wordmark in Cooper Black-style soft serif stacked 2 lines, debossed (inner shadow 1px, 8% white highlight) on one face at 45% face width. Front face has a square window at 55% of face width, centred, showing a full-colour artist card (random pop palette: #FFD400, #E83F6F, #2E86AB, #3BB273). Repeat 12–20 boxes stacked in a pile filling the frame edge to edge, each with a different card art. Tiny white smallprint (0.8%) at the box bottom edge."
+      },
+      {
+        "name": "Repetition Wall Poster",
+        "for": "poster",
+        "recipe": "Canvas 2:3. Background white or #FF4A1C. One short phrase (2–3 words) in ultra-bold condensed sans, uppercase, tracking -0.02em, set at cap-height 9% of canvas height, repeated in rows that bleed off left/right (each row offset by 30% of width), rows fill 100% of the canvas with 0 leading gap. One horizontal band (34% height) interrupts the wall: split 50/50 into two colour fields (cobalt #4B2BFF and red #FF2A1F) each holding a stacked slogan in acid yellow #E5FF3A at 80% field width. Feels NOT because repetition becomes texture and the joke is in the scale."
+      },
+      {
+        "name": "Many Logos Grid",
+        "for": "social",
+        "recipe": "Canvas 4:5. Cream background #F3EFE3, 4% margin. 3×4 grid of equal square cells, 2% gutters. Each cell contains the same brand name reinterpreted in a different medium (bread-score, chalk, letterpress, child's marker, embroidery, neon) — use 12 different treatments/filters on the same wordmark, each 70% of cell width, centred. Caption row under each cell 1.1%: maker's name. Header strip 8% tall: 'One logo, many hands' in thin grotesk 3% left-aligned."
+      }
+    ]
+  },
+  {
+    "id": "stockholm-design-lab",
+    "name": "Stockholm Design Lab",
+    "city": "Stockholm",
+    "url": "https://www.stockholmdesignlab.se",
+    "philosophy": "'Transforms brands and businesses with simple, remarkable ideas' — long-term, holistic Scandinavian reduction where everything springs from one heritage source and branding is 'not about surface but about depth'.",
+    "type": {
+      "faces": [
+        "LabGrotesque (Letters from Sweden, site)",
+        "Alfred Sans / Alfred Serif (Nobel Prize, commercial version Ivar)",
+        "Unica77 Polestar Var",
+        "Haglöfs custom face + numerals (Letters from Sweden)"
+      ],
+      "notes": "Sentence case, moderate sizes; statements 42px at -0.02em, body 16px/1.25; product 'marking systems' set tiny, factual, one size with hairlines; typeface specimens shown as huge single glyphs ('Aa', 'a', 'Abc')."
+    },
+    "palette": "White, black, warm greys plus one heritage accent: Nobel gold with oxblood #6B2E2C and blush #EADCD8; Polestar greys + safety yellow #F5C400; Sigma black/white/glacier blue.",
+    "imagery": "Museum-grade product macro (lens barrels, emblems placed by gloved hands), façades with banners, art collaborations, night billboards, landscape key visuals.",
+    "presentation": [
+      "Hero product/emblem full-bleed",
+      "Name + tagline + two-column text",
+      "Landscape key visual with place-name lockup",
+      "Product macro",
+      "Website screen",
+      "Packaging stack",
+      "Hairline spec table (symbol/wordmark/type/colour/marking)",
+      "Typeface specimen cards",
+      "Colour field",
+      "Banners in situ",
+      "Ceremony print / stationery",
+      "Billboard at night",
+      "Related work"
+    ],
+    "signatures": [
+      "Every element derived from a single heritage source (medal, star, 1914 symbol)",
+      "Proprietary typeface treated as the primary brand asset",
+      "Typographic marking system: tiny caps + hairline on product",
+      "Specimen cards with giant 'Aa / a / Abc' on blush/grey",
+      "Stacked place-name caps over landscape photography",
+      "Hairline-ruled spec table with micro labels at left",
+      "One accent colour against a monochrome system"
+    ],
+    "projects": [
+      {
+        "client": "The Nobel Prize",
+        "year": 2018,
+        "what": "One-brand system from the 1902 Art Nouveau medal: Alfred Sans/Serif, gold + heritage colours, banners and ceremony print.",
+        "url": "https://www.stockholmdesignlab.se/work/the-nobel-prize"
+      },
+      {
+        "client": "Polestar",
+        "year": 2017,
+        "what": "Star symbol, Unica77 Polestar Var and a typographic marking system across cars, retail, events and digital.",
+        "url": "https://www.stockholmdesignlab.se/work/polestar"
+      },
+      {
+        "client": "Sigma",
+        "year": 2025,
+        "what": "Holistic rebrand of the Japanese lens maker: strategy, custom type, packaging, uniforms, architecture, campaigns (D&AD Yellow Pencil 2026).",
+        "url": "https://www.stockholmdesignlab.se/work/sigma"
+      }
+    ],
+    "layouts": [
+      {
+        "name": "Name / Tagline Case Opener",
+        "for": "case-study",
+        "recipe": "Canvas 16:10 white. Top 56%: full-bleed product photo, black/white palette. Below at y=60%: client name at x=2%, 1.5% of width, regular weight; tagline at x=50%, 1.6% of width, max-width 45%, sentence case; under tagline two body columns at x=50% and x=73.5%, each 21% wide, 0.6% type, leading 1.4. Everything regular weight, no bold, no colour. Next band: one image inset with 2% side margins (96% width)."
+      },
+      {
+        "name": "Hairline Spec Sheet",
+        "for": "deck",
+        "recipe": "Canvas 16:9 white, 4% margins. Left half (x 4–48%): a stack of 5 rows separated by 1px #000 hairlines; each row: micro label at x=4% (0.55%, grey #777: 'Symbol', 'Wordmark', 'Typography', 'Colour', 'Marking system'), content at x=14%: symbol drawings, wordmark at 4% size, alphabet sample in 1.3%, colour chips (6 squares, 3% each, greys + one accent), marking example '1 size, 1–2 lines'. Right half (x 52–96%): one product macro photo, full height of the content block. Pure Swiss restraint."
+      },
+      {
+        "name": "Place-Name Landscape Key Visual",
+        "for": "poster",
+        "recipe": "Canvas 3:4. Full-bleed landscape photo (mountain, coast) graded cool and slightly desaturated (duotone toward #3E6E86). Brand name + place + country stacked in 3 lines, centred, uppercase, the brand's grotesk/serif at cap-height 7% of canvas height, line-height 1.05, tracking +0.02em, white at 92% opacity, block centred at 45% height. No other elements. Variant for billboard: 3:1 canvas, small white panel (30% width) bottom-right containing wordmark + 2 lines of tiny caps."
+      },
+      {
+        "name": "Specimen Card Triptych",
+        "for": "social",
+        "recipe": "Canvas 3:1 (or three 1:1 tiles). Each tile background blush #EADCD8 or warm grey #E7E3DE. Tile 1: single uppercase 'A' and lowercase 'a' at cap-height 55% of tile, centred, in the brand face. Tile 2: 'Abc' at x-height 40% with faint 1px baseline/x-height/cap guides in #BFA8A0. Tile 3: tiny micro label top-left (1.2% of tile width) and 3-line description bottom-left. Optional: a gold medallion photo on black as a 4th tile."
+      }
+    ]
+  },
+  {
+    "id": "a-friend-of-mine",
+    "name": "A Friend of Mine",
+    "city": "Melbourne",
+    "url": "https://afom.com.au",
+    "philosophy": "Integrated brand + digital studio with 'no house style' — weaving craft with strategy into warm, witty, optimistic brands that feel 'soft around the edges'.",
+    "type": {
+      "faces": [
+        "Banana Grotesk (site)",
+        "ultra-condensed grotesque caps for client wordmarks (Great Wrap, W.H.M)",
+        "rounded fat display (Hommey)"
+      ],
+      "notes": "Site: Banana Grotesk regular, 24/30 and 28/35, sentence case, normal tracking, titles as 'Client —' with em dash. Client headlines: condensed caps, tight, filling 80–100% of the container width; small neo-grotesk for meta."
+    },
+    "palette": "Saturated cheerful primaries and pastels: cobalt #1E3FD8, sky #38B6F0, fuchsia #F23FA4, yellow #FFE01B, burnt orange #B5531E, sage #C9DDA0, tomato #E8392B.",
+    "imagery": "Colour-blocked studio portraits (single-colour outfit vs contrasting seamless backdrop), surreal playful product sculptures, macro food under cling-wrap, real interiors/signage in situ.",
+    "presentation": [
+      "Full-bleed hero still-life/portrait",
+      "Title — tagline, intro + Scope list",
+      "Logo on colour field",
+      "Pair of colour-blocked portraits",
+      "Big slogan line",
+      "8-tile gutterless mosaic",
+      "Flat posters on white",
+      "Packaging close-ups",
+      "Signage in situ",
+      "Interior/environment",
+      "Website + social tile grid",
+      "Client quote",
+      "More work list"
+    ],
+    "signatures": [
+      "Colour-blocked studio photography: subject colour opposes backdrop colour",
+      "Ultra-condensed caps wordmark spanning full width",
+      "Gutterless 4-column mosaics mixing type tiles and photos",
+      "Googly-eyed props/characters that humanise a product",
+      "Die-cut, tactile packaging details as hero (vent slots, glitter)",
+      "Social tiles: one huge condensed word + small photo, rotating colours",
+      "Title format 'Client —' followed by a one-line idea"
+    ],
+    "projects": [
+      {
+        "client": "Lune Croissanterie",
+        "year": 2015,
+        "what": "Redrawn rocket mark with croissant tail, kraft boxes with die-cut 'hyperdrive' vents and glitter print, cut-steel blade sign.",
+        "url": "https://afom.com.au/projects/lune-croissanterie"
+      },
+      {
+        "client": "Great Wrap",
+        "year": 2022,
+        "what": "Repositioned compostable cling wrap as a materials-science brand for US launch: condensed caps, character sculptures, posters, e-commerce.",
+        "url": "https://afom.com.au/projects/great-wrap"
+      },
+      {
+        "client": "Women's Health Melbourne",
+        "year": 2024,
+        "what": "Apostrophe replaced by an egg motif, rebellious condensed type, colour-blocked portraiture, 'Knocked Up' podcast.",
+        "url": "https://afom.com.au/projects/women-s-health-melbourne"
+      }
+    ],
+    "layouts": [
+      {
+        "name": "Colour-Block Portrait Pair",
+        "for": "social",
+        "recipe": "Canvas 2:1 split into two 1:1 halves, no gutter. Each half: full-bleed portrait/product image on a flat seamless background where the backdrop colour is the complementary of the subject's clothing (e.g. backdrop sky #38B6F0 vs top yellow #FFE01B; backdrop pink #F7A8C8 vs fuchsia). Left half optional wordmark in ultra-condensed caps at top centre, width 60% of half, cap-height 10%, colour yellow #FFE01B. No other type."
+      },
+      {
+        "name": "Full-Width Condensed Poster",
+        "for": "poster",
+        "recipe": "Canvas 5:7, white #FAFAFA, 6% side margins. Top meta row at 3%: tiny domain left and 2-line descriptor right (1.6% of width). Photo block from y=8% to y=72%, width 88% (a single macro or playful still-life). Wordmark below in ultra-condensed black caps, letter-spacing -0.01em, width exactly 88% (justify to margins), cap-height ≈ 12% of canvas height. Nothing else. Series: swap photo + keep type position fixed."
+      },
+      {
+        "name": "Gutterless Type/Photo Mosaic",
+        "for": "case-study",
+        "recipe": "Canvas 2:1. 6×4 grid of square cells, 0 gutters, 1px black hairline between cells optional. ~40% of cells are type tiles: flat colour (rotate fuchsia #F23FA4, yellow #FFE01B, green #18A957, cobalt #1E3FD8) with one ultra-condensed word in caps filling 85% of cell width, plus 0.9% micro-caption top-left. ~60% are photo tiles (portraits, close-ups). Never two same-colour tiles adjacent."
+      },
+      {
+        "name": "Em-Dash Case Header",
+        "for": "website",
+        "recipe": "Canvas 16:10. Hero 100% × 90vh full-bleed image; nav 'Work  Studio' top-left (1.1% white), studio name top-right. Bottom-left at 1.1% margin: 'Client —' line + 1-line idea in 1.1% white. Below hero: white section with text at x=1.1% ('Client —' title), intro block x=30%–58% at 0.85% type, 'Scope:' list x=58%–70% 0.6%. Then a giant centred slogan at 3.5% width ('Greater than good.')."
+      }
+    ]
+  },
+  {
+    "id": "oddity",
+    "name": ".Oddity Studio",
+    "city": "Hong Kong",
+    "url": "https://odditystudio.com",
+    "philosophy": "'Practicing design as conceptual art' — concept is non-negotiable and filters every decision; rejects templates and tests ideas physically, treating layouts like stories with setup, climax and resolution.",
+    "type": {
+      "faces": [
+        "Oddity Typold Condensed (Light/Book/Black, custom)",
+        "custom 'haunted hand' script (Dead Poets)",
+        "ES Build, mirrored (nown unown)",
+        "small technical grotesk for labels"
+      ],
+      "notes": "Light condensed text at 16px/1.15 and 43px for the index; dotless i's as a house tic; type mirrored, inverted 180° or rotated vertical; labels set like lab specimen sheets."
+    },
+    "palette": "White, light grey plates #EEEEEE, black; colour only as material — walnut, resin, cream paper, a single signal red #E5231B.",
+    "imagery": "Tactile objects on seamless grey, unique hand-made artefacts, dark interiors, x-ray-like ingredient slices, process shots and many-up variation grids.",
+    "presentation": [
+      "Hero logo/object on grey plate",
+      "Bold name + light poetic subtitle + services",
+      "Indented narrative",
+      "Logo transformation sequence with arrows",
+      "Interior/shopfront",
+      "Packaging on grey",
+      "Many-up variant grid (20–60 tiles)",
+      "Social posts on black",
+      "Printed matter on red",
+      "Credits: Typeface, Paper, Featured on"
+    ],
+    "signatures": [
+      "Concept-generated logo that is never fixed (written by a 'haunted hand')",
+      "Mirrored / inverted wordmarks reading both ways",
+      "Modified glyphs (dotless i) as a house tic",
+      "Many-up grids showing every variant of the system",
+      "Objects photographed on #EEE plates with no props",
+      "Index of poetic one-line titles indented on a stepped tab grid",
+      "Credits that list paper stock and typeface"
+    ],
+    "projects": [
+      {
+        "client": "Oddity Fragrance",
+        "year": 2021,
+        "what": "'Beauty of imperfections' perfume house: one-off hand-cast resin/wood caps, clinical label system, impression-map leaflet (Dezeen Awards 2024 shortlist).",
+        "url": "https://odditystudio.com/work/oddity-fragrance"
+      },
+      {
+        "client": "Dead Poets",
+        "year": 2024,
+        "what": "Dive bar/barbershop identity with a logo 'written by ghosts' via limited-control handwriting, custom type, red menus (D&AD 2025).",
+        "url": "https://odditystudio.com/work/dead-poets-bar"
+      },
+      {
+        "client": "nown unown",
+        "year": null,
+        "what": "Korean niche perfume built on a mirror idea: reflected typography, inverted wordmark, subtly distorted imagery, Seoul showroom (c.2025).",
+        "url": "https://odditystudio.com/work/nown-unown"
+      }
+    ],
+    "layouts": [
+      {
+        "name": "Stepped Poetic Index",
+        "for": "website",
+        "recipe": "Canvas 16:10 white. Corner furniture: nav top-left 0.7%, email top-right 0.7%, '.Brand' bottom-left and 'Studio' bottom-right in 1.1% bold. Body: list of 20–30 poetic one-line titles in light condensed sans, 3% of width, leading 1.4, black. Each line's x-position snaps to one of 5 tab stops: 1%, 18%, 33%, 46%, 52% (pseudo-random per line, seeded). Replace every 'i' with dotless 'ı'. No images until hover."
+      },
+      {
+        "name": "Mirror Wordmark Sequence",
+        "for": "poster",
+        "recipe": "Canvas 2:3, background #EEEEEE. Centred vertical sequence of 5 wordmark states, each 46% of width: normal → upper half normal/lower half mirrored → both lines inverted → rotated 180° → fully mirrored. Between states a 1px black vertical arrow 3% tall. Wordmark in black bold rounded/stencil sans. Small product name bottom centre 1.2%. Flat and clinical, the idea is the image."
+      },
+      {
+        "name": "Variant Grid Plate",
+        "for": "case-study",
+        "recipe": "Canvas 16:9, white, 1% margin. Single plate #F2EFEE occupying 98%×92%. Inside: 12×5 grid of small cards (each ~7.5% width, aspect 3:4, 0.8% gaps), each card a different flat colour from a 12-colour muted+bright set, carrying a different version of the logo drawn by hand (vary stroke, angle, scale ±20%). Bottom-left outside the plate: credits in two columns — 'Typeface: Custom made' / 'Paper: GMUND', 0.8%."
+      },
+      {
+        "name": "Object Specimen Pack",
+        "for": "packaging",
+        "recipe": "Canvas 1:1 seamless grey #E9E9E9, soft top light. Product (bottle/box) centred at 40% width. Label = white rectangle 70% of product width with tiny grotesk specimen text in 4 blocks (name, ingredients, maker, concentration) at 1–1.4% of canvas size, left-aligned, generous line spacing — like a lab sheet. Brand wordmark printed rotated 90° vertical along the right edge of a second carton, 55% of its height. Cap/top element is a unique raw material (wood, resin) — never repeated."
+      }
+    ]
+  },
+  {
+    "id": "bedow",
+    "name": "Bedow",
+    "city": "Stockholm",
+    "url": "https://www.bedow.se",
+    "philosophy": "Builds 'brands for good companies with good intentions' using naive curiosity, impactful narratives and ingenious craft; a five-phase process (Discover, Define, Imagine, Explore, Craft) that still leaves room for intuition.",
+    "type": {
+      "faces": [
+        "Bedow Text/Head (custom grotesk)",
+        "Bedow Hand (calligraphic humanist display)",
+        "client custom faces (Neko segmented sans, Swee generative wordmark)"
+      ],
+      "notes": "Narrative intros set large in the Hand display (36–87px, leading 1.1); all metadata tiny grotesk 9–12px; data typography in ultra-light numerals or monospaced caps with a single coral highlight."
+    },
+    "palette": "Brand-specific, sophisticated: Polar Night #172533 + Midnight Sun #EAD9A7; Neko sage #DDE3C6/mint #BFDCD8/blush with coral #F0604D data; Swee peach #F5CBBF + mint #BFDCCB with ingredient stripes; Coop bright plates.",
+    "imagery": "Pastel seamless still-lifes (one hero object, 1–2 props), clean packaging line-ups on white, architectural interiors, B&W portraiture, logo/data motion loops.",
+    "presentation": [
+      "Year + name + scope list",
+      "Long intro in display Hand face",
+      "Key visual (shopfront / pack)",
+      "Symbol & wordmark notes",
+      "Insight / Concept / Solution colour band",
+      "Environments & signage",
+      "Product still-lifes",
+      "Type specimen + data typography",
+      "Colour cards",
+      "Phone/tablet screens",
+      "Metro OOH",
+      "'Curious how we work?' link"
+    ],
+    "signatures": [
+      "One modular carrier shape across thousands of SKUs (Coop superellipse 'plate')",
+      "Stripe-coded infographic labels showing ingredient proportions",
+      "Generative/organic wordmarks (yeast-like oscillating shapes)",
+      "Pastel seamless still-life: one product, one or two props",
+      "Calligraphic humanist display face for narrative statements",
+      "Full-width coloured 3-column Insight/Concept/Solution band",
+      "Ultra-light huge numerals for data (01.7 / +39)"
+    ],
+    "projects": [
+      {
+        "client": "Polar Music Prize",
+        "year": 2021,
+        "what": "Redrawn crown/stave symbol, Polar Night + Midnight Sun palette, animated five-line stave, laureate website.",
+        "url": "https://www.bedow.se/work/polar-music-prize/"
+      },
+      {
+        "client": "Neko Health",
+        "year": 2023,
+        "what": "Naming, tagline, custom type and dot-cloud imagery for preventive body-scanning clinics.",
+        "url": "https://www.bedow.se/work/neko-health/"
+      },
+      {
+        "client": "Coop (Nordic private label)",
+        "year": 2024,
+        "what": "3,500 SKUs in four markets unified by the superellipse 'plate' content carrier.",
+        "url": "https://www.bedow.se/work/coop-packaging-design/"
+      }
+    ],
+    "layouts": [
+      {
+        "name": "Stripe-Coded Label",
+        "for": "packaging",
+        "recipe": "Canvas 3:4 pastel seamless backdrop (peach #F5CBBF or mint #BFDCCB), floor horizon at 70% height. Bottle centred, 22% canvas width. Label 80% of bottle height: top 18% white with tiny grotesk name/flavour (left) and volume (right); remaining 82% = horizontal colour stripes, one per ingredient, each stripe height ∝ ingredient % (e.g. 45/25/15/10/5), stripes slightly offset (step 4–8% of label width) at their left edge like a bar chart; % values in 0.8% type at the stripe's right end. Props: one real fruit left of bottle at 10% width."
+      },
+      {
+        "name": "Superellipse Plate System",
+        "for": "packaging",
+        "recipe": "Canvas 1:1 white. Pack (box or pouch) 50% width. Pack background = flat category colour with a large organic pattern at 15% opacity. Plate = superellipse (|x|^4+|y|^4=1) at 62% of pack width, centred at 55% height, filled white or a contrasting tint; inside it product name in rounded heavy caps, hyphen-broken over 2–3 lines, cap-height 9% of pack height, centred; brand wordmark small at plate top. Product photo crops behind/through the plate bottom edge. Line up 5 colour variants at equal spacing for the hero."
+      },
+      {
+        "name": "Insight / Concept / Solution Band",
+        "for": "deck",
+        "recipe": "Canvas 16:9, full-bleed single colour (navy #172533 with white text, or yellow #FFF36D with black). 4 columns at x=2%, 26%, 50%, 74%, each 22% wide. Cols 1–3: number '01/02/03' (0.7%) + label (0.7%) on one line at top 30%; body 0.75% leading 1.45 below. Col 4: small looping arrow line-drawing (3 loops, 1px stroke, 7% tall) at top, 'Curious how we work?' link 0.7% at bottom. Everything else whitespace."
+      },
+      {
+        "name": "Hand-Face Intro Case Header",
+        "for": "case-study",
+        "recipe": "Canvas 16:10 white. Top 72%: full-bleed hero image. Below at y=76%: year at x=1% (0.6%), name+tagline at x=4% (0.6%), 'Scope' label x=4% and list x=8%; intro paragraph x=12%–60% in calligraphic humanist serif display at 1.9% of width, leading 1.12, black. Small waving-hand pictogram top-right at 1.2%."
+      }
+    ]
+  },
+  {
+    "id": "perky-bros",
+    "name": "Perky Bros",
+    "city": "Nashville",
+    "url": "https://perkybros.com",
+    "philosophy": "Helps ambitious companies 'challenge conventions and become undeniable in their space' with tailored solutions 'rooted in insight, creativity, and delightful craft' — no repeated house style, but a warm, crafted, modern-Americana sensibility.",
+    "type": {
+      "faces": [
+        "Quadrant Text (serif, site)",
+        "Dada Grotesk Medium (uppercase labels, site)",
+        "client: typewriter-serif and slab wordmarks, wide monospace caps (Foxtrot), spaced Roman caps (Southall)"
+      ],
+      "notes": "Serif intro paragraphs at ~4.2% of width, leading 1.13, -0.01em, with a first-line indent ≈ 12% of the column; labels in uppercase grotesk at 1.2%; body in small serif 11px; caption pairs of UPPERCASE client + serif tagline."
+    },
+    "palette": "Earthy and tactile: cream #F5F1E7, ink #1E1F20, clay #9C7A68, terracotta #B5512E, sage #8E9C80, navy #1F2F55, kraft #C49A6C; rare brights (Foxtrot yellow #FFD21F/red #E8361E) as punctuation.",
+    "imagery": "Tactile in-situ photography: letterpress and deckle-edged paper under hard raking light, embroidered caps, woven labels, kraft bags, farm/lifestyle documentary, products placed in nature.",
+    "presentation": [
+      "Texture close-up or video hero",
+      "CLIENT + scope label row",
+      "Large serif intro with first-line indent",
+      "Kraft bag / signage",
+      "'APPROACH:' text + sandwich-board sign",
+      "Apparel label + embroidery macros",
+      "Posters flat",
+      "Merch flat-lays",
+      "Stationery on coloured seamless with hard shadow",
+      "Lifestyle/farm photography",
+      "Materials notes",
+      "Embossed piece in nature"
+    ],
+    "signatures": [
+      "Case-page background switches to the project's own colour",
+      "Serif intro paragraph with a novel-style first-line indent",
+      "Caption pair: UPPERCASE grotesk client name + serif tagline",
+      "Letterpress, deboss and torn deckle edges under raking shadow",
+      "Friendly gesture icon / mascot (thumbs-up, bird, rocket)",
+      "Products shot in the landscape (autumn leaves, orchard, pool)",
+      "Words split and stacked as physical objects (FOX / TROT boxes)"
+    ],
+    "projects": [
+      {
+        "client": "Southall",
+        "year": 2025,
+        "what": "Naming and identity for a Tennessee farm resort: arts-and-crafts table mark with three diamonds, clay/sage letterpress, embossed SOUTHALL.",
+        "url": "https://perkybros.com/work/brand-identity/southall-southern-hospitality-redefined/"
+      },
+      {
+        "client": "Have A Nice Game (HANG)",
+        "year": null,
+        "what": "80s–90s leisure sportswear identity: thumbs-up 'All Good' symbol, typewriter-serif wordmark, pennants, kraft bags.",
+        "url": "https://perkybros.com/work/brand-identity/hang-sporting-goods-for-sporting-greats/"
+      },
+      {
+        "client": "Foxtrot",
+        "year": null,
+        "what": "Custom type, illustration and packaging for a Chicago corner store/delivery market: bouncing monospace caps and icon tissue pattern.",
+        "url": "https://perkybros.com/work/brand-identity/foxtrot-your-new-favorite-corner-store/"
+      }
+    ],
+    "layouts": [
+      {
+        "name": "Indented Serif Case Page",
+        "for": "case-study",
+        "recipe": "Canvas 16:10, background = project colour (e.g. clay #9C7A68) with text #1E1F20. Top bar 0.8% uppercase grotesk: studio left, nav at 6%, CTA right. Hero image x=0.8%–49% (aspect 1.5:1). Below hero: label row 'CLIENT' (0.6% uppercase grotesk) + scope (0.6% serif) at x=0.8% and 6%. Intro paragraph x=0.8%–49%, serif 2.1% of width, leading 1.13, FIRST LINE INDENTED by 6% of width. Right column x=51%–99%: stacked full-bleed 2-up photos, 1.1% gutters."
+      },
+      {
+        "name": "Raking-Light Stationery",
+        "for": "stationery",
+        "recipe": "Canvas 4:5, background flat seamless in the brand's deep earth colour (#7A3A22). Hard directional light from top-left creating 30° diagonal shadows (simulate a 45% opacity dark gradient band). 3 business cards in brand terracotta #B5512E scattered at rotations -8°, 4°, 12°, each 28% width, with a torn deckle bottom edge (irregular 0.6% jag) and a small blind-debossed mark (inner shadow) at bottom-right; tiny spaced caps text (0.9%, tracking +0.15em) top-left. One envelope corner in cream entering from bottom-right 40% visible."
+      },
+      {
+        "name": "Caption-Pair Work Feed",
+        "for": "website",
+        "recipe": "Canvas 16:10, cream #F5F1E7. Header 0.8% uppercase grotesk. 2-column feed: tiles x=0.8%–49.2% and x=50.8%–99.2%, aspects alternate 4:3, 1:1, 3:4 so columns stagger. Under each tile at +0.5%: client in UPPERCASE grotesk 0.7% at tile-left; tagline in serif 0.7% at tile-left+12%; counter '05 of 06' right-aligned on hero only. Insert one full-width serif statement (3.9% of width, first line indented 7%) after the first row."
+      },
+      {
+        "name": "Have-a-Nice Poster",
+        "for": "poster",
+        "recipe": "Canvas 3:4 on kraft #C49A6C paper texture (subtle fibre noise 6%). Top 30%: two-line slogan in friendly geometric sans (e.g. 'Casual / Sundays.'), navy #1F2F55, cap-height 7% of height, centred, leading 1.0. Middle: product photo cut-out centred, 45% width, on a pale ghosted repeat of the slogan (12% opacity). Bottom: 3 lines of tiny centred caps (0.9%) then wordmark in typewriter serif at 30% width + ™, 5% from bottom; tiny URL bottom-left and handle bottom-right."
+      }
+    ]
+  },
+  {
+    "id": "smith-and-diction",
+    "name": "Smith & Diction",
+    "city": "Philadelphia",
+    "url": "https://smith-diction.com",
+    "philosophy": "'Thoughtful identities for imaginative clients' — a husband-and-wife design + copy studio (est. 2015) that values joy and heart ('Make the one that makes your heart sing'), symbol-led concepts and witty, human writing.",
+    "type": {
+      "faces": [
+        "Ringside (Hoefler&Co, site: ExtraLight body + heavy compressed headlines)",
+        "custom swash 1970s serif (studio wordmark)",
+        "FK Display (Perplexity)",
+        "letter-spaced Didone caps (Elixr)",
+        "western badge / woodtype slabs (Cowboy Space, The Westbound)"
+      ],
+      "notes": "Era-evoking pairings: one expressive vintage display + one quiet modern grotesk; text on circular badge paths; heavy compressed sentence-case headlines with tight -0.03em tracking; light 200-weight body at large sizes on black."
+    },
+    "palette": "Black stage #000 with white type and one lime UI accent #2BD94B; client work warm, saturated vintage (burnt orange #E8642A, sun yellow #F6C343, teal-black #0F2A2E, cream #F4EBDD) or iridescent gradients for AI brands.",
+    "imagery": "Symbol-first: badge/coin/patch spreads like sticker sheets, packaging on sunlit wood with hard shadows, hand-held product against nature, retro airbrush/space illustration.",
+    "presentation": [
+      "Hero sticker-sheet spread of all badges",
+      "Funny story intro",
+      "'The Symbol' with meaning",
+      "Sketches + 20+ variants",
+      "Symbol breakdown diagram",
+      "Before/after",
+      "Colour + type",
+      "Illustrated hero poster",
+      "Merch: patches, coins, flags",
+      "Packaging",
+      "Signage/wayfinding",
+      "Credits"
+    ],
+    "signatures": [
+      "Symbol-led identity: one dense icon with a double meaning",
+      "Badge/emblem lockups with text set on a circular path",
+      "Sticker-sheet collateral spread (badges, coins, patches scattered on colour)",
+      "Logo archive grid: white symbols on black with name/sector/year captions",
+      "Vintage swash or woodtype display tempered by modern grotesk",
+      "One hand-drawn illustration per product variant",
+      "Witty headline copy as part of the identity"
+    ],
+    "projects": [
+      {
+        "client": "Elixr Coffee",
+        "year": 2018,
+        "what": "Gift-like hand-held box packaging with X-crossed Didone wordmark and an illustrated label per blend (SCA Design Lab award).",
+        "url": "https://packagingoftheworld.com/2020/03/elixr-coffee.html"
+      },
+      {
+        "client": "Perplexity",
+        "year": 2023,
+        "what": "Asterisk symbol reading as revolving door, open book and cursor; FK Display wordmark; content-first restraint.",
+        "url": "https://medium.com/smith-diction/branding-perplexity-ai-70eb2cb2ef48"
+      },
+      {
+        "client": "Cowboy Space Corp.",
+        "year": 2026,
+        "what": "Spur-that-is-also-a-sunrise symbol with a western badge system for orbital solar satellites.",
+        "url": "https://medium.com/smith-diction/branding-cowboy-space-corp-a35fd0d06dd2"
+      }
+    ],
+    "layouts": [
+      {
+        "name": "Sticker-Sheet Spread",
+        "for": "social",
+        "recipe": "Canvas 4:3, background one warm saturated colour (#E8642A) with soft vignette. Scatter 9–12 brand marks as physical objects: 3 circular badges (text on circular path, 14–18% width), 2 rounded-rect wordmark plates (24% width), 3 metallic coins (8% width, gold gradient), 1 large central emblem (32% width) — each with a 2px drop shadow and rotation ±12°. Marks in cream #F4EBDD and teal-black #0F2A2E. No grid; dense but no overlaps beyond 5%."
+      },
+      {
+        "name": "Logo Archive Grid",
+        "for": "website",
+        "recipe": "Canvas 16:10, black #000, white type. Header: 'Logos & Icons' at x=2%, two lines, heavy grotesk 8% of width, leading 0.95, tracking -0.03em; micro caps note right-aligned at 2% margin, 0.9%. Below: 5-column grid starting x=9%, column width 16.4%, row height 12% of width; each cell: white symbol centred in top 70% at 45% of cell width; captions under at cell-left: name 0.6% bold, sector 0.6% grey #8A8A8A, '—', year. Lots of black breathing room."
+      },
+      {
+        "name": "Swash Wordmark Hero",
+        "for": "website",
+        "recipe": "Canvas 3:5 (scrolling hero). Black. Nav row at 2.4% from top: studio name left, 5 links right, white 1.5% regular. Centred swash serif wordmark (2 lines with a looping ligature tail) at 66% width, top at 7%. Below: two auto-scrolling marquee rows of white symbols (each 7% wide, gaps 8%). Then centred statement in heavy compressed sans, 5.5% of width, 4 lines, leading 0.98, ending with ®. Then two pill buttons 40% wide, 1px lime #2BD94B outline, lime text, radius 999px."
+      },
+      {
+        "name": "Illustrated Box Pack",
+        "for": "packaging",
+        "recipe": "Canvas 4:5, flat-lay on warm wood or patterned floral cloth, hard sunlight shadow at 35° (40% opacity). Box: matte deep teal-black #0F2A2E, 60% canvas width, rotated -20°. Wordmark: letter-spaced Didone caps (+0.12em) crossed by a thin X of two diagonal hairlines with tiny text on the diagonals, at 45% box width, centred-left in cream. Right 38% of box top: a square colour label (yellow #F6C343 / orange / coral variants) holding a single hand-drawn line illustration (bee, crown, geometric badge) at 60% label width; spine shows product word in spaced caps."
+      }
+    ]
+  }
+]

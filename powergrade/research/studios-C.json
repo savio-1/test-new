@@ -1,0 +1,786 @@
+[
+  {
+    "id": "vsa",
+    "name": "VSA Partners",
+    "city": "Chicago",
+    "url": "https://www.vsapartners.com",
+    "philosophy": "\"Creative is currency.\" An independent branding and activation agency that builds enterprise-scale brand systems and campaigns that 'break through, scale with consistency, and deliver on business outcomes'. Corporate confidence over decoration.",
+    "type": {
+      "faces": [
+        "Inter Tight 600 (display)",
+        "Inter 400/500 (text)",
+        "condensed heavy all-caps grotesk in campaigns"
+      ],
+      "notes": "Home H1 is 125px on 1440 (≈8.7% of width), tracked -0.25px, sentence case with a full stop. Case titles stack two tones at 64px with 1.0 line-height: client name in black, descriptor in #777 directly under. Body is 19px grey in a column ≈45% wide. Campaign lines switch to condensed bold caps at tight leading (0.9)."
+    },
+    "palette": "House is pure black (#000) and white with a single mint-green accent (#3DDC97) on arrows and links. Client colour carries the case (navy #0B2341 and teal #2A9DB0 for BNY, Google primaries).",
+    "imagery": "Architecture-scale in-situ signage shot against the sky (dimensional letters, lens flare). Documentary event photography with branded backdrops. Subway digital-OOH triptychs. Device mocks on flat brand colour. A 'system wall' collage of 30+ touchpoints on light grey. Black-and-white reportage for cause work.",
+    "presentation": [
+      "hero in-situ 3D signage photo, full-bleed 16:9",
+      "two-tone title + '+' services list",
+      "brand film (inset)",
+      "old/new logo split with centre hairline",
+      "subway OOH triptych",
+      "event backdrop in use",
+      "tablet/phone on flat brand colour",
+      "system-wall collage of all touchpoints",
+      "results"
+    ],
+    "signatures": [
+      "Two-tone title stack: client name black, claim in 50% grey, same size",
+      "Services list prefixed with '+' parked in the right third (from 73% of width)",
+      "Before/after logo split: two white halves divided by a 1px #ccc vertical hairline, each logo ≈25% width centred",
+      "OOH triptych: one word of the line per panel, wordmark centred on the middle panel's footer band",
+      "System-wall mosaic: 6–8 columns of mixed-ratio applications on #E9EAEC, 1% gaps, slightly overscaled so it bleeds off edges",
+      "Condensed all-caps campaign headline over a darkened (60% black) photo",
+      "Single mint arrow (→) as the only house colour"
+    ],
+    "projects": [
+      {
+        "client": "BNY",
+        "year": 2024,
+        "what": "Rename from BNY Mellon to BNY, evolved arrow, heavy grotesk wordmark, navy/teal, 'We'll be ready' campaign",
+        "url": "https://www.vsapartners.com/work/bny"
+      },
+      {
+        "client": "Google Cloud",
+        "year": 2019,
+        "what": "'Super Cloud' anchor and Cloudstyle framework across web, events, print and banners",
+        "url": "https://www.vsapartners.com/work/google-cloud"
+      },
+      {
+        "client": "YWCA Chicago",
+        "year": 2020,
+        "what": "'Until Justice Just Is' racial-justice platform and campaign, orange/black condensed type",
+        "url": "https://www.vsapartners.com/work/ywca-chicago"
+      }
+    ],
+    "layouts": [
+      {
+        "name": "VSA case-study opener",
+        "for": "case-study",
+        "recipe": "Canvas 16:10 web page (1440 wide). Margins 3.5% each side, 12 columns, 1.7% gutters. Top bar: wordmark top-left at 3.5% x, height 2.2% of width; nav right-aligned. Full-bleed 16:9 in-situ photo from y=7% of width (the brand mark in the environment, low angle, sky behind). Below, 7% of width white space, then the title block in columns 1–7: client name 4.4% of width, Inter Tight 600, black, line-height 1.0, tracking -0.02em; directly under, the descriptor at the same size in #777. Below at 3%: a 19px/26px grey intro in columns 1–6. In columns 10–12, aligned to the intro top: the services list, each line prefixed '+ ', 19px grey. Feels like VSA because of the corporate restraint, the two-tone stack, and the grey-on-white with a full-bleed photo doing the drama."
+      },
+      {
+        "name": "Subway triptych OOH",
+        "for": "poster",
+        "recipe": "Canvas 3 portrait panels side by side, each 9:16, shown in-situ on a white-tiled wall (or flat: an overall 27:16 artboard with 1.5% gaps between panels). Each panel: the top 75% is a warm, shallow-depth-of-field photo (people at work, city light) darkened to 55%; the bottom 25% is a solid brand-primary band (deep navy). One word of a 3-word line per panel, centred at 18% from the top, in condensed heavy grotesk caps, cap height 12% of panel height, white, tracking -1%. The wordmark appears only on the centre panel, centred in the band, width 45% of the panel. The other two bands stay empty. Feels like VSA: the line is chopped across media, there is a single sign-off, and it reads like a financial-brand campaign."
+      },
+      {
+        "name": "System wall",
+        "for": "deck",
+        "recipe": "Canvas 16:9 slide, background #E9EAEC. A mosaic of 18–30 application mockups (posters, one-sheets, banners, t-shirt, event signage, phone screens) on a 7-column masonry grid with 1% gutters. Tiles vary from 1×1 to 2×2 units. The mosaic is scaled to 108% so outer tiles bleed off all four edges. Every tile uses the brand palette and one headline style; roughly 30% of tiles are dominated by a single giant brand-symbol crop, 30% are type-only, and 40% are photo plus headline. No title on the slide. Feels like VSA: proof of scale and consistency across a big enterprise."
+      },
+      {
+        "name": "Before / after mark",
+        "for": "deck",
+        "recipe": "Canvas 16:9 white. A 1px #CCCCCC vertical hairline at x=50%, running from 10% to 90% of the height. Left half: the old mark centred at x=25%, width 24% of the canvas, in its original colours. Right half: the new mark centred at x=75% at the same optical width. No labels. Optional caption top-left at 3.5% margin, 19px grey, max 45% width. Feels like VSA: calm, evidence-led evolution with no flourish."
+      }
+    ]
+  },
+  {
+    "id": "dentsu",
+    "name": "Dentsu (Dentsu Inc. design / Dentsu Creative)",
+    "city": "Tokyo",
+    "url": "https://www.dentsu.com",
+    "philosophy": "Group: 'Innovating to Impact', an integrated growth and transformation partner founded in Tokyo in 1901. Design (Dentsu Inc. Tokyo, D&AD Design Agency of the Year 2026): Japanese graphic craft at mass scale. It reinterprets traditional forms (woodblock, hanko stamps, ukiyo-e), builds participatory systems and gives one natural metaphor a visual form.",
+    "type": {
+      "faces": [
+        "Halcom (group house sans)",
+        "lowercase bold 'dentsu' wordmark",
+        "Japanese vertical setting / woodblock lettering in design work"
+      ],
+      "notes": "dentsu.com: Halcom Bold display at ≈8% of width, sentence case, tight leading (1.1). Eyebrows are 12px uppercase with 6px tracking (0.5em). Japanese design work sets characters large and vertical, with centred symmetric compositions."
+    },
+    "palette": "Group: deep navy #0A0A23 and white with photographic colour. Japanese design work: traditional pigments (vermilion #D9381E, indigo #24345C, sumi black #1A1A1A) on washi off-white #F3EEE3, woodblock flat colours.",
+    "imagery": "Corporate: aerial city photography (Shibuya scramble) and people collaborating. Design: woodblock- and stamp-style icons, pop ukiyo-e etiquette scenes, a botanical metaphor (dandelion seed heads) photographed or drawn, and gift-box packaging still-lifes.",
+    "presentation": [
+      "case film",
+      "background / idea / execution / results text",
+      "poster series grid in a strict template",
+      "icon or stamp library sheet",
+      "in-situ at station or venue",
+      "packaging set still-life",
+      "social participation screens"
+    ],
+    "signatures": [
+      "One collectible icon per location: a repeatable stamp template where only the illustration changes",
+      "Poster series in a strict template (fixed type positions, changing central image)",
+      "Ukiyo-e flat colour and outline applied to contemporary scenes",
+      "A single natural metaphor carried across posters, film and venue décor",
+      "Corporate: an offset navy text panel overlapping a photograph",
+      "Corporate: a gutterless 3-up tile wall with title and chevron at bottom-left",
+      "Vertical Japanese or Latin type column as a structural spine"
+    ],
+    "projects": [
+      {
+        "client": "JR Group (My Japan Railway)",
+        "year": 2024,
+        "what": "A woodblock-style stamp designed for every station, collectable and downloadable. D&AD Black Pencil, Art Direction",
+        "url": "https://www.luerzersarchive.com/?p=371721"
+      },
+      {
+        "client": "Seibu Railway (Manner Posters)",
+        "year": 2017,
+        "what": "Etiquette poster series in pop ukiyo-e style; held in the V&A collection",
+        "url": "https://collections.vam.ac.uk/item/O1446925/"
+      },
+      {
+        "client": "The Ad Museum Tokyo (One Show Exhibition, 'Peaceful Weapon')",
+        "year": 2024,
+        "what": "Exhibition identity using dandelion seed heads as a metaphor for messages spreading, across posters, video and décor",
+        "url": "https://www.dandad.org/work/d-ad-awards-archive/peaceful-weapon"
+      }
+    ],
+    "layouts": [
+      {
+        "name": "Station stamp series",
+        "for": "poster",
+        "recipe": "Canvas B-size portrait 1:1.414, background washi off-white #F3EEE3. A circular or rounded-square stamp motif centred at x=50%, y=44%, diameter 62% of width, printed in one pigment (vermilion or indigo) with a woodblock texture (slight ink gaps, 2–3% edge roughness). Inside the stamp: a simplified line illustration of the place's landmark plus the place name in a band. Below the stamp at y=80%: the place name in large type (cap height 5% of height, centred) and a smaller romanised name under it (tracking +20%, size 1.6% of height). The brand mark sits small at bottom-centre (width 12%) at y=94%. A numbered series index (e.g. '017 / 120') at top-right at a 5% margin. Feels like Dentsu Japan: a collectible system, traditional print technique and absolute symmetry."
+      },
+      {
+        "name": "Pop ukiyo-e manner poster",
+        "for": "poster",
+        "recipe": "Canvas B-size portrait 1:1.414. The top 70% is a flat-colour illustration in ukiyo-e style: bold black outlines (stroke 0.4% of width), flat fills from 5–6 traditional pigments, stylised wave or cloud patterns, figures in contemporary clothing doing everyday things. A vertical text column at the right edge (x=88–95%) carries the headline, set vertically, cap size 4% of width. The bottom 30% is plain off-white with a two-line message, centred, at 2.2% of height, and the brand mark at bottom-centre at 14% of width. A thin 1% red border inset 3% from the edge. Feels like Dentsu: old form, new manners, and civic-minded humour."
+      },
+      {
+        "name": "Dentsu corporate overlap",
+        "for": "website",
+        "recipe": "Canvas 16:9 web section, white. Photograph from x=0 to 55%, y=8% to 60%. A navy panel (#0A0A23) from x=45% to 92%, y=22% to 82%, overlapping the photo by 10% of width. Inside the panel, at 8% padding: a headline in bold geometric sans at 2.2% of width, white, sentence case, 3 lines max; 12px body text; and a small white outline button with a chevron. Above, outside the panel at x=5%: an uppercase eyebrow, 0.85% of width, tracking 0.5em. Feels like Dentsu group: corporate, layered and calm."
+      },
+      {
+        "name": "Single-metaphor exhibition key visual",
+        "for": "poster",
+        "recipe": "Canvas 2:3 portrait, background deep sumi black #1A1A1A or paper white. One natural object (e.g. a seed head) photographed macro and centred at x=50%, y=45%, filling 70% of the width. Fine particles drift diagonally toward the top-right, each reading as a small 'message'. Title in a light humanist sans at bottom-left, at 5% margins, size 3.5% of width, two lines, sentence case; dates and venue in a 1.1% type size at bottom-right. Japanese subtitle set vertically at the top-left corner. Feels like Dentsu design: poetic restraint carrying one idea."
+      }
+    ]
+  },
+  {
+    "id": "center",
+    "name": "CENTER",
+    "city": "Brooklyn, New York",
+    "url": "https://center.design",
+    "philosophy": "A brand design company founded in 2018 by Alex Center (formerly of Coca-Cola: vitaminwater, smartwater). It builds challenger CPG and culture brands with one bold, simple idea. Packaging first, with merch and press-worthy wit as part of the identity.",
+    "type": {
+      "faces": [
+        "Ginto (wide, weight 800) for the CENTER wordmark",
+        "Suisse Int'l for UI and statements",
+        "clients: tracked small-caps sans, stencil caps, condensed caps"
+      ],
+      "notes": "Display 'CENTER' is uppercase Ginto 800 at ≈12.7% of width with -8.6px (≈-0.047em) tracking. Nav labels in Suisse bold at ≈1.4% of width. Statements are centred Suisse bold at 22px/1.3, max width 55%. Pack copy is tiny uppercase with +15–20% tracking, often running vertically."
+    },
+    "palette": "House is pure black and white. Clients use flat matte multi-hue systems (e.g. 12 can colours from blush to cobalt), or grit (concrete grey, black, white).",
+    "imagery": "Repeat-pattern product grids (cans in diagonal rows on white, hard shadows). Stacked product pyramids. One hand holding a can on white. Gritty street portraits. Stencils sprayed on concrete. Stationery on black textured stock. 3D renders.",
+    "presentation": [
+      "hero: logo applied to a real surface or a product pattern, full-bleed",
+      "black band with a single centred statement",
+      "product line-up",
+      "pack unboxed / variety box",
+      "in-hand on white",
+      "merch on people",
+      "stationery on texture",
+      "studio or environment",
+      "campaign and web",
+      "credits: team, collaborators, awards"
+    ],
+    "signatures": [
+      "One flat colour per SKU across a large range",
+      "Diagonal repeat product pattern at 30°, filling the frame edge to edge",
+      "Vertical small-caps product text running up the pack",
+      "Logo physically applied to a real surface (stencil on concrete) as the hero",
+      "Navigation pinned to the four corners of the viewport",
+      "Black statement band between image runs",
+      "Heavy wide uppercase display wordmark with tight negative tracking"
+    ],
+    "projects": [
+      {
+        "client": "United Sodas of America",
+        "year": 2020,
+        "what": "12 matte flat-colour cans with vertical type and a variety pack; Cannes Lions, ADC and Dieline winner",
+        "url": "https://center.design/project/united-sodas/"
+      },
+      {
+        "client": "Conbody",
+        "year": null,
+        "what": "Identity for a prison-style fitness bootcamp: stencil wordmark, tally-bar symbol, grit stationery and merch",
+        "url": "https://center.design/project/conbody/"
+      },
+      {
+        "client": "New Balance Basketball",
+        "year": 2019,
+        "what": "Identity and campaign for the category relaunch",
+        "url": "https://center.design/project/new-balance-basketball/"
+      }
+    ],
+    "layouts": [
+      {
+        "name": "Flat-colour range grid",
+        "for": "packaging",
+        "recipe": "Canvas 4:5 (social) or 16:9 (case hero), background white #FFFFFF. Pack shapes (cans, cartons) arranged in diagonal rows rotated -30°, edge to edge, cropping off all four sides. Each pack is a single flat matte brand colour from a 10–12 step spectrum, in sequence so the colours make diagonal stripes. Each pack carries the product name in tiny uppercase sans (+18% tracking) running vertically up the right side, plus a small wordmark. Hard shadow down-right (offset 1.5% of pack width, 25% black). No headline. Feels like CENTER: one simple system made iconic through repetition and colour."
+      },
+      {
+        "name": "Statement band case page",
+        "for": "case-study",
+        "recipe": "Canvas web 1440 wide. Four nav labels in a single row at the top, 1.1% from the edges, equal spacing (Work 1%, Info 25%, mark at 50%, News 66%, Podcast right-aligned at 99%), Suisse bold at 1.4% of width. Full-bleed hero image at 16:9. Then a black band (height 28% of width) with one centred statement: Suisse bold, 1.5% of width, white, max width 55%, centred vertically. Then an image mosaic on black with 0.6% gutters: full-width 16:9; 2-up 50/50 4:5; full-width; 1/3 + 2/3 split. A second black statement band two-thirds of the way down. A credits block (Team / Services / Outcomes / Collaborators) in 4 columns, small. Feels like CENTER: blunt, black-and-white, all about the work."
+      },
+      {
+        "name": "Surface-applied logo hero",
+        "for": "poster",
+        "recipe": "Canvas 3:2 or 4:5. A full-bleed texture photo (concrete, brick, painted metal, cardboard) under hard daylight, with a diagonal shadow across the top-left 30%. The wordmark is stencilled or sprayed onto the surface in black, at 70% of canvas width, centred, with slight overspray and texture showing through (multiply blend, 85% opacity, a few gaps). No other type. Feels like CENTER: the identity proven in the real world, gritty and photographed rather than mocked up."
+      },
+      {
+        "name": "Wide wordmark splash",
+        "for": "website",
+        "recipe": "Canvas 16:9 white. Brand wordmark or symbol centred, filling 60% of height. Uppercase extra-bold wide sans with -0.05em tracking, black. Four tiny nav labels pinned to the corners at 1.1% inset (top-left, top-right, bottom-left, bottom-right), bold sans at 1.4% of width. Nothing else. Feels like CENTER: one confident mark, with the corners as the frame."
+      }
+    ]
+  },
+  {
+    "id": "sibley-peteet",
+    "name": "Sibley Peteet Design",
+    "city": "Dallas",
+    "url": "https://www.sibleypeteet.com",
+    "philosophy": "Founded in 1982 by Don Sibley and Rex Peteet (Richards Group alumni), with an Austin office from 1994. Part of the idea-driven, illustrative 'Texas design' school: witty visual puns, hand-drawn emblematic marks, award-winning annual reports and paper promotions that show off print craft. (Site unreachable; built from secondary sources.)",
+    "type": {
+      "faces": [
+        "classic book serifs (Garamond / Caslon / Bodoni)",
+        "hand lettering and scripts",
+        "letterspaced small caps"
+      ],
+      "notes": "Centred, print-first typography: small caps tracked +10–15% for credits, an all-caps serif paired with an italic serif, and type integrated into illustration. Headlines are modest; the image does the talking."
+    },
+    "palette": "Warm and earthy, like ink: ochre #C8963E, terracotta #B5523B, sage #8E9B79, deep red #7A1F1F and black, on cream #F2EBDD uncoated stock. Spot colours and duotones, with metallic or foil accents.",
+    "imagery": "Illustration-led: painterly and woodcut-style marks, Western and Texan iconography, animal and figurative symbols. Conceptual photography of found objects. Print-technique close-ups (emboss, die-cut, foil).",
+    "presentation": [
+      "poster or cover flat",
+      "interior spreads",
+      "print-technique close-ups",
+      "logo sheet of a family of marks"
+    ],
+    "signatures": [
+      "Visual pun marks combining two ideas in one symbol",
+      "Hand-drawn emblematic logos for hospitality brands",
+      "Paper-promotion format that showcases print craft",
+      "Cream uncoated stock with spot colour and metallic ink",
+      "Letterspaced small-caps serif credits",
+      "One centred illustrative image filling 60–70% of a poster"
+    ],
+    "projects": [
+      {
+        "client": "Brinker International (Chili's, Macaroni Grill)",
+        "year": null,
+        "what": "Illustrative casual-dining brand identities",
+        "url": "https://graphis.com/bio/rex-peteet"
+      },
+      {
+        "client": "Weyerhaeuser / James River / International Paper",
+        "year": null,
+        "what": "Paper promotions in a print-craft showcase format",
+        "url": "https://graphis.com/bio/rex-peteet"
+      },
+      {
+        "client": "Mary Kay Cosmetics / Haggar Apparel",
+        "year": null,
+        "what": "Identity and branding programmes for Dallas-based Fortune 500 companies",
+        "url": "https://graphis.com/bio/rex-peteet"
+      }
+    ],
+    "layouts": [
+      {
+        "name": "Illustrated idea poster",
+        "for": "poster",
+        "recipe": "Canvas 2:3 portrait, background cream #F2EBDD with a subtle paper grain. One illustrated visual-pun image centred at x=50%, y=42%, occupying 65% of width, in 2–3 spot colours (terracotta, ochre, black) with a woodcut or brush texture. Title below at y=80%: an all-caps serif, cap height 3% of height, tracking +12%, centred, black. A one-line italic serif subtitle under it at 1.6%. Credits in letterspaced small caps at 1% of height along the bottom margin (5% inset). Feels like Sibley Peteet: the idea is the illustration, and the type is quiet and classical."
+      },
+      {
+        "name": "Annual-report spread",
+        "for": "editorial",
+        "recipe": "Canvas two-page spread 2:1.3 (two portrait pages). Left page: a full-bleed conceptual photograph or illustration (duotone, black plus one spot colour). Right page: margins 11% outside, 8% inside, 9% top, 12% bottom; one text column 60% of page width starting at 22%; a drop cap 4 lines deep in the spot colour; a pull quote in italic serif at 2× body size hung in the left margin. Folio in small caps at the bottom outside corner. Feels like Sibley Peteet: AR-100 craft, generous margins and storytelling pacing."
+      },
+      {
+        "name": "Emblem logo sheet",
+        "for": "stationery",
+        "recipe": "Canvas 4:3 landscape, background warm off-white. A 3×2 grid of hand-drawn emblem marks (circular or shield emblems mixing pictogram and lettering), each centred in a cell, at 55% of cell width, single colour (deep red or black). 6% outer margins, 4% gutters, thin 0.5px keylines between cells. Small-caps client caption under each mark at 1.2% of height. Feels like Sibley Peteet: a crafted mark family in the Texan illustrative tradition."
+      }
+    ]
+  },
+  {
+    "id": "tractorbeam",
+    "name": "Tractorbeam",
+    "city": "Dallas",
+    "url": "https://tractorbeam.com",
+    "philosophy": "\"Tractorbeam creates and grows compelling brands that connect, inspire, and drive real impact.\" A full-service agency (Strategy, Design, Digital Products, Digital Marketing) founded in 1999. Its strongest work is hospitality and heritage: brands revived through archives, illustration and storytelling about place.",
+    "type": {
+      "faces": [
+        "Old Standard TT (Didone-ish Victorian serif, display)",
+        "Suisse Int'l (UI)",
+        "clients: condensed industrial sans, spaced small caps, engraved crests"
+      ],
+      "notes": "Home H1 is 100px on 1440 (≈7% of width) with -4px (-0.04em) tracking, sentence case, centred. Case headlines are 82px/1.0 at -0.04em in two lines, left-aligned. Service tags are 14px uppercase chips on dark grey. Client paragraphs are often set in widely tracked caps (+12%)."
+    },
+    "palette": "House is black #000 with white text and rounded media cards. Clients use dusty heritage palettes: blush #E8D6D8 with slate #9AA6AE and oxblood line art (Fordson), oxblood #3E2A2C with silver (Stetson), tangerine #FF6A13 (Whataburger × Magellan).",
+    "imagery": "Hand-drawn engraved line illustration (building elevations, crests, figurative vignettes). Archive objects (hat boxes) on slate. Process shots of a nib pen drawing a crest. Moody hospitality still-lifes (whisky on a branded coaster, luggage carts). Lush floral wallpaper.",
+    "presentation": [
+      "title + tag chips + intro",
+      "brand mark on a flat heritage colour, full card",
+      "archive research",
+      "illustration process",
+      "final illustration system",
+      "giant wordmark cropped on a pastel panel",
+      "collateral in situ: key cards, coasters, menus",
+      "interiors and amenities",
+      "similar projects"
+    ],
+    "signatures": [
+      "Rounded-corner media cards (radius ≈0.6% of width) on black with 16px gaps",
+      "Victorian serif headline at -4% tracking",
+      "Giant condensed wordmark cropped by the bottom edge of a pastel panel",
+      "Engraved line-art building or crest as the hero asset",
+      "Paragraph set in widely tracked small caps, centred",
+      "Vertically stacked letters on a dark key card",
+      "Archive → sketch → final storytelling sequence"
+    ],
+    "projects": [
+      {
+        "client": "Fordson Hotel",
+        "year": null,
+        "what": "Identity for a hotel in Oklahoma City's 1916 Ford assembly plant: engraved illustration, condensed caps, blush and slate",
+        "url": "https://tractorbeam.com/work/fordson-hotel/"
+      },
+      {
+        "client": "Stetson",
+        "year": null,
+        "what": "Heritage crest redrawn by hand from the archive, used across retail and campaign",
+        "url": "https://tractorbeam.com/work/stetson/"
+      },
+      {
+        "client": "Conserva Culture",
+        "year": null,
+        "what": "Culinary goods brand inspired by European tinned-seafood packaging, with website and campaign photography",
+        "url": "https://tractorbeam.com/work/conserva/"
+      }
+    ],
+    "layouts": [
+      {
+        "name": "Cropped wordmark panel",
+        "for": "signage",
+        "recipe": "Canvas 3:2 landscape card with 0.6% corner radius. Flat dusty pastel ground (slate blue-grey #9AA6AE or blush #E8D6D8). Centred at y=18%: a 4-line paragraph in widely tracked uppercase sans (tracking +12%, size 1.6% of width, max width 50%) in a dark tone of the ground colour. The brand name in a very condensed heavy sans, centred, cap height 45% of panel height, positioned so the baseline sits 12% BELOW the bottom edge (letters cropped). Colour: the darkest palette tone (#35504E). Feels like Tractorbeam: heritage hospitality, signage scale, and the confident crop."
+      },
+      {
+        "name": "Engraved elevation hero",
+        "for": "poster",
+        "recipe": "Canvas 3:2 or 2:3, ground blush #E8D6D8. A fine engraved line illustration of the property facade (single ink, oxblood #6B3A3F, line weight 0.15% of width) centred, filling 80% of width, with small figurative vignettes in the windows and on the roof. A small circular seal mark at bottom-centre (diameter 8% of width) in the same ink. The brand name runs vertically on a blade sign attached to the facade in the illustration. No other type. Feels like Tractorbeam: story-of-place told through crafted illustration."
+      },
+      {
+        "name": "Rounded-card case grid",
+        "for": "case-study",
+        "recipe": "Canvas web 1440 wide, background #000. Margins 3.7%. Header in 2 columns: left 0–50% has the client name (1.5% of width, Suisse, white) and a serif headline below (5.7% of width, Old Standard-style, line-height 1.0, tracking -0.04em, 2 lines) with uppercase tag chips (0.95% of width text, #333 fill, 2px radius) under it. Right column 58–96% has a 1.1% of width paragraph and a 'Read more ↓' link. Media: rounded cards (radius 8px) with 16px gaps. Card 1 is full-width 3:2 (mark on flat heritage colour); then a 2-up row of 4:5 cards (collateral in situ + macro); then full-width illustration; then 2-up. Feels like Tractorbeam: a polished gallery, dark and warm."
+      },
+      {
+        "name": "Vertical key card",
+        "for": "stationery",
+        "recipe": "Canvas 54:86 (hotel key card, portrait), charcoal #2E2E30 with a soft gradient to #1C1C1E at the bottom. Brand name set vertically as stacked single letters, centred on x=50%, each letter cap height 9% of card height, condensed sans, tone-on-tone (#4A4A4E), filling 10–85% of height. City abbreviation at bottom-centre in small caps (+30% tracking, 2.5% of height), in the same tone. Feels like Tractorbeam: understated luxury hospitality, with type as architecture."
+      }
+    ]
+  },
+  {
+    "id": "cgh",
+    "name": "Chermayeff & Geismar & Haviv",
+    "city": "New York",
+    "url": "https://cghnyc.com",
+    "philosophy": "\"Creators of many of the world's most iconic and enduring brands.\" An independent firm specialising in trademarks and identity programmes. Reduction: a mark must be simple, appropriate and distinctive, work in one colour at any size, and last for decades. The logo is a signature, not the whole brand.",
+    "type": {
+      "faces": [
+        "Camphor (site, humanist sans)",
+        "custom-drawn sans and classic serif caps for clients"
+      ],
+      "notes": "Site text is Camphor regular at 34px, -0.5px tracking, sentence case; captions are about 11px grey. The firm's wordmark is small bold caps, with each partner name or ampersand in blue, red or green. Client wordmarks are often widely letterspaced caps (+25–40%) or a custom italic lowercase."
+    },
+    "palette": "House is warm grey #F5F5F5 with black text. Colour comes from clients: saturated primaries used as large flat fields, such as ultramarine #0A2A9E, signal red #E1251B, forest green #0B7A4B and golden yellow #FFD100.",
+    "imagery": "In-situ proof: lamp-post banners, stadium jumbotrons, building signage, a black-on-black tote, a tablet held in hands. Merchandise close-ups (engraved money clip, embossed spine). Crowded documentary photographs in which the mark appears naturally.",
+    "presentation": [
+      "hero: mark over event photography",
+      "short history paragraph",
+      "the mark alone on a full-bleed brand-colour field",
+      "rationale text",
+      "environmental banners",
+      "stadium or night in-situ",
+      "merchandise details",
+      "print and digital",
+      "related logos grid"
+    ],
+    "signatures": [
+      "The mark centred alone on one flat colour at about 40% of the field width",
+      "A 'wall of fame' logo grid in uniform 4:3 tiles",
+      "Partner-name colour coding (blue / red / green)",
+      "One-colour reduction tests: black, white and reversed",
+      "Wide-tracked uppercase serif or sans wordmarks",
+      "Geometric symbols built from circles and squares",
+      "The mark cropped as a supergraphic on banners"
+    ],
+    "projects": [
+      {
+        "client": "U.S. Open (USTA)",
+        "year": 2018,
+        "what": "Flaming ball distilled to a yellow swoosh with an italic lowercase 'us open' on ultramarine",
+        "url": "https://cghnyc.com/work/project/us-open"
+      },
+      {
+        "client": "America250",
+        "year": 2023,
+        "what": "A continuous red, white and blue ribbon forming '250' with a serif 'AMERICA'",
+        "url": "https://cghnyc.com/work/project/america250"
+      },
+      {
+        "client": "Pew Research Center",
+        "year": null,
+        "what": "Radial 'illumination' symbol, serif wordmark and coded palette for research areas",
+        "url": "https://cghnyc.com/work/project/pew-research-center"
+      }
+    ],
+    "layouts": [
+      {
+        "name": "Mark on a field",
+        "for": "poster",
+        "recipe": "Canvas 4:3 (or 1:1 for social). A single flat brand colour fills the canvas edge to edge, with no texture or gradient. The symbol and wordmark lockup is centred both ways at 38–42% of canvas width (symbol-only: 30%), reversed to white (or in a second primary). Nothing else: no tagline, no border. Optional caption BELOW the canvas, outside the frame: 'Client – Logo, Identity Program' at 11px grey. Feels like CGH: the mark has to stand alone, with total confidence through reduction."
+      },
+      {
+        "name": "Logo wall",
+        "for": "website",
+        "recipe": "Canvas web 1440 wide, background #F5F5F5. Intro statement at top-left: 4 lines, Camphor-like humanist sans at 2.4% of width, max width 50%, at a 3% margin. Then a 3-column grid of 4:3 tiles, 3% outer margin and 2% gutters. Each tile is a flat brand colour or white with one mark centred at 35–45% of tile width. Caption under each tile at 0.75% of width: 'Name – Logo, Identity System'. Alternate tile grounds so saturated tiles never touch white tiles of the same row twice. Feels like CGH: decades of marks presented with archival calm."
+      },
+      {
+        "name": "Banner run in situ",
+        "for": "signage",
+        "recipe": "Canvas 16:9 photograph frame. A row of 3–5 vertical lamp-post banners (each 1:3) receding in perspective against foliage and sky. Banner A: brand colour with the lockup centred at the top third (width 70% of the banner). Banner B: a giant crop of the symbol bleeding off two edges (scaled to 160% of the banner width). Banner C: the second brand colour with a single wayfinding word at the top. Alternate A/B/C. Feels like CGH: the identity programme proven in public space with very few elements."
+      },
+      {
+        "name": "Case opener",
+        "for": "case-study",
+        "recipe": "Canvas web 1440 wide, #F5F5F5. Title top-left at 3% margin, 1.4% of width regular sans. Full-width (94%) 16:9 hero photo of the brand in use with the lockup visible. Then a centred text column 25–70% of width, 0.9% of width body, 1.5 line-height, two short paragraphs. Then a full-bleed (100%) solid brand-colour band 60% of width tall with the lockup centred at 30% of band width. Then in-situ photos alternating full-width and 2-up 50/50 with 1% gaps. Feels like CGH: modest page, monumental mark."
+      }
+    ]
+  },
+  {
+    "id": "landor",
+    "name": "Landor",
+    "city": "San Francisco (global)",
+    "url": "https://landor.com",
+    "philosophy": "A brand transformation company (WPP, founded in 1941). Strategy to experience: identity, verbal, sonic, motion, packaging and spaces. Brands are 'omnipresent' and must be managed and measured across every touchpoint. Case studies lead with business results. (Site unreachable in this session; built from secondary sources.)",
+    "type": {
+      "faces": [
+        "Landor Sans (in-house elegant grotesque, Milan type studio)",
+        "serif Landor wordmark",
+        "client bespoke faces: 'The Group' (VW Group), TUMB TUMB (Milan Symphony Orchestra)"
+      ],
+      "notes": "A bespoke typeface is a core deliverable and often the hero of the system. Headlines are large, sentence case and tight (-0.02em). The serif house wordmark sets Landor apart from sans logotypes."
+    },
+    "palette": "House: ultramarine #1B2DE0-ish (Walter Landor's ferry and Renaissance-pigment story) with white and black. Clients: systematised palettes, often with moving gradients (VW Group) or heritage-derived hues (West Loop's subway-line and brick colours).",
+    "imagery": "CGI and 3D renders, big in-situ corporate signage, bird's-eye 'hyper-vision' photography (BANCOMAT), commissioned character illustration (nib), and interactive motion loops (West Loop).",
+    "presentation": [
+      "hero film in landscape and portrait cuts",
+      "challenge and idea",
+      "symbol story / construction",
+      "bespoke typeface specimen",
+      "colour and gradient system",
+      "motion",
+      "packaging or product",
+      "environmental signage",
+      "digital",
+      "results band of big numerals",
+      "awards and credits"
+    ],
+    "signatures": [
+      "A bespoke typeface as the hero of the identity",
+      "Moving gradient fields behind a simple mark",
+      "A symbol derived from a historic story (24 dots from the 1911 Solvay Conference; seagull 'B')",
+      "Results band with outsized numerals",
+      "Paired landscape and portrait key visuals",
+      "Ultramarine as a house signal",
+      "Bird's-eye photography as a visual point of view"
+    ],
+    "projects": [
+      {
+        "client": "Volkswagen Group",
+        "year": 2024,
+        "what": "'Progressive Movement' identity: 'The Group' typeface (with Studio René Bieder), moving gradients and CGI. iF Gold 2025",
+        "url": "https://landor.com/en/our-work/volkswagen-group/"
+      },
+      {
+        "client": "West Loop Community Org, Chicago",
+        "year": 2024,
+        "what": "'Into the Loop' place brand: user-drawn motion loops in heritage colours with custom industrial type",
+        "url": "https://landor.com/en/our-work/west-loop/"
+      },
+      {
+        "client": "BANCOMAT",
+        "year": null,
+        "what": "Unified brand with a seagull 'B' symbol and a bird's-eye 'hyper-vision' visual system",
+        "url": "https://landor.com/en/our-work/bancomat/"
+      }
+    ],
+    "layouts": [
+      {
+        "name": "Gradient-field key visual",
+        "for": "poster",
+        "recipe": "Canvas 2:3 portrait (with a 16:9 sibling). Full-bleed soft multi-stop gradient using 3 brand colours (e.g. deep blue → electric blue → pale cyan), flowing diagonally from bottom-left to top-right with one large blurred radial highlight at 65%/35%. The mark is centred at 30% of width in white. Headline at bottom-left at a 6% margin in the bespoke grotesk, 6% of width, sentence case, -0.02em tracking, 2 lines, white. A small descriptor line 1.4% of width above the headline. Feels like Landor: corporate-scale polish, with motion implied by the gradient."
+      },
+      {
+        "name": "Typeface hero specimen",
+        "for": "deck",
+        "recipe": "Canvas 16:9, white or brand-dark. Left 60%: the typeface name in a huge size (cap height 22% of height) cropped at the right edge of its column; below it, a waterfall of 5 sizes (from 8% to 1.5% of height). Right 40%: a glyph detail on a light grey #F2F2F2 tile (one distinctive letter such as G, K or S at 70% of tile height, with construction lines in the brand colour, 1px). Footer: 'Supports 200+ languages' plus a row of 6 script samples at 1.2% of height. Feels like Landor: a bespoke typeface as strategic asset."
+      },
+      {
+        "name": "Results band",
+        "for": "case-study",
+        "recipe": "Canvas web 1440 wide, ultramarine ground (#1B2DE0) full-bleed, height 35% of width. Three equal columns with 6% outer margins. Each column has a big numeral (e.g. '+10%') in white grotesk at 7% of width, -0.03em tracking, then a 2-line caption below at 1.1% of width in 80% white. Thin 1px white (30% opacity) vertical dividers between columns. Feels like Landor: business proof given the same stage as the design."
+      },
+      {
+        "name": "Hyper-vision aerial",
+        "for": "social",
+        "recipe": "Canvas 4:5. A top-down aerial photograph (a city square, beach or road) where a natural or crowd shape echoes the brand symbol, centred. A 6% margin. The brand symbol at top-left at 9% of width in white; one short line at the bottom (5% of width, white, sentence case). A gentle 20% darkening vignette at the bottom third for legibility. Feels like Landor: a single brand point of view applied consistently."
+      }
+    ]
+  },
+  {
+    "id": "wolff-olins",
+    "name": "Wolff Olins",
+    "city": "London / New York",
+    "url": "https://www.wolffolins.com",
+    "philosophy": "\"We create transformative brands that move businesses, people and the world forward.\" Ideas-led, culture-first brand consultancy (founded in 1965) that treats brands as operating systems and living behaviours (verbal, motion, people), not static logos. Every case is framed by business ambition and a stats strip.",
+    "type": {
+      "faces": [
+        "Monument Grotesk (UI, titles)",
+        "Untitled Serif (statements, body)",
+        "custom 'WO' display for the house mark",
+        "clients: expressive serifs with swash italics (Lloyds), heavy display grotesk (NYBG)"
+      ],
+      "notes": "Case title is 55px (3.8% of width) Monument Grotesk regular, sentence case; section heads 30px. The manifesto is Untitled Serif at about 40px with key words underlined (1px, offset 0.15em). Client posters mix huge display caps with fine serif text."
+    },
+    "palette": "House: black #000 and white with signal yellow #FFF200 for buttons, play icons and chips. Client palettes are bold and unexpected: mint #8EF0B5 (Lloyds), orange #F26A1B + magenta #E84FD0 + violet #7A4BE0 (NYBG), sage #A8C9A0 (Blank Street).",
+    "imagery": "Fashion-editorial street photography of real people with flash, often holding the printed identity up to camera. Architectural storefronts. Motion films. Product macro (drinks, cups). Plants and nature for cultural clients.",
+    "presentation": [
+      "hero in-situ",
+      "title + Industry / What We Did tags + stats strip",
+      "brand film",
+      "idea line",
+      "identity on posters held or worn by people",
+      "environment + macro split",
+      "storefront and interior",
+      "typography / verbal identity",
+      "social and app",
+      "results"
+    ],
+    "signatures": [
+      "Black canvas with a half-width image offset to the right half only",
+      "Serif statement with underlined keywords",
+      "Stats triptych of big numerals under the case title",
+      "Floating rounded pill navigation and outline tag chips",
+      "People holding a poster up to camera (brand as human prop)",
+      "Heavy display headline on a flat colour panel set into a photograph",
+      "Signal-yellow interface accent"
+    ],
+    "projects": [
+      {
+        "client": "Decathlon",
+        "year": 2024,
+        "what": "'Rewriting sport's playbook for billions of athletes': new symbol, the 'wonders of sport' platform and retail environments",
+        "url": "https://www.wolffolins.com/work/decathlon"
+      },
+      {
+        "client": "Lloyds",
+        "year": 2025,
+        "what": "Brand as operating system: the 'Cancara' serif philosophy, mint and green, 'Everyone has a next step forward'",
+        "url": "https://www.wolffolins.com/work/lloyds"
+      },
+      {
+        "client": "Blank Street",
+        "year": 2025,
+        "what": "Sage-green coffee identity with a square-dot wordmark, dimensional blade signs and Gen Z social growth",
+        "url": "https://www.wolffolins.com/work/blank-street"
+      }
+    ],
+    "layouts": [
+      {
+        "name": "Offset half on black",
+        "for": "case-study",
+        "recipe": "Canvas 16:10, background #000. One portrait 4:5 photograph placed in the RIGHT half only: x from 51% to 98%, top at 6%, bottom at 94%. The left half stays black except for an optional caption at bottom-left (x=2.4%, y=92%) in 0.9% of width grotesk, 60% white. No other elements. Alternate with full-width (2.4% margins) 16:9 frames and 2-up splits (0.5% gutter). Feels like Wolff Olins: an editorial pause, with confident emptiness on black."
+      },
+      {
+        "name": "Held-up poster portrait",
+        "for": "poster",
+        "recipe": "Canvas 4:5, light grey seamless background #EDEDED, hard frontal flash. A person's hands and forearms enter from the bottom corners, holding a slightly creased poster that fills 80% of the frame width, tilted 3–4°, so the face is hidden. On the poster: a flat brand colour ground (e.g. mint #8EF0B5), a large expressive serif headline of 2–3 words in the top-right quadrant (cap height 9% of poster height, black, with swash italic), a vertical list of 3 values in the left-centre in a smaller serif with tiny index numbers under each, and the brand symbol small at bottom-right. Feels like Wolff Olins: the identity as a human artefact, half fashion shoot, half manifesto."
+      },
+      {
+        "name": "Panel-in-photo ad",
+        "for": "social",
+        "recipe": "Canvas 9:16 or 4:5. A street-editorial photograph (person and city texture) fills the top 62%. The bottom 38% is a flat bright brand-colour panel, cut straight across, full width. On the panel, centred: a 2-word headline in a heavy, high-contrast display face at 15% of width, black, line-height 0.95. A tiny sign-off line at the bottom at 1.6% of width. Feels like Wolff Olins: an unexpected colour clash with personality-first type."
+      },
+      {
+        "name": "WO case header",
+        "for": "website",
+        "recipe": "Canvas web 1440 wide, #000. A floating pill nav centred at the top: width 55%, height 3.2% of width, fully rounded radius, 85% opaque dark grey (#1A1A1A), with the wordmark at its left and links at its right. Below, at y=12%: the client name at left (x=2.4%) in grotesk at 3.8% of width, white. Under it, 'Industry' and 'What We Did' labels with values in 60% white at 1.1% of width. Right column from 50% to 96%: an intro paragraph in serif at 1.4% of width, 1.45 line-height. Below, a stats row: three columns, numerals at 5% of width and a caption at 1% of width. Outline chips with 1px borders and full radius. Feels like Wolff Olins: consultancy rigour in a cultural wrapper."
+      }
+    ]
+  },
+  {
+    "id": "jkr",
+    "name": "Jones Knowles Ritchie",
+    "city": "London / New York",
+    "url": "https://www.jkrglobal.com",
+    "philosophy": "\"Be Distinctive Everywhere.\" \"Since 1990, we've helped brands be who they are, only more so.\" Build and relentlessly repeat distinctive brand assets (colour, shape, typeface, tone) across packaging, retail, uniforms and social. Known for retro-revival and appetite-driven, witty craft, with effectiveness up front.",
+    "type": {
+      "faces": [
+        "JKRRitchie (house light grotesk)",
+        "JKRKnowles (UI)",
+        "serif 'jkr' monogram",
+        "client custom display faces: Burger King 'Flame', Mozilla Sans/Slab, Yahoo custom serif"
+      ],
+      "notes": "House manifesto is set at 64px (4.4% of width) light grotesk with 1.4 line-height; scroll-revealed text moves from 25% grey to white. Client type is chunky, soft and custom, used as pattern ('GOOEY' wallpaper) and warped onto wrappers."
+    },
+    "palette": "House: charcoal #111 and white. Clients are saturated and appetite-led: BK flame orange #F5821F, BBQ brown #502314, mustard #F0B13D, tomato red #D62300; Mozilla black, green #00D230 and white; Yahoo purple #6001D2.",
+    "imagery": "Packshot flat-lays on a brand-colour seamless sweep. Wrapped products tumbling. Staff in uniform shot like fashion against a colour sweep. Roadside billboards in situ. Type-specimen grids. Logo construction on a white grid.",
+    "presentation": [
+      "hero film",
+      "title + story",
+      "logo reveal",
+      "typeface specimen",
+      "packaging: wrappers, bags, cups",
+      "uniforms on colour sweep",
+      "type wallpaper",
+      "restaurant or retail exterior",
+      "OOH billboard",
+      "social and app",
+      "results"
+    ],
+    "signatures": [
+      "One owned word repeated as an all-over type pattern",
+      "Custom chunky display face warped onto packs",
+      "Retro-revival of a heritage mark",
+      "Brand-colour seamless sweeps for products and uniforms",
+      "Billboard with one giant onomatopoeic word",
+      "Scroll-to-reveal manifesto text",
+      "Centred single-column case scroll on near-black with tiny edge-pinned labels"
+    ],
+    "projects": [
+      {
+        "client": "Burger King",
+        "year": 2021,
+        "what": "Revival of the 1969–99 bun logo, the 'Flame' typeface, food-colour palette, packaging and uniforms",
+        "url": "https://www.jkrglobal.com/work/burger-king"
+      },
+      {
+        "client": "Mozilla",
+        "year": 2024,
+        "what": "'Hear Mozilla Roar': flag symbol, uniwidth Mozilla Sans/Slab, black and green",
+        "url": "https://www.jkrglobal.com/work/mozilla"
+      },
+      {
+        "client": "RSPCA",
+        "year": 2024,
+        "what": "'It Takes a Society': repositioning for the charity's next 200 years",
+        "url": "https://www.jkrglobal.com/work/rspca"
+      }
+    ],
+    "layouts": [
+      {
+        "name": "Type wallpaper",
+        "for": "social",
+        "recipe": "Canvas 1:1 or 4:5. Background a deep brand colour (e.g. BBQ brown #502314). One owned word (the brand's signature descriptor) repeated in a chunky soft custom display face, in a dark tone-on-tone (#7A2E1A), filling the canvas in 4–5 rows. Rows offset by half a word, letters touching (tracking -0.02em), line-height 0.85, cropping off all edges. One product or the logo centred on top at 35% of width, in full colour with a soft shadow. Feels like JKR: an owned asset repeated until it becomes the brand."
+      },
+      {
+        "name": "Colour-sweep packshot",
+        "for": "packaging",
+        "recipe": "Canvas 4:5 or 16:9. Seamless single-colour sweep (bright brand orange #F5821F) with a soft floor shadow. 3–5 packs (bag, cup, wrapper, tray) arranged in a tight, slightly tumbling group at a 3/4 overhead angle, centred, covering 55% of width. Each pack uses one large custom-type word wrapped around its form (warped, at 40% of pack height), with the logo prominent on the cup. Bright even light and saturated colour. Feels like JKR: appetite, wit and distinctiveness in one frame."
+      },
+      {
+        "name": "One-word billboard",
+        "for": "signage",
+        "recipe": "Canvas 3:1 roadside billboard (shown in situ against a sky). Cream ground #F5EBDC. One onomatopoeic or sensory word (e.g. repeated letters) in a heavy soft display face, brand red #D62300, cap height 70% of board height, left-aligned at a 4% margin and running to 85% of width. On the right 12%: a vertical strip in the brand's secondary colour with a small rotated product name and the logo at the bottom. Feels like JKR: big personality, few words, instant recognition."
+      },
+      {
+        "name": "JKR case column",
+        "for": "case-study",
+        "recipe": "Canvas web 1440 wide, background #111. Tiny uppercase labels 'WORK' (x=2%) and 'MENU' (x=98%, right-aligned) pinned at the vertical centre of the viewport. Serif lowercase monogram centred at the top. Content column centred, x from 11% to 89% (78% width). Intro: a light grotesk headline at 4.4% of width, then two paragraphs at 1.1% of width in a column 45% wide, left-aligned. Media stacked in a single column with 8px gaps: 16:9 film, 16:9 still, 2-up specimens, 16:9 billboard. Footer: 'Find / Follow / Connect' stacked at 8% of width, light weight, with the second and third words in #555. Feels like JKR: gallery-dark, work-forward and confident."
+      }
+    ]
+  },
+  {
+    "id": "gander",
+    "name": "Gander",
+    "city": "Brooklyn, New York",
+    "url": "https://takeagander.com",
+    "philosophy": "\"Welcome to the Ganderverse. We're a team of earth-based creatives whose purpose is to unstick what's stuck, solve for x, and transform brilliant ideas into brands that can't be ignored.\" Research-first (survey insights open each case), then joyful, illustrated and anti-pretentious CPG and culture branding.",
+    "type": {
+      "faces": [
+        "Denim INK (house grotesk)",
+        "wild display lettering for section heads: inflated blackletter, brush script, chrome script",
+        "clients: custom old-world wordmarks, condensed festival caps"
+      ],
+      "notes": "Nav is 11px uppercase spaced across the full width. Project titles are about 9% of width, regular weight, sentence case. The intro statement is about 2.6% of width. Section heads use one-off expressive lettering against the calm grotesk. The footer carries a giant blob-letter wordmark across the full width."
+    },
+    "palette": "House: cream #FBF2EC with near-black #171717. Clients are food-bright: Graza chartreuse #D4E038 + olive-black #2F3A2A + leaf green; Celebrate Brooklyn yellow #FFE135, violet #C9A8F0, orange #F07A2A, pink #F2A0B0, cobalt #2E5BD9.",
+    "imagery": "Packaging in hands, in totes and on feet. Overhead product shots on striped fabric. One-ink hand-drawn character illustration sheets on cream. Festival documentation: stage banners, quilt-pattern backdrops, wheat-pasted posters.",
+    "presentation": [
+      "hero film full-width 16:9",
+      "title + story + services list",
+      "packaging macro",
+      "mascot illustration next to a flat colour block",
+      "lifestyle / in-hand",
+      "illustration library sheet",
+      "shipping box and merch",
+      "social",
+      "process ('Read more')"
+    ],
+    "signatures": [
+      "One-ink character illustration library on cream",
+      "Flat brand-colour blocks used as tiles in the image grid",
+      "Quilt or patchwork geometric pattern system",
+      "Wild display lettering against a calm grotesk",
+      "Rounded image tiles (≈6px) on cream with 1.5% gaps",
+      "Giant full-bleed wordmark as footer",
+      "Product shot with everyday props (sneakers, grocery bags)"
+    ],
+    "projects": [
+      {
+        "client": "Graza",
+        "year": 2022,
+        "what": "Squeezy-bottle olive oil: old-world custom wordmark, chartreuse and olive, mascot illustration system",
+        "url": "https://takeagander.com/project/graza"
+      },
+      {
+        "client": "Celebrate Brooklyn (BRIC)",
+        "year": 2023,
+        "what": "Festival identity based on quilting ('gathering'): patchwork geometry across banners, posters and the Bandshell",
+        "url": "https://takeagander.com/project/celebrate-brooklyn"
+      },
+      {
+        "client": "Smallhold",
+        "year": null,
+        "what": "Mushroom pesto in a mushroom-stem-shaped tub that makes the ingredient the hero",
+        "url": "https://takeagander.com/project/smallhold"
+      }
+    ],
+    "layouts": [
+      {
+        "name": "Mascot + colour block pair",
+        "for": "case-study",
+        "recipe": "Canvas 16:9 (two tiles). Cream ground #FBF2EC, 2.8% outer margins, 1.5% gap. Left tile (48.5% wide, 4:5): one character illustration in a single dark ink (#2F3A2A) centred at 55% of tile width, on cream, with action lines and small flying objects. Right tile, same size: a pure flat brand colour (chartreuse #D4E038) with nothing on it. Tiles have 6px corner radius. Below, a full-width thin strip tile (12% of height) in a lighter tint of the same colour. Feels like Gander: playful rhythm, illustration and colour as equals."
+      },
+      {
+        "name": "Quilt festival poster",
+        "for": "poster",
+        "recipe": "Canvas 2:3 portrait. A 6×9 patchwork grid of squares (no gutters), each square holding one geometric quilt block: concentric arcs, checkerboard, petals, sunbursts, half circles. Use 5–6 bright festival colours (yellow, violet, orange, pink, cobalt, forest), with no two adjacent squares the same. A central 2×3-square window is knocked out to a solid colour carrying the event name in condensed caps (cap height 7% of height, 2 lines, centred) and dates beneath at 2%. Feels like Gander: a community-crafted, joyful system made from simple parts."
+      },
+      {
+        "name": "Illustration library sheet",
+        "for": "deck",
+        "recipe": "Canvas 16:9, cream #FBF2EC. 14–18 small one-ink spot illustrations (characters, ingredients, tools, sparkles) scattered on a loose 6×3 grid with ±4% jitter, each about 9% of width. A circular text badge (claim set around a 10%-diameter circle, small serif caps, +15% tracking) placed in the centre-right as one of the items. Single ink colour (#2F3A2A). No headline. Feels like Gander: a brand universe of characters ready to deploy anywhere."
+      },
+      {
+        "name": "Gander case header",
+        "for": "website",
+        "recipe": "Canvas web 1440 wide, cream. Nav: 4 items at 11px uppercase spaced evenly across the full width, with the logo at far left. A full-width 16:9 hero film tile (radius 6px, 1.2% margins). Title at x=1.2%, size 9% of width, regular grotesk, sentence case, -0.02em tracking. Body text from 13% to 55% of width at 1.1% of width size. Services list right-aligned in a column at 72–85%, 0.75% of width, one per line. A 'Read more +' link under the body. Feels like Gander: friendly and editorial, with the work leading and the warmth in the cream."
+      }
+    ]
+  }
+]

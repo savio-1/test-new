@@ -79,15 +79,19 @@ PG.fontWeight = function (name, want) {
   return f.w.reduce((best, w) => (Math.abs(w - want) < Math.abs(best - want) ? w : best), f.w[0]);
 };
 
-/* One <link> per family, so a single bad family can't block the rest. */
-PG._loadedFonts = new Set();
+/* One <link> per family, so a single bad family can't block the rest.
+   Returns a promise that settles once the stylesheet has loaded (or failed). */
+PG._loadedFonts = new Map();
 PG.loadFont = function (name) {
-  if (!name || PG._loadedFonts.has(name) || !PG.FONTS[name]) return;
-  PG._loadedFonts.add(name);
+  if (!name || !PG.FONTS[name]) return Promise.resolve();
+  if (PG._loadedFonts.has(name)) return PG._loadedFonts.get(name);
   const fam = name.replace(/ /g, '+');
   const w = PG.FONTS[name].w.join(';');
   const link = document.createElement('link');
   link.rel = 'stylesheet';
   link.href = `https://fonts.googleapis.com/css2?family=${fam}:wght@${w}&display=swap`;
+  const p = new Promise((res) => { link.onload = res; link.onerror = res; });
+  PG._loadedFonts.set(name, p);
   document.head.appendChild(link);
+  return p;
 };

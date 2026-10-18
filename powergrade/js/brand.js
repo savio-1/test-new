@@ -18,6 +18,25 @@ window.PG = window.PG || {};
     cyber: 'wm-constructed', riso: 'wm-mixed', architectural: 'wm-extended', darkLuxury: 'wm-extended'
   };
   /* Default logo per direction: the first curated mark preset tagged for it, plus a matching wordmark style. */
+  /* Brand object shared by all renderers. */
+  const initials = (n) => n.split(' ').map((x) => x[0]).join('').slice(0, 2);
+  PG.brandFor = function (brief) {
+    const ind = PG.byId(PG.INDUSTRIES, brief.industry);
+    const name = ((brief.name || '').trim() || ind.sampleName);
+    return { name, initial: name.replace(/^the\s+/i, '').charAt(0).toUpperCase(), initials: initials(name.replace(/^the\s+/i, '')).toUpperCase(), logo: brief.logo || null };
+  };
+
+  /* Layout family per direction: recipes declare which families they suit. */
+  const KIT = {
+    minimal: ['quietLux', 'japaneseMinimal', 'softWellness', 'architectural', 'clinical'],
+    editorial: ['editorialLux', 'magazine', 'heritage', 'artdeco', 'institutional', 'organic', 'warmHuman'],
+    bold: ['brutalist', 'maximal', 'kinetic', 'retro', 'memphis', 'y2k', 'handmade', 'riso', 'bauhaus'],
+    friendly: ['friendlyGeo', 'neofintech', 'kidsJoy', 'ecoOptimist', 'civic'],
+    tech: ['darkprecision', 'gradient', 'scientific', 'cyber', 'dynamicSystem', 'darkLuxury', 'modernist', 'swiss']
+  };
+  PG.KITS = KIT;
+  PG.kitOf = (id) => Object.keys(KIT).find((k) => KIT[k].includes(id)) || 'editorial';
+
   PG.DIR_LOGO = {};
   PG.initDirLogos = function () {
     if (!PG.MARK_PRESETS) return;
@@ -83,6 +102,18 @@ window.PG = window.PG || {};
     return `<span class="lk-w" style="font-size:${f(px)}px;color:${col.fg}">${esc(b.name)}</span>`;
   };
   const defaults = (st) => (st.params || []).reduce((o, p) => (o[p.id] = p.default, o), {});
+
+  /* Wordmark as {svg, w, h} for canvas painting (null when the direction has no wordmark style). */
+  PG.brandWordSvg = function (t, b, variant) {
+    const spec = wordSpec(t, b);
+    if (!spec || !spec.style || !PG.WORDMARK_STYLES) return null;
+    const st = PG.WORDMARK_STYLES.find((s) => s.id === spec.style); if (!st) return null;
+    const col = colorsFor(t, b, variant);
+    try {
+      const r = st.render(b.name, { fg: col.fg, bg: variant === 'reverse' ? t.primary : variant === 'inverse' ? t.ink : t.bg, accent: variant ? col.fg : t.primary, font: t.display, weight: t.fdw }, Object.assign({}, defaults(st), spec.params || {}));
+      return { svg: r.svg, w: r.w, h: r.h };
+    } catch (e) { return null; }
+  };
 
   PG.brandLockup = function (t, b, px, variant) {
     const col = colorsFor(t, b, variant);

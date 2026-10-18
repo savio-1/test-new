@@ -17,17 +17,30 @@
           <div class="ft"><span class="note">${refs.length} reference${refs.length === 1 ? '' : 's'}</span><button class="tbtn sm" data-a="pickDir" data-d="${d.id}">Use direction</button></div></article>`;
       }).join('')}</div>`;
     }
+    if (L.tab === 'studios') {
+      const list = (PG.STUDIOS || []).filter((st) => !q || JSON.stringify([st.name, st.city, st.philosophy, st.signatures, st.type, st.palette]).toLowerCase().includes(q));
+      if (!list.length) return '<div class="empty">No studios match.</div>';
+      const by = (name) => Object.values(PG.Artwork.LAYOUTS).flat().filter((l) => l.by === name);
+      return `<p class="note" style="margin:0 0 18px">The studios whose published work the layouts are drawn from. Notes summarise what their project pages show: how they set type, use colour, shoot imagery and pace a case study.</p>
+        <div class="studios">${list.map((st) => `<article class="studio"><header><h3>${esc(st.name)}${st.city ? ` <span class="note">${esc(st.city)}</span>` : ''}</h3>${st.url ? `<a class="note" href="${esc(st.url)}" target="_blank" rel="noopener">${esc(st.url.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, ''))} ↗</a>` : ''}</header>
+          <p>${esc(st.philosophy || '')}</p>
+          <dl>${[['Type', typeof st.type === 'object' && st.type ? st.type.notes || (st.type.faces || []).join(', ') : st.type], ['Colour', st.palette], ['Imagery', st.imagery], ['Case study', Array.isArray(st.presentation) ? st.presentation.join(' → ') : st.presentation]].filter((x) => x[1]).map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}</dl>
+          ${(st.signatures || []).length ? `<ul>${st.signatures.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
+          ${(st.projects || []).length ? `<div class="refs">${st.projects.slice(0, 6).map((x) => typeof x === 'string' ? `<span>${esc(x)}</span>` : `<a class="ref" href="${esc(x.url || st.url || '#')}" target="_blank" rel="noopener"><b>${esc(x.client || x.name)}${x.year ? ' · ' + x.year : ''}</b><span>${esc(x.what || '')}</span></a>`).join('')}</div>` : ''}
+          ${by(st.name).length ? `<div class="note" style="margin-top:10px">Layouts after ${esc(st.name)}: ${by(st.name).map((l) => esc(l.name)).join(', ')}</div>` : ''}</article>`).join('')}</div>`;
+    }
     if (L.tab === 'layouts') {
-      const d = App.dir(), tn = App.tune();
-      return Object.keys(PG.TEMPLATES).filter((tp) => !PG.TEMPLATES[tp].three).map((tp) => {
-        const T = PG.TEMPLATES[tp], keys = Object.keys(T.layouts).filter((k) => !q || (T.layouts[k].name + T.layouts[k].ref).toLowerCase().includes(q));
-        if (!keys.length) return '';
-        const w = T.w >= T.h ? 300 : 170;
-        return `<h3 class="h2" style="margin-top:8px">${esc(T.name)} <span class="note">${keys.length} layouts · rendered in ${esc(d.name)}</span></h3><div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(${w + 20}px,1fr));margin-bottom:34px">${keys.map((k) => {
-          const r = PG.renderBoard(tp, d, tn, S.brief, { w, h: 260 }, { layout: k });
-          return `<article class="dcard"><div style="background:var(--ui-card);border-radius:6px;padding:16px;display:grid;place-items:center;min-height:200px">${r.html}</div><h3 style="font-size:14px">${esc(T.layouts[k].name)}</h3><p style="font-size:12px">${esc(T.layouts[k].ref)}</p><div class="ft"><span></span><button class="tbtn sm" data-a="useLayout" data-tp="${tp}" data-l="${k}">Use layout</button></div></article>`;
-        }).join('')}</div>`;
-      }).join('');
+      const d = App.dir(), cur = App.tune().art || {};
+      return Object.keys(PG.Artwork.LAYOUTS).map((role) => {
+        const list = PG.Artwork.LAYOUTS[role].filter((l) => !q || [l.name, l.by || '', l.note || '', role].join(' ').toLowerCase().includes(q));
+        if (!list.length) return '';
+        const [w, h] = PG.Artwork.ROLE_SIZE[role] || [1600, 1200], wide = w / h > 1.25;
+        const active = cur[role] || PG.Artwork.pick(role, d.id).id;
+        return `<h3 class="h2" style="margin-top:8px">${esc(PG.Mocks.ROLE_NAMES[role] || role)} <span class="note">${list.length} layout${list.length > 1 ? 's' : ''} · shown in route ${'ABC'[S.route]}, ${esc(d.name)}</span></h3>
+          <div class="cards lay-cards${wide ? ' wide' : ''}">${list.map((l) => `<article class="dcard lay${l.id === active ? ' on' : ''}"><div class="lay-th" style="aspect-ratio:${w}/${h}"><span data-lay="${role}|${l.id}" class="loading"></span></div>
+            <h3>${esc(l.name)}</h3>${l.by ? `<div class="sc">After ${esc(l.by)}</div>` : ''}${l.note ? `<p>${esc(l.note)}</p>` : ''}
+            <div class="ft"><span class="note">${l.id === active ? 'In use' : ''}</span><button class="tbtn sm" data-a="useLayout" data-r="${role}" data-l="${l.id}">Use for route ${'ABC'[S.route]}</button></div></article>`).join('')}</div>`;
+      }).join('') || '<div class="empty">No layouts match.</div>';
     }
     if (L.tab === 'photos') {
       const list = (PG.PHOTOS || []).filter((p) => !q || (p.alt + p.cats.join(' ') + p.industries.join(' ')).toLowerCase().includes(q));
@@ -55,26 +68,42 @@
     }
     return `<div class="prose"><h3>How a brief becomes directions</h3>
       <p>Industry, business model, audience and price tier each carry data: a starting personality, the category's visual codes, and tags to favour or avoid. Every direction is scored out of 100: personality fit 34%, category fit 30% (set by the conform, balance or disrupt strategy), audience 16%, price tier 12%, business model 8%. The shortlist trades fit against similarity so the routes really differ.</p>
-      <h3>How the board is built</h3>
-      <p>Each touchpoint has several layout archetypes drawn from patterns on leading studio, fashion and product sites. Photography is chosen for the industry from a licensed library and colour-graded to the direction (black and white, faded film, duotone and so on). Packaging, stationery, devices and outdoor are rendered in 3D with three.js under CC0 studio lighting, with the brand artwork painted onto each surface.</p>
+      <h3>How applications are made</h3>
+      <p>Every application is a layout recipe written in proportions, after how a named studio designs that piece (see Studios). The recipe is painted with the route's colour, type, logo and graded photography. For a mockup, the artwork is warped into the photograph's marked surface with a perspective transform and multiplied into the photo's own light, so paper texture, folds and shadows show through. Your own PSD mockups work the same way: their smart objects are found and replaced.</p>
       <p>Accessibility floors follow WCAG 2.2: 4.5:1 by default and 7:1 for older adults and the general public.</p>
       <h3>Research the engine cites</h3>${PG.RESEARCH.map((r) => `<div class="rsrc"><b>${esc(r.title)}</b><div>${esc(r.finding)}<br><span class="note">${esc(r.source)}${r.url ? ` · <a href="${r.url}" target="_blank" rel="noopener">${r.url.replace('https://', '')}</a>` : ''}</span></div></div>`).join('')}</div>`;
   }
 
+  /* Layout thumbnails are painted one at a time, small, after the page is in place. */
+  let paintRun = 0;
+  async function paintThumbs() {
+    const run = ++paintRun, ctx = App.artCtx(S.route);
+    for (const el of Array.from(document.querySelectorAll('[data-lay]'))) {
+      if (run !== paintRun || !el.isConnected) return;
+      const [role, id] = el.dataset.lay.split('|'), [w, h] = PG.Artwork.ROLE_SIZE[role] || [1600, 1200], k = 560 / Math.max(w, h);
+      try {
+        const cv = await PG.Artwork.paint(role, Math.round(w * k), Math.round(h * k), ctx, id);
+        const url = await new Promise((res) => cv.toBlob((b) => res(URL.createObjectURL(b)), 'image/jpeg', 0.88));
+        if (el.isConnected) { const im = new Image(); im.src = url; im.alt = id; el.replaceWith(im); }
+      } catch (e) { el.classList.remove('loading'); el.textContent = 'Could not draw'; }
+    }
+  }
+
   App.views.library = {
     render(main) {
-      const tabs = [['directions', 'Directions'], ['layouts', 'Layouts'], ['photos', 'Photography'], ['industries', 'Industries'], ['audiences', 'Audiences'], ['references', 'References'], ['method', 'Method']];
+      const tabs = [['directions', 'Directions'], ['studios', 'Studios'], ['layouts', 'Layouts'], ['photos', 'Photography'], ['industries', 'Industries'], ['audiences', 'Audiences'], ['references', 'References'], ['method', 'Method']];
       main.innerHTML = `<div class="lib"><div class="bar"><div class="seg">${tabs.map(([k, v]) => `<button class="${L.tab === k ? 'on' : ''}" data-a="libTab" data-k="${k}">${v}</button>`).join('')}</div>
         ${L.tab !== 'method' ? `<label class="search" style="margin:0;width:min(300px,100%)">${App.ICON.search}<input id="lib-q" type="text" data-i="libQ" placeholder="Search" value="${esc(L.q)}" autocomplete="off"></label>` : ''}</div>
         <div class="lib-scroll" id="lib-body">${body()}</div></div>`;
+      paintThumbs();
     },
     refresh() { App.renderMain(); }
   };
   Object.assign(App.act, {
     libTab(el) { L.tab = el.dataset.k; L.q = ''; App.renderMain(); },
     libConf(el) { L.conf = el.dataset.c; $('#lib-body').innerHTML = body(); },
-    useInd(el) { S.brief.industry = el.dataset.i; S.brief.manual = {}; S.pinned = false; S.view = 'board'; App.changed('brief'); App.renderAll(); },
-    useLayout(el) { const tn = App.tune(); tn.layouts = tn.layouts || {}; tn.layouts[el.dataset.tp] = el.dataset.l; App.save(); App.toast('Layout set for ' + PG.TEMPLATES[el.dataset.tp].name); }
+    useInd(el) { S.brief.industry = el.dataset.i; S.brief.manual = {}; S.view = 'canvas'; App.changed('brief'); App.renderAll(); },
+    useLayout(el) { const tn = App.tune(); tn.art = tn.art || {}; tn.art[el.dataset.r] = el.dataset.l; App.changed('tune'); App.toast(`${PG.Mocks.ROLE_NAMES[el.dataset.r] || el.dataset.r} layout set for route ${'ABC'[S.route]}`); }
   });
-  Object.assign(App.inp, { libQ(el) { L.q = el.value; $('#lib-body').innerHTML = body(); } });
+  Object.assign(App.inp, { libQ(el) { L.q = el.value; $('#lib-body').innerHTML = body(); paintThumbs(); } });
 })();
