@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Logo Lab Test Sheet</title>
+<style>
+  :root { --bg: #F4F1EA; --card: #FBFAF6; --ink: #141414; --muted: #8A857B; --line: #E2DDD2; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 32px; background: var(--bg); color: var(--ink); font: 12px/1.4 "Inter", system-ui, sans-serif; }
+  h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  h2 { font-size: 15px; margin: 0 0 14px; letter-spacing: -0.005em; }
+  .meta { color: var(--muted); margin-bottom: 24px; }
+  section { margin: 0 0 36px; padding: 24px; background: var(--card); border: 1px solid var(--line); border-radius: 6px; width: 1376px; }
+  .grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 12px; }
+  .tile { border: 1px solid var(--line); border-radius: 4px; background: #fff; padding: 10px 10px 8px; }
+  .tile.dark { background: #121212; }
+  .tile.dark .lab, .tile.dark .lab b { color: #CFCAC0; }
+  .tile svg { display: block; width: 100%; height: auto; }
+  .tile .lab { margin-top: 6px; font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tile .lab b { color: var(--ink); font-weight: 600; }
+  .fam { display: grid; grid-template-columns: 180px repeat(3, 1fr) 180px repeat(3, 1fr); gap: 10px; align-items: center; }
+  .fam .name { font-size: 11px; line-height: 1.3; }
+  .fam .name b { display: block; font-size: 12px; }
+  .fam .name span { color: var(--muted); font-size: 10px; }
+  .wm { display: grid; grid-template-columns: 200px 1fr 1fr 1fr; gap: 16px; align-items: center; padding: 12px 0; border-top: 1px solid var(--line); }
+  .wm:first-of-type { border-top: 0; }
+  .wm .cell { height: 64px; display: flex; align-items: center; }
+  .wm .cell svg { max-height: 64px; max-width: 100%; width: auto; height: auto; }
+  .wm .cell.tall { height: 150px; }
+  .wm .cell.tall svg { max-height: 150px; }
+</style>
+</head>
+<body>
+<h1>Powergrade Logo Lab</h1>
+<div class="meta" id="meta"></div>
+<div id="out"></div>
+<script src="../js/data/fonts.js"></script>
+<script src="../js/logolab.js"></script>
+<script>
+(async function () {
+  const q = new URLSearchParams(location.search);
+  const C = { fg: q.get('fg') || '#141414', bg: '#FFFFFF', accent: q.get('accent') || '#E4572E', name: q.get('name') || 'Maison Rue', font: q.get('font') || 'Inter Tight', weight: +(q.get('weight') || 700), seed: 3 };
+  const out = document.getElementById('out');
+  const only = q.get('only');
+  await Promise.race([Promise.all([PG.markReady(C), PG.wordmarkReady(null, C), PG.logoFontsReady([{ font: 'Inter', weight: 600 }])]), new Promise((r) => setTimeout(r, 15000))]);
+  document.getElementById('meta').textContent = `${PG.MARK_FAMILIES.length} families · ${PG.MARK_PRESETS.length} presets · ${PG.GRIDMARK.presets.length} grid presets · ${PG.WORDMARK_STYLES.length} wordmark styles · ${PG.LOGO_LESSONS.length} lessons · brand face ${C.font} ${C.weight}`;
+  const tile = (svg, label, dark) => `<div class="tile${dark ? ' dark' : ''}">${svg}<div class="lab">${label}</div></div>`;
+  const sec = (id, title, html) => `<section id="${id}"><h2>${title}</h2>${html}</section>`;
+  let html = '';
+
+  PG.MARK_GROUPS.forEach((g) => {
+    if (only && only !== 'families' && only !== g) return;
+    const fams = PG.MARK_FAMILIES.filter((f) => f.group === g);
+    let rows = '';
+    for (let i = 0; i < fams.length; i += 2) {
+      rows += '<div class="fam" style="margin-bottom:10px">';
+      fams.slice(i, i + 2).forEach((f) => {
+        rows += `<div class="name"><b>${f.name}</b><span>${f.id}</span></div>`;
+        [null, 11, 23].forEach((s, k) => {
+          const p = s ? PG.randomMarkParams(f.id, s) : {};
+          rows += tile(PG.renderMark(f.id, p, C, null), k ? 'random ' + s : '<b>defaults</b>');
+        });
+      });
+      rows += '</div>';
+    }
+    html += sec('g-' + g, `${g} · ${fams.length} families (defaults + two random parameter sets)`, rows);
+  });
+
+  if (!only || only === 'presets') {
+    let t = '';
+    PG.MARK_PRESETS.forEach((p, i) => { const dark = i % 9 === 4; t += tile(PG.renderMark(p.family, p.params, dark ? Object.assign({}, C, { fg: '#F4F1EA' }) : C, null), `<b>${p.name}</b> · ${p.family}`, dark); });
+    html += sec('presets', `Mark presets · ${PG.MARK_PRESETS.length}`, `<div class="grid">${t}</div>`);
+    let g = '';
+    PG.GRIDMARK.presets.forEach((p) => { g += tile(PG.GRIDMARK.renderSvg(p.spec, C), `<b>${p.name}</b>`); });
+    [1, 2, 3, 4].forEach((s) => { g += tile(PG.GRIDMARK.renderSvg(PG.GRIDMARK.random(s * 17, 3, 3), C), 'random 3×3 seed ' + s * 17); });
+    html += sec('grid', `Grid constructor · ${PG.GRIDMARK.presets.length} presets + random`, `<div class="grid">${g}</div>`);
+  }
+
+  if (!only || only === 'wordmarks') {
+    const names = ['Lumen', 'Maison Rue', 'Northwind'];
+    const ws = PG.WORDMARK_STYLES;
+    const half = Math.ceil(ws.length / 2);
+    [[0, half], [half, ws.length]].forEach(([a, b], k) => {
+      let rows = '';
+      ws.slice(a, b).forEach((s) => {
+        const tall = s.id === 'wm-vertical' || s.id === 'wm-circular';
+        rows += `<div class="wm"><div class="name"><b>${s.name}</b><br><span style="color:#8A857B;font-size:10px">${s.id} · ${s.inspiredBy}</span></div>` +
+          names.map((n) => `<div class="cell${tall ? ' tall' : ''}">${PG.renderWordmark(s.id, n, C).svg}</div>`).join('') + '</div>';
+      });
+      html += sec('wm-' + (k + 1), `Wordmarks ${a + 1}–${b} of ${ws.length}`, rows);
+    });
+  }
+  out.innerHTML = html;
+  window.__ready = true;
+})();
+</script>
+</body>
+</html>

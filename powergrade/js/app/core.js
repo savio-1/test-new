@@ -160,6 +160,9 @@ window.PG = window.PG || {};
     const v = App.views[S.view] || App.views.board;
     $('#main').innerHTML = '';
     v.render($('#main'));
+    // Re-render once the active logo's fonts are measurable (wordmarks are fitted to real metrics).
+    const p = PG.ensureLogoFonts && PG.ensureLogoFonts(PG.tokens(App.dir(), App.tune(), S.brief), App.brand());
+    if (p) p.then(() => App.renderMain());
   };
   App.renderAll = function () { App.renderTop(); App.renderSide(); App.renderMain(); };
 

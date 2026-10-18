@@ -56,7 +56,8 @@ PG.FONTS = {
   'Michroma':              { w: [400], cls: 'sans' },
   'Cinzel':                { w: [400, 600, 700], cls: 'serif' },
   'Gloock':                { w: [400], cls: 'serif' },
-  'Darker Grotesque':      { w: [500, 700, 900], cls: 'sans' }
+  'Darker Grotesque':      { w: [500, 700, 900], cls: 'sans' },
+  'Pinyon Script':         { w: [400], cls: 'hand' }
 };
 
 PG.FALLBACK = {

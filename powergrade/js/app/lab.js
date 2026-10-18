@@ -2,12 +2,12 @@
    and lockup tests (sizes, reversed, on colour). "Use for brand" applies the choice across every mockup. */
 (function () {
   const App = PG.App, S = App.S, esc = App.esc, $ = App.$, $$ = App.$$;
-  const L = App.LS.get('lab', { tab: 'marks', group: 'all', family: null, params: {}, style: null, wparams: {}, grid: null, tool: { t: 'quarter', r: 0, color: 'fg' } });
+  const L = App.LS.get('lab2', { tab: 'marks', group: 'all', family: null, params: {}, style: null, wparams: {}, grid: null, tool: { t: 'quarter', r: 0, color: 'fg' } });
 
   const ready = () => !!(PG.MARK_FAMILIES && PG.renderMark);
   const fam = (id) => (PG.MARK_FAMILIES || []).find((f) => f.id === id);
   const defaults = (list) => (list || []).reduce((o, p) => (o[p.id] = p.default, o), {});
-  const saveL = () => App.LS.set('lab', L);
+  const saveL = () => App.LS.set('lab2', L);
   const tok = () => PG.tokens(App.dir(), App.tune(), S.brief);
   const colorsOn = (t, where) => {
     const b = App.brand();
@@ -39,7 +39,7 @@
   }
 
   /* Lockup inside an artboard scope so brand CSS variables apply. */
-  const lockupPreview = (t, over) => `<span class="ab" style="position:relative;display:inline-flex;transform:none;background:transparent;overflow:visible;${PG.cssVars(t)}">${PG.brandLockup(t, Object.assign(App.brand(), { logo: Object.assign({}, S.brief.logo || {}, over) }), 24)}</span>`;
+  const lockupPreview = (t, over) => `<span class="ab" style="position:relative;display:inline-flex;transform:none;background:transparent;overflow:visible;${PG.cssVars(t)}">${PG.brandLockup(t, Object.assign(App.brand(), { logo: Object.assign({}, S.brief.logo || {}, over) }), 16)}</span>`;
   function heroHtml(t) {
     const spec = L.tab === 'words' ? null : current();
     if (L.tab === 'words') {
@@ -111,12 +111,12 @@
     const logo = S.brief.logo || {};
     return `<h3 class="h2">${esc(title)}<button class="tbtn sm" data-a="labRandom">${App.ICON.shuffle} Random</button></h3>
       ${params.map(ctrl).join('') || '<p class="note">No controls for this one.</p>'}
-      ${L.tab === 'grid' ? `<label class="f">Symmetry<select data-c="labSym"><option value="none">None</option><option value="mirror-x">Mirror</option><option value="mirror-y">Mirror vertical</option><option value="rotational">Rotational</option></select></label>` : ''}
+      ${L.tab === 'grid' ? `<label class="f">Symmetry<select data-c="labSym"><option value="auto">Auto</option><option value="none">None</option><option value="mirror-x">Mirror</option><option value="mirror-y">Mirror vertical</option><option value="rotational">Rotational</option></select></label>` : ''}
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><button class="tbtn primary" data-a="labApply">Use for ${esc(App.brand().name)}</button><button class="tbtn" data-a="labCopy">Copy SVG</button></div>
       <div class="note">${logo.mark || logo.word ? `Brand logo: ${logo.mark ? (logo.mark.grid ? 'grid mark' : esc((fam(logo.mark.family) || {}).name || 'custom mark')) : 'direction default mark'} + ${logo.word ? esc(((PG.WORDMARK_STYLES || []).find((s) => s.id === logo.word.style) || {}).name || 'custom wordmark') : 'typeset wordmark'}. <button class="link" data-a="labReset">Reset to direction default</button>` : 'The board uses the direction\'s default logo until you choose one here.'}</div>
       <div class="f">Lockup<div class="seg">${['horizontal', 'stacked'].map((k) => `<button class="${(logo.lockup || 'horizontal') === k ? 'on' : ''}" data-a="labLockup" data-k="${k}">${k[0].toUpperCase() + k.slice(1)}</button>`).join('')}</div></div>
       <div class="f">No symbol<input class="chk" type="checkbox" data-c="labNoMark" ${logo.mark && logo.mark.none ? 'checked' : ''}></div>
-      ${lessons.length ? `<p class="lbl" style="margin-top:18px">Lessons from the greats</p>${lessons.map((l) => `<div class="lesson"><b>${esc(l.title || l.brand || '')}</b> ${esc(l.lesson || l.text || l.note || '')}</div>`).join('')}` : ''}`;
+      ${lessons.length ? `<p class="lbl" style="margin-top:18px">Lessons from the greats</p>${lessons.map((l) => `<div class="lesson"><b>${esc(l.brand)}</b> <span style="color:var(--ui-fg-3)">${esc(l.studio || '')}${l.year ? ', ' + l.year : ''}</span><br>${esc(l.lesson)}${l.link ? ` <button class="link" data-a="labLesson" data-k="${l.link.kind}" data-i="${l.link.id}">Try it →</button>` : ''}</div>`).join('')}` : ''}`;
   }
 
   function render(main) {
@@ -168,7 +168,7 @@
       redraw(['hero', 'gal']);
     },
     labRandom() {
-      if (L.tab === 'grid') { const g = current().grid; L.grid = PG.GRIDMARK.random(Math.floor(Math.random() * 1e6), g.cols, g.rows, L.sym || 'none'); }
+      if (L.tab === 'grid') { const g = current().grid; L.grid = PG.GRIDMARK.random(Math.floor(Math.random() * 1e6), g.cols, g.rows, { symmetry: L.sym || 'auto' }); }
       else if (L.tab === 'words') { const st = PG.WORDMARK_STYLES[Math.floor(Math.random() * PG.WORDMARK_STYLES.length)]; L.style = st.id; L.wparams = randomFor(st.params || []); }
       else { const f = fam((current() || {}).family); if (f) L.params = randomFor(f.params); }
       redraw();
@@ -179,6 +179,7 @@
       else logo.mark = current();
       S.brief.logo = logo; App.changed('logo'); App.toast('Logo applied to every mockup');
     },
+    labLesson(el) { if (el.dataset.k === 'wordmark') { L.tab = 'words'; L.style = el.dataset.i; L.wparams = {}; } else { L.tab = 'marks'; L.family = el.dataset.i; L.params = {}; } saveL(); App.renderMain(); },
     labReset() { S.brief.logo = null; App.changed('logo'); },
     labLockup(el) { S.brief.logo = Object.assign({}, S.brief.logo || {}, { lockup: el.dataset.k }); App.changed('logo'); },
     labCopy() {

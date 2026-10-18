@@ -74,7 +74,8 @@
       g.style.gridColumn = `span ${span}`;
       const f = $('.frame', g);
       f.style.aspectRatio = 'auto';
-      const k = cols === 1 ? 0.78 : cols === 2 ? (span === 2 ? 0.62 : 0.74) : 0.8;
+      // A full-row item in two columns gets a taller frame so websites and spreads read large.
+      const k = cols === 1 ? 0.78 : cols === 2 ? (span === 2 ? 1.0 : 0.78) : 0.8;
       f.style.height = Math.round(colW * k) + 'px';
     });
     $$('.gi', gal).forEach((g) => fillFrame(ITEMS.find((x) => x.id === g.dataset.it), $('.frame', g)));

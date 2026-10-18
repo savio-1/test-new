@@ -9,7 +9,36 @@ window.PG = window.PG || {};
   const f = (n) => Math.round(n * 10) / 10;
 
   /* Direction → default mark family and wordmark style (ids from js/logolab.js, used once it loads). */
-  PG.DIR_LOGO = PG.DIR_LOGO || {};
+  const WORD = {
+    swiss: 'wm-grotesk', institutional: 'wm-smallcaps', modernist: 'wm-geo-o', neofintech: 'wm-dot', gradient: 'wm-grotesk', darkprecision: 'wm-kinetic',
+    scientific: 'wm-mono', editorialLux: 'wm-didone', quietLux: 'wm-smallcaps', artdeco: 'wm-fashion', heritage: 'wm-registered', brutalist: 'wm-stencil',
+    friendlyGeo: 'wm-rounded', warmHuman: 'wm-soft-serif', softWellness: 'wm-serif-italic', clinical: 'wm-dot', organic: 'wm-soft-serif', handmade: 'wm-highlight',
+    ecoOptimist: 'wm-underline', retro: 'wm-lined', y2k: 'wm-overlap', bauhaus: 'wm-geo-o', memphis: 'wm-split-colour', japaneseMinimal: 'wm-smallcaps',
+    magazine: 'wm-condensed', dynamicSystem: 'wm-crop', maximal: 'wm-overlap', kinetic: 'wm-shear', kidsJoy: 'wm-rounded', civic: 'wm-boxed',
+    cyber: 'wm-constructed', riso: 'wm-mixed', architectural: 'wm-extended', darkLuxury: 'wm-extended'
+  };
+  /* Default logo per direction: the first curated mark preset tagged for it, plus a matching wordmark style. */
+  PG.DIR_LOGO = {};
+  PG.initDirLogos = function () {
+    if (!PG.MARK_PRESETS) return;
+    PG.DIRECTIONS.forEach((d) => {
+      const pre = PG.MARK_PRESETS.find((p) => (p.directions || []).includes(d.id));
+      PG.DIR_LOGO[d.id] = { mark: pre ? { family: pre.family, params: pre.params } : null, word: WORD[d.id] ? { style: WORD[d.id], params: {} } : null };
+    });
+  };
+  PG.initDirLogos();
+
+  /* Wordmarks measure text, so their faces must be loaded first. Resolves once; then callers re-render. */
+  const loadedStyles = new Set();
+  PG.ensureLogoFonts = function (t, b) {
+    if (!PG.wordmarkReady || !PG.WORDMARK_STYLES) return null;
+    const ws = wordSpec(t, b), id = ws && ws.style;
+    const key = (id || '') + '|' + t.display;
+    if (loadedStyles.has(key)) return null;
+    loadedStyles.add(key);
+    const st = PG.WORDMARK_STYLES.filter((s) => s.id === id);
+    return Promise.all([PG.wordmarkReady(st, { font: t.display, weight: t.fdw }), PG.markReady ? PG.markReady({ font: t.display, weight: t.fdw }) : null]);
+  };
 
   function colorsFor(t, b, variant) {
     let fg = t.ink, mk = t.primary, on = t.onPrimary;
