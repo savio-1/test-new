@@ -64,7 +64,10 @@ class WordAligner(private val model: AlignModel) {
             }
         }
         if (toks.isEmpty()) return null
-        val a = max(prevEnd, ((startMs - PAD_MS) / FRAME_MS).toInt()).coerceIn(0, T)
+        // From where the previous line's words ended, but never later than this line's own
+        // written start: a previous line found too late mustn't push this one late too.
+        val written = (startMs / FRAME_MS).toInt()
+        val a = max(min(prevEnd, written), ((startMs - PAD_MS) / FRAME_MS).toInt()).coerceIn(0, T)
         val b = min(T, ((endMs + PAD_MS) / FRAME_MS).toInt() + 1)
         if (b - a < toks.size + 2) return null
         val path = viterbi(lp, a, b, toks.toIntArray())
@@ -155,9 +158,9 @@ class WordAligner(private val model: AlignModel) {
 
         const val FRAME_MS = 20.0
         /** How far outside its written times a cue's words may be found. */
-        const val PAD_MS = 1000L
+        const val PAD_MS = 800L
         /** The model marks a letter a little after it starts; measured on hand-aligned speech. */
-        const val OFFSET_MS = -40.0
+        const val OFFSET_MS = -35.0
         const val GARBAGE_PENALTY = 1.0f
 
         /** The words shown for a cue in [language] (kinetic captions show English for Both). */

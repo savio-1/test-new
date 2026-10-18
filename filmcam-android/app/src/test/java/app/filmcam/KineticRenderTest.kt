@@ -161,6 +161,49 @@ class KineticRenderTest {
         }
     }
 
+    /**
+     * Before / after word timing on real speech: for each clip in $ALIGN_DEMO_DIR (raw 16 kHz
+     * audio and its lines), frames of the even spread and of words timed to the voice, written
+     * to build/kinetic/align-<clip>/{even,timed}/. Skipped when the folder isn't set.
+     */
+    @Test fun alignDemo() {
+        val dirName = System.getenv("ALIGN_DEMO_DIR") ?: return
+        val model = app.filmcam.sub.AlignModel.load(java.io.File("src/main/assets/align/model.bin").readBytes())
+        val fonts = FontLibrary(paparazzi.context)
+        val bg = javaClass.classLoader!!.getResourceAsStream("kinetic_bg1.jpg").use { BitmapFactory.decodeStream(it) }
+        for (raw in java.io.File(dirName).listFiles { f -> f.name.endsWith(".raw") }!!) {
+            val name = raw.name.removeSuffix(".raw")
+            val o = org.json.JSONObject(java.io.File(dirName, "$name.json").readText())
+            val telugu = o.getString("lang") == "te"
+            val cj = o.getJSONArray("cues")
+            val cues = List(cj.length()) { i ->
+                val c = cj.getJSONObject(i)
+                if (telugu) Cue(c.getLong("start"), c.getLong("end"), "te", telugu = c.getString("text"))
+                else Cue(c.getLong("start"), c.getLong("end"), "en", english = c.getString("text"))
+            }
+            val style = SubtitleStyle(template = CaptionTemplate.SCATTER, language = if (telugu) app.filmcam.sub.SubtitleLanguage.TELUGU else app.filmcam.sub.SubtitleLanguage.ENGLISH)
+            val even = SubtitleTrack(cues, style)
+            val sb = java.nio.ByteBuffer.wrap(raw.readBytes()).order(java.nio.ByteOrder.LITTLE_ENDIAN).asShortBuffer()
+            val pcm = FloatArray(sb.remaining()) { sb.get(it) / 32768f }
+            val timed = app.filmcam.sub.WordAligner(model).align(pcm, even)
+            val endMs = pcm.size / 16L
+            for ((tag, track) in listOf("even" to even, "timed" to timed)) {
+                val dir = java.io.File("build/kinetic/align-$name/$tag").apply { deleteRecursively(); mkdirs() }
+                var k = 0
+                var t = 0L
+                while (t <= endMs) {
+                    val out = android.graphics.Bitmap.createBitmap(bg.width, bg.height, android.graphics.Bitmap.Config.ARGB_8888)
+                    val c = android.graphics.Canvas(out)
+                    c.drawBitmap(bg, 0f, 0f, null)
+                    TextRenderer.draw(c, track.layersAt(t, bg.width.toFloat() / bg.height, fonts), fonts, bg.width.toFloat(), bg.height.toFloat())
+                    java.io.File(dir, "f%04d.png".format(k)).outputStream().use { out.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+                    k++
+                    t = k * 1000L / 30
+                }
+            }
+        }
+    }
+
     @Test fun videoScatter() = frames("scatter", SubtitleStyle(template = CaptionTemplate.SCATTER, behindSubject = true))
     @Test fun videoStack() = frames("stack", SubtitleStyle(template = CaptionTemplate.STACK, behindSubject = true))
     @Test fun videoFocus() = frames("focus", SubtitleStyle(template = CaptionTemplate.FOCUS))

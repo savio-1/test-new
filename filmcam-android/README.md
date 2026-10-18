@@ -63,7 +63,8 @@ colour.
 - **Themes:** dark by default, light, or follow the system; both sit on a fine dot grid.
 - **Gallery and viewer:** swipe left and right through every take. *Shot with* at the top names
   the look each photo or clip was made with; tap it to put that look on the camera.
-- **Grain:** every camera starts with the same light grain; turn it up per shot in *Adjust*.
+- **Grain:** every look starts with the same faint, fine grain (0.05; it was 0.14, which read
+  as noise next to the system camera). Turn it up per shot in *Adjust*. Original has none.
 
 ## Original
 
@@ -121,8 +122,13 @@ Burn text into video while you record, and into photos.
 ## Subtitles
 
 After a clip is shot, open it and tap **Subtitles** (or, after a take with live subtitles,
-tap *Edit live subtitles* on the camera screen). The editor has three tabs over the clip:
-Lines, Style, and Position (Classic) or Words (kinetic templates).
+tap *Edit live subtitles* on the camera screen).
+
+**Laid out for a phone.** The clip takes all the room there is, with a slim play bar under it
+(play/pause, time, scrubber) and *Burn in* at the top right. The tools run along the bottom:
+Lines, Style, Text, Effects, Motion, Words (kinetic) or Position (Classic), Sound and More.
+Each tool opens one short panel over the rail. Tapping it again closes the panel, and the clip
+grows back. Lines gets a taller panel, because you type in it.
 - **Generate:** the clip's speech is written out as timed subtitle lines, in English and in
   Telugu (Telugu script). It handles speech in either language, and Telugu with English words
   mixed in. The language spoken in most lines decides which one shows first.
@@ -132,6 +138,9 @@ Lines, Style, and Position (Classic) or Words (kinetic templates).
   - *Start* and *End*: − / + move them by a tenth of a second (hold to keep going), *Now*
     sets them to the playhead, and tapping a time jumps there.
   - Delete a line, or *+ Add a line* at the playhead.
+- **Words land on the voice.** Every word of a line is timed to the clip's sound, so a kinetic
+  caption appears as the word is said, not spread evenly across the line. See *Word timing*
+  below. While it works, *Timing each word to the voice…* shows under the clip.
 - **Style:** the template first, then the language: English, తెలుగు or Both (stacked: Telugu
   above English).
   - **Templates.** *Classic* shows a line at a time. The other three are kinetic captions,
@@ -153,13 +162,21 @@ Lines, Style, and Position (Classic) or Words (kinetic templates).
     words are set wide across the top of the head, so the hair hides part of them and both
     ends still show. The editor's preview shows them faded, because it has no cut-out. The
     burnt-in clip cuts the person out of every frame and puts those words behind them.
-  - Kinetic options: how words come in (blur, fade, rise, pop, type or cut), size (70–130%),
-    colour, the main, accent and italic fonts, and *Shuffle layout*, which picks other spots
-    and accents. *Original layout* goes back to the first one.
-  - Fonts from a drop-down, each shown in its own face, one list for English and one for
-    Telugu (a font only appears where it has that script's letters).
-  - Size, text colour (ten swatches), and the background: none, shadow, outline or box,
-    with the outline or box colour and the box's opacity.
+  - *Shuffle layout* (in Style) picks other spots and accents. *Original* goes back to the
+    first layout.
+- **Text:** size and letter spacing on sliders, text colour, and the fonts. Kinetic captions
+  have main, accent and (for Stack) italic fonts; Classic has one font for English and one for
+  Telugu. Each font drop-down shows every font in its own face, and a font only appears where
+  it has that script's letters.
+- **Effects:** for kinetic captions, a finish on the letters to help them read over a busy
+  picture: none, soft shadow (the default), drop shadow, glow, soft blur, outline or haze (a
+  dark, diffuse cloud behind the words). Each is shown on a little tile, with a strength
+  slider and a colour (*Auto* uses the effect's own). For Classic lines: none, shadow,
+  outline or box, with the outline or box colour and the box's opacity.
+- **Motion** (kinetic): how words come in (blur, fade, rise, pop, type or cut), and *Text
+  behind subject*.
+- **Sound:** *Reduce background noise* when burning in: Off, Light, Medium or Strong. See
+  *Background noise* below.
 - **Words** (kinetic templates): tap any word on the video to pick it, or pick it from the
   phrase's words below the video. ‹ and › step through phrases, holding the clip on each.
   Drag a word to put it anywhere; the centre line snaps. A picked word can change its font
@@ -171,11 +188,13 @@ Lines, Style, and Position (Classic) or Words (kinetic templates).
   thirds guides show while placing), or tap one of nine spots: top, middle or bottom by left,
   centre or right. *Line up* sets left, centre or right alignment. The block always stays
   inside the frame.
-- **Preview:** the full-screen button (or *Preview*) plays the clip full screen with its
-  subtitles, with play/pause and a scrubber, and *Burn into video* right there.
+- **More:** full-screen preview, *Redo with Gemini*, *Save .srt*, and undoing word changes.
+- **Preview:** the full-screen button plays the clip full screen with its subtitles, with
+  play/pause and a scrubber, and *Burn into video* right there.
 - **Save:**
   - *Burn in* saves a copy of the clip with the subtitles in the picture. The original sound
-    is copied untouched, and the picture goes through the plain Original look, so no grain or
+    is copied untouched (unless *Reduce background noise* is on), and the picture goes through
+    the plain Original look, so no grain or
     grading is added. Portrait clips stay portrait (the decoder already stands them upright,
     so the engine doesn't turn them again).
   - *.srt* writes a subtitle file to Downloads.
@@ -204,6 +223,65 @@ Lines, Style, and Position (Classic) or Words (kinetic templates).
   - It needs Android 13 or newer and Google's speech services. Telugu usually needs an
     internet connection; English works offline on many phones. If a language isn't
     available, the app says so.
+
+## Word timing
+
+Gemini gives each line a start and an end, but not each word. Spreading the words evenly over
+the line put some on screen before they were said and some after. Now every word is found in
+the sound.
+- **The model:** a small acoustic model on the phone (335 thousand weights, 0.7 MB). It reads
+  40 mel bands every 10 ms and gives the probability of each letter every 20 ms. It was
+  distilled from Meta's MMS forced aligner (300 million weights) on 3 hours of speech:
+  LibriSpeech, People's Speech (real-world recordings) and FLEURS Telugu. The training audio
+  had added noise (hiss, rumble, mains hum, chatter) and level and tone changes, so phone
+  recordings in a room work too.
+- **Matching the words:** each line's words are spelt in Latin letters (Telugu by sound, using
+  the same rules as the model's training; numbers in words). They are then forced through the
+  letter probabilities (CTC Viterbi), only near where Gemini put the line. "Anything else" is
+  allowed before and after, so a line time that is off by a second, or speech nobody wrote
+  down, doesn't drag the words.
+- **When it runs:** right after subtitles are made, when a saved clip without times opens, and
+  half a second after a line is retyped. The sound is analysed once per clip; re-timing a
+  retyped line takes milliseconds. A line shown as a translation (Telugu speech with English
+  captions) can't be matched word for word, so it keeps the even spread.
+- **Measured** against hand-checked word times, on clips the model never trained on, with
+  Gemini-like line times off by up to 0.3 s:
+  | Speech | Within 0.1 s, before | Within 0.1 s, now | Within 0.2 s, now |
+  |---|---|---|---|
+  | English read aloud (LibriSpeech, hand-checked times) | 31% | 92% | 96% |
+  | Real-world English recordings (People's Speech) | 35% | 89% | 92% |
+  | Telugu (FLEURS) | 37% | 96% | 97% |
+
+  The People's Speech and Telugu reference times come from the large MMS aligner itself, so
+  those rows show how closely the small model follows it. The LibriSpeech row is checked
+  against independent forced alignments. With exact line times, the median error is 10–25 ms.
+  A 10 s clip is analysed in about a quarter of a second on a desktop JVM. `WordAlignerTest`
+  checks that the phone's model gives the same probabilities as the training code (largest
+  difference 0.0003).
+- **On screen:** a timed word starts coming in 60 ms before it is said, so it is forming as it
+  is heard.
+- **Licence:** because the model learnt from MMS (CC-BY-NC 4.0), its weights carry the same
+  non-commercial terms. Training audio: LibriSpeech (CC-BY 4.0), People's Speech (CC-BY /
+  CC-BY-SA) and FLEURS (CC-BY 4.0).
+
+## Background noise
+
+*Reduce background noise* (camera settings, for video) cleans the sound as it is recorded.
+*Sound* in the subtitle editor does the same to a clip when you burn it in.
+- **How:** RNNoise (Xiph / Mozilla, BSD licence), ported to Kotlin. A small recurrent
+  network sets a gain for each of 22 frequency bands every 10 ms, and a pitch filter keeps
+  the voice's harmonics. The port's output is identical, sample for sample, to the C code
+  (`RnNoiseTest`). It runs at about 50× real time.
+- **The voice stays natural.** The network also says how likely each moment is to be speech.
+  While someone speaks, only part of the cleaned sound is used and the rest is the original
+  (65% cleaned at Medium); in pauses it is fully cleaned. The blend follows the voice
+  smoothly, with no clicks.
+- **Measured on speech mixed with noise** (Medium, 10–20 dB below the voice):
+  - Steady noise (hiss, pink noise, mains hum, traffic rumble) is 14–26 dB quieter in pauses.
+  - Intelligibility (STOI) changes by less than 0.01 either way.
+  - Background chatter drops by only about 5 dB, because the model treats it as voice.
+- **Latency:** about 70 ms, which the recorder takes back out, so sound and picture stay in
+  sync.
 
 ## Custom looks
 
@@ -496,7 +574,11 @@ redscale…) keep the parametric colour model below.
 **Picture quality.** The app asks the camera for what the system camera uses:
 - **Binned 12 MP by default.** The 50 and 200 MP modes read every photosite separately, which
   is noisier except in bright light. They are still one tap away.
-- **Best noise reduction and sharpening** for photos, in the viewfinder too.
+- **Best noise reduction and sharpening** for photos and the viewfinder, and for video at up to
+  30 fps. If a phone can't keep the frame rate with them (checked over the first second and a
+  half of each session), video falls back to the fast modes.
+- **H.264 at High profile.** Encoders default to Baseline, which gives a softer picture for
+  the same bitrate.
 - **Stream use cases** (Android 13+). The video stream is marked as a recording stream, so the
   camera gives it its video processing (temporal noise reduction and the like) rather than the
   lighter preview processing.

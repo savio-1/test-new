@@ -101,6 +101,8 @@ object Kinetic {
 
     /** The time a word takes to come in, and a phrase to go. */
     const val IN_MS = 260L
+    /** How long before a timed word is said it starts to come in. */
+    const val ANTICIPATE_MS = 60L
     const val OUT_MS = 120L
 
     private fun bare(w: String) = w.lowercase().trim { !it.isLetterOrDigit() && it != '\'' }
@@ -117,11 +119,14 @@ object Kinetic {
         }
         val parts = text.split(Regex("\\s+")).filter { it.isNotBlank() }
         if (parts.isEmpty()) return@mapIndexed emptyList()
-        // Aligned to the sound: each word starts when it is said.
+        // Aligned to the sound: each word starts coming in just before it is said, so it is
+        // forming as it is heard.
         if (c.timedText == text && c.wordStarts.size == parts.size) {
+            // Found in the sound, so they may fall a little outside the line's written times.
+            val at = c.wordStarts.map { it - ANTICIPATE_MS }
             return@mapIndexed parts.mapIndexed { wi, w ->
-                val s = c.wordStarts[wi].coerceIn(c.startMs, c.endMs)
-                val e = (c.wordStarts.getOrNull(wi + 1) ?: c.endMs).coerceIn(s, c.endMs)
+                val s = at[wi]
+                val e = (at.getOrNull(wi + 1) ?: c.endMs).coerceAtLeast(s)
                 Word("$ci:$wi", w, s, e, ci, wi)
             }
         }
