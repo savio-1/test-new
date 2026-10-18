@@ -412,14 +412,17 @@ class FilmEngine {
             if (part.isEmpty()) return old
             val bmp = if (old != null && old.width == w && old.height == h) old else { old?.recycle(); createBitmap(w, h) }
             bmp.eraseColor(Color.TRANSPARENT)
-            TextRenderer.draw(Canvas(bmp), part, f, w.toFloat(), h.toFloat(), t)
+            // Drawn plain: the shader blends it with the picture.
+            TextRenderer.draw(Canvas(bmp), part, f, w.toFloat(), h.toFloat(), t, blend = false)
             return bmp
         }
         val front = layers.filter { !it.behind }
         val back = layers.filter { it.behind }
         textBitmap = draw(front, textBitmap)
         textBackBitmap = draw(back, textBackBitmap)
-        renderer.setText(if (front.isEmpty()) null else textBitmap, if (back.isEmpty()) null else textBackBitmap)
+        // One mode per texture: the one most of its layers use (subtitles share theirs).
+        fun mode(part: List<TextLayer>) = part.groupingBy { it.blend }.eachCount().maxByOrNull { it.value }?.key?.shaderId ?: 0
+        renderer.setText(if (front.isEmpty()) null else textBitmap, if (back.isEmpty()) null else textBackBitmap, mode(front), mode(back))
     }
 
     // ------------------------------------------------------------------ subject matte

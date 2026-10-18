@@ -120,8 +120,8 @@ class KineticTest {
             val t = track(SubtitleStyle(template = tpl, behindSubject = true))
             val seen = HashSet<String>()
             var ms = 0L
-            while (ms < 9000) { Kinetic.layersAt(t, ms, 9f / 16f, null).forEach { seen += it.text }; ms += 33 }
-            val all = cues.flatMap { it.english.split(" ") }.toSet()
+            while (ms < 9000) { Kinetic.layersAt(t, ms, 9f / 16f, null).forEach { seen += it.text.lowercase() }; ms += 33 }
+            val all = cues.flatMap { it.english.split(" ") }.map { it.lowercase() }.toSet()
             assertEquals("$tpl", all, seen)
         }
     }

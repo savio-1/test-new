@@ -21,6 +21,33 @@ import kotlin.math.min
 enum class TextAlign { LEFT, CENTER, RIGHT }
 
 /**
+ * How text mixes with the picture under it. [shaderId] is the mode's number in the film
+ * shader, which blends burnt-in text the same way the preview canvas does.
+ */
+enum class TextBlend(val label: String, val shaderId: Int) {
+    NORMAL("Normal", 0),
+    SCREEN("Screen", 1),
+    ADD("Add", 2),
+    OVERLAY("Overlay", 3),
+    SOFT_LIGHT("Soft light", 4),
+    MULTIPLY("Multiply", 5),
+    DIFFERENCE("Difference", 6),
+    COLOR_DODGE("Colour dodge", 7);
+
+    /** The canvas mode for the preview (null: plain source-over). */
+    val canvasMode: android.graphics.BlendMode? get() = when (this) {
+        NORMAL -> null
+        SCREEN -> android.graphics.BlendMode.SCREEN
+        ADD -> android.graphics.BlendMode.PLUS
+        OVERLAY -> android.graphics.BlendMode.OVERLAY
+        SOFT_LIGHT -> android.graphics.BlendMode.SOFT_LIGHT
+        MULTIPLY -> android.graphics.BlendMode.MULTIPLY
+        DIFFERENCE -> android.graphics.BlendMode.DIFFERENCE
+        COLOR_DODGE -> android.graphics.BlendMode.COLOR_DODGE
+    }
+}
+
+/**
  * A finish on the letters that helps them read over a busy picture. [amount] (0..1 on the
  * layer) sets how strong it is; the colour is the layer's fxColor, or the effect's own.
  */
@@ -85,6 +112,8 @@ data class TextLayer(
     val fx: TextFx = TextFx.NONE,
     val fxAmount: Float = 0.5f,
     val fxColor: Int = 0,
+    /** How the text mixes with the picture. */
+    val blend: TextBlend = TextBlend.NORMAL,
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("id", id).put("text", text).put("font", font).put("size", size.toDouble())
@@ -93,7 +122,7 @@ data class TextLayer(
         .put("shadow", shadow).put("tracking", tracking.toDouble()).put("behind", behind).put("wrap", wrap.toDouble()).put("box", box)
         .put("boxColor", boxColor).put("outline", outline)
         .put("lineSpacing", lineSpacing.toDouble()).put("anim", anim.name)
-        .put("fx", fx.name).put("fxAmount", fxAmount.toDouble()).put("fxColor", fxColor)
+        .put("fx", fx.name).put("fxAmount", fxAmount.toDouble()).put("fxColor", fxColor).put("blend", blend.name)
 
     companion object {
         fun fromJson(o: JSONObject) = TextLayer(
@@ -119,6 +148,7 @@ data class TextLayer(
             fx = runCatching { TextFx.valueOf(o.optString("fx")) }.getOrDefault(TextFx.NONE),
             fxAmount = o.optDouble("fxAmount", 0.5).toFloat(),
             fxColor = o.optInt("fxColor", 0),
+            blend = runCatching { TextBlend.valueOf(o.optString("blend")) }.getOrDefault(TextBlend.NORMAL),
         )
 
         /** Black at 60%: the classic subtitle box. */
@@ -375,7 +405,7 @@ object TextRenderer {
      * Draws all layers onto [canvas] covering a [w]x[h] frame, each posed for [t] seconds into
      * its animation (negative: at rest, as in stills).
      */
-    fun draw(canvas: Canvas, layers: List<TextLayer>, fonts: FontLibrary, w: Float, h: Float, t: Float = -1f) {
+    fun draw(canvas: Canvas, layers: List<TextLayer>, fonts: FontLibrary, w: Float, h: Float, t: Float = -1f, blend: Boolean = true) {
         for (layer in layers) {
             if (layer.text.isBlank()) continue
             if (layer.reveal <= 0f || layer.opacity <= 0f) continue
@@ -391,6 +421,13 @@ object TextRenderer {
             canvas.rotate(layer.rotation + pose.rotation)
             if (pose.scale != 1f) canvas.scale(pose.scale, pose.scale)
             canvas.translate(-full.width / 2f, -full.height / 2f)
+            // A blend mode mixes the whole layer (effects included) with what is under it. The
+            // engine's text bitmap has nothing under it, so there the shader blends instead.
+            val mode = if (blend) layer.blend.canvasMode else null
+            if (mode != null) {
+                val pad = p.textSize * 2f
+                canvas.saveLayer(-pad, -pad, full.width + pad, full.height + pad, android.graphics.Paint().apply { blendMode = mode })
+            }
             // Letter by letter: draw the block into a layer, then fade it out to the right of
             // the reveal edge (so shadows and outlines go with their letters).
             val revealing = layer.reveal < 1f
@@ -439,6 +476,7 @@ object TextRenderer {
                 canvas.drawRect(-pad, -pad, full.width + pad, full.height + pad, mask)
                 canvas.restore()
             }
+            if (mode != null) canvas.restore()
             canvas.restore()
         }
     }

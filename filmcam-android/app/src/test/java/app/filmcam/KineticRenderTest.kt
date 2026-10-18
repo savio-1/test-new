@@ -204,6 +204,23 @@ class KineticRenderTest {
         }
     }
 
+    /** Each template at a few moments, and the blend modes (build/kinetic/layouts). */
+    @Test fun layoutStills() {
+        val bg = javaClass.classLoader!!.getResourceAsStream("kinetic_bg1.jpg").use { BitmapFactory.decodeStream(it) }
+        val fonts = FontLibrary(paparazzi.context)
+        val dir = java.io.File("build/kinetic/layouts").apply { deleteRecursively(); mkdirs() }
+        fun still(name: String, style: SubtitleStyle, t: Long) {
+            val out = android.graphics.Bitmap.createBitmap(bg.width, bg.height, android.graphics.Bitmap.Config.ARGB_8888)
+            val c = android.graphics.Canvas(out)
+            c.drawBitmap(bg, 0f, 0f, null)
+            TextRenderer.draw(c, SubtitleTrack(cues, style).layersAt(t, bg.width.toFloat() / bg.height, fonts), fonts, bg.width.toFloat(), bg.height.toFloat())
+            java.io.File(dir, "$name.png").outputStream().use { out.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+        }
+        for (tpl in CaptionTemplate.entries.filter { it.ordinal > CaptionTemplate.FOCUS.ordinal })
+            for (t in listOf(1300L, 2950L, 4700L, 7400L)) still("${tpl.name}_$t", SubtitleStyle(template = tpl), t)
+        for (b in app.filmcam.film.TextBlend.entries) still("blend_${b.name}", SubtitleStyle(template = CaptionTemplate.HEADLINE, blend = b), 2950L)
+    }
+
     @Test fun videoScatter() = frames("scatter", SubtitleStyle(template = CaptionTemplate.SCATTER, behindSubject = true))
     @Test fun videoStack() = frames("stack", SubtitleStyle(template = CaptionTemplate.STACK, behindSubject = true))
     @Test fun videoFocus() = frames("focus", SubtitleStyle(template = CaptionTemplate.FOCUS))

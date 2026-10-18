@@ -80,9 +80,13 @@ data class SubtitleStyle(
     /** Extra space between letters, in ems (both kinds of subtitles). */
     val tracking: Float = 0f,
     /** Kinetic captions: a finish on the letters (shadow, glow, haze...), how strong, and its colour (0: the effect's own). */
-    val effect: app.filmcam.film.TextFx = app.filmcam.film.TextFx.SHADOW,
+    val effect: app.filmcam.film.TextFx = app.filmcam.film.TextFx.NONE,
     val effectAmount: Float = 0.5f,
     val effectColor: Int = 0,
+    /** How the captions mix with the picture (kinetic captions). */
+    val blend: app.filmcam.film.TextBlend = app.filmcam.film.TextBlend.NORMAL,
+    /** The colour of the word being said in Highlight, and of accent words. */
+    val accentColor: Int = 0xFFFFE14D.toInt(),
     /** Background noise taken out of the voice when burning in: 0 off, up to 1 (strong). */
     val cleanVoice: Float = 0f,
 ) {
@@ -96,7 +100,7 @@ data class SubtitleStyle(
         .put("accentFont", accentFont).put("captionScale", captionScale.toDouble()).put("wordAnim", wordAnim.name)
         .put("behindSubject", behindSubject).put("seed", seed).put("tracking", tracking.toDouble())
         .put("effect", effect.name).put("effectAmount", effectAmount.toDouble()).put("effectColor", effectColor)
-        .put("cleanVoice", cleanVoice.toDouble())
+        .put("cleanVoice", cleanVoice.toDouble()).put("blend", blend.name).put("accentColor", accentColor)
 
     companion object {
         fun fromJson(o: JSONObject?) = if (o == null) SubtitleStyle() else SubtitleStyle(
@@ -124,10 +128,12 @@ data class SubtitleStyle(
             behindSubject = o.optBoolean("behindSubject", false),
             seed = o.optInt("seed", 0),
             tracking = o.optDouble("tracking", 0.0).toFloat(),
-            effect = runCatching { app.filmcam.film.TextFx.valueOf(o.optString("effect")) }.getOrDefault(app.filmcam.film.TextFx.SHADOW),
+            effect = runCatching { app.filmcam.film.TextFx.valueOf(o.optString("effect")) }.getOrDefault(app.filmcam.film.TextFx.NONE),
             effectAmount = o.optDouble("effectAmount", 0.5).toFloat(),
             effectColor = o.optInt("effectColor", 0),
             cleanVoice = o.optDouble("cleanVoice", 0.0).toFloat(),
+            blend = runCatching { app.filmcam.film.TextBlend.valueOf(o.optString("blend")) }.getOrDefault(app.filmcam.film.TextBlend.NORMAL),
+            accentColor = o.optInt("accentColor", 0xFFFFE14D.toInt()),
         )
     }
 }

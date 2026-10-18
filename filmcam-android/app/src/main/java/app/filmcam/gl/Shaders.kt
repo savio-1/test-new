@@ -178,6 +178,8 @@ uniform sampler2D uTextTex;  // text overlays, premultiplied, upright frame spac
 uniform float uTextOn;
 uniform sampler2D uTextBackTex;  // text set behind the subject, same space as uTextTex
 uniform float uTextBackOn;
+uniform int uTextBlend;          // TextBlend.shaderId of the front text, and of the text behind
+uniform int uTextBackBlend;
 uniform sampler2D uSubject;      // subject matte: upright picture space, row 0 at the top
 uniform float uSubjectOn;
 uniform mat4 uImageMatrix;  // screen uv -> image texture uv (rotation of unrotated stills)
@@ -666,6 +668,22 @@ Layout layoutFrame(vec2 P, vec2 S) {
 }
 
 // ---------------------------------------------------------------- main
+/** Premultiplied text [t] over [b] in one of the TextBlend modes (0 is plain over). */
+vec3 blendText(vec3 b, vec4 t, int mode) {
+    if (mode == 0 || t.a < 0.0005) return b * (1.0 - t.a) + t.rgb;
+    vec3 s = clamp(t.rgb / t.a, 0.0, 1.0);
+    vec3 bb = clamp(b, 0.0, 1.0);
+    vec3 r;
+    if (mode == 1) r = 1.0 - (1.0 - bb) * (1.0 - s);
+    else if (mode == 2) r = min(bb + s, 1.0);
+    else if (mode == 3) r = mix(2.0 * bb * s, 1.0 - 2.0 * (1.0 - bb) * (1.0 - s), step(0.5, bb));
+    else if (mode == 4) r = (1.0 - 2.0 * s) * bb * bb + 2.0 * s * bb;
+    else if (mode == 5) r = bb * s;
+    else if (mode == 6) r = abs(bb - s);
+    else r = min(bb / max(1.0 - s, 0.001), 1.0);
+    return mix(b, r, t.a);
+}
+
 void main() {
     vec2 fragUV = (gl_FragCoord.xy + uTileOffset) / uTargetSize;
     int frameK = uTargetRot + uFrameRot;
@@ -995,13 +1013,13 @@ void main() {
     if (uTextBackOn > 0.5) {
         vec4 t = texture(uTextBackTex, vec2(f.x, 1.0 - f.y));
         float m = uSubjectOn > 0.5 ? smoothstep(0.3, 0.7, texture(uSubject, vec2(u.x, 1.0 - u.y)).r) * L.inside : 0.0;
-        c = c * (1.0 - t.a * (1.0 - m)) + t.rgb * (1.0 - m);
+        c = blendText(c, t * (1.0 - m), uTextBackBlend);
     }
 
     // ---- text overlays, on top of everything (border included)
     if (uTextOn > 0.5) {
         vec4 t = texture(uTextTex, vec2(f.x, 1.0 - f.y));
-        c = c * (1.0 - t.a) + t.rgb;
+        c = blendText(c, t, uTextBlend);
     }
 
     if (uLogMode == 1 || uLogMode == 3) {

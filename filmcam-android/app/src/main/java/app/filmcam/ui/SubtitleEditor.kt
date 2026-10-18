@@ -1,6 +1,5 @@
 package app.filmcam.ui
 
-import android.widget.VideoView
 import androidx.compose.foundation.Canvas
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
@@ -76,6 +75,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import app.filmcam.film.FontLibrary
+import app.filmcam.film.TextBlend
 import app.filmcam.film.TextFx
 import app.filmcam.film.TextLayer
 import app.filmcam.film.TextRenderer
@@ -299,9 +299,49 @@ private fun SubSheetColumn(content: @Composable ColumnScope.() -> Unit) {
     )
 }
 
-/** The clip's player: whichever VideoView is on screen, and where it is. */
+/**
+ * The clip on a TextureView, so the subtitles drawn over it (in the same window surface) can
+ * blend with the picture as they will when burnt in; a VideoView's separate surface can't.
+ * The decoder's own transform stands portrait clips up.
+ */
+private class ClipView(context: android.content.Context, private val uri: android.net.Uri, private val onReady: (ClipView) -> Unit) :
+    android.view.TextureView(context), android.view.TextureView.SurfaceTextureListener {
+    private var mp: android.media.MediaPlayer? = null
+    private var surface: android.view.Surface? = null
+    private var ready = false
+
+    init { surfaceTextureListener = this }
+
+    override fun onSurfaceTextureAvailable(st: android.graphics.SurfaceTexture, width: Int, height: Int) {
+        val sf = android.view.Surface(st).also { surface = it }
+        mp = android.media.MediaPlayer().apply {
+            setDataSource(context, uri)
+            setSurface(sf)
+            isLooping = true
+            setOnPreparedListener { ready = true; onReady(this@ClipView) }
+            prepareAsync()
+        }
+    }
+    override fun onSurfaceTextureSizeChanged(st: android.graphics.SurfaceTexture, width: Int, height: Int) = Unit
+    override fun onSurfaceTextureDestroyed(st: android.graphics.SurfaceTexture): Boolean { stopPlayback(); return true }
+    override fun onSurfaceTextureUpdated(st: android.graphics.SurfaceTexture) = Unit
+
+    val isPlaying get() = ready && mp?.isPlaying == true
+    val currentPosition get() = if (ready) mp?.currentPosition ?: 0 else 0
+    fun seekTo(ms: Int) { if (ready) mp?.seekTo(ms.toLong(), android.media.MediaPlayer.SEEK_CLOSEST) }
+    fun start() { if (ready) mp?.start() }
+    fun pause() { if (ready) mp?.pause() }
+    fun stopPlayback() {
+        ready = false
+        mp?.let { runCatching { it.stop() }; it.release() }
+        mp = null
+        surface?.release(); surface = null
+    }
+}
+
+/** The clip's player: whichever clip view is on screen, and where it is. */
 private class SubPlayer {
-    var view: VideoView? = null
+    var view: ClipView? = null
     var playing by mutableStateOf(true)
     fun seek(ms: Long) { view?.seekTo(ms.toInt()) }
     fun pause() { view?.pause(); playing = false }
@@ -330,16 +370,11 @@ private fun SubVideo(
     Box(modifier) {
         AndroidView(
             factory = { ctx ->
-                VideoView(ctx).apply {
-                    setVideoURI(s.item.uri)
-                    setOnPreparedListener { mp ->
-                        mp.isLooping = true
-                        // Opening full screen (or coming back) carries on where it was.
-                        if (s.positionMs > 0) seekTo(s.positionMs.toInt())
-                        if (player.playing) start()
-                    }
-                    player.view = this
-                }
+                ClipView(ctx, s.item.uri) { v ->
+                    // Opening full screen (or coming back) carries on where it was.
+                    if (s.positionMs > 0) v.seekTo(s.positionMs.toInt())
+                    if (player.playing) v.start()
+                }.also { player.view = it }
             },
             onRelease = { v -> if (player.view === v) player.view = null; v.stopPlayback() },
             modifier = Modifier.fillMaxSize(),
@@ -841,6 +876,32 @@ private fun SubTemplates(selected: CaptionTemplate, fonts: FontLibrary?, pick: (
                             Text("out loud", color = ink, fontSize = 16.sp, fontFamily = serif, lineHeight = 15.sp)
                         }
                         CaptionTemplate.FOCUS -> Text("viral ideas", color = ink, fontSize = 15.sp, fontFamily = sans, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.Center))
+                        CaptionTemplate.SIDES -> {
+                            Column(Modifier.align(Alignment.CenterStart)) {
+                                Text("the one", color = ink, fontSize = 8.sp, fontFamily = sans, fontWeight = FontWeight.Bold, lineHeight = 9.sp)
+                                Text("idea", color = ink, fontSize = 15.sp, fontFamily = sans, fontWeight = FontWeight.Bold, lineHeight = 15.sp)
+                            }
+                            Column(Modifier.align(Alignment.CenterEnd), horizontalAlignment = Alignment.End) {
+                                Text("that", color = ink, fontSize = 8.sp, fontFamily = sans, fontWeight = FontWeight.Bold, lineHeight = 9.sp)
+                                Text("works", color = ink, fontSize = 15.sp, fontFamily = sans, fontWeight = FontWeight.Bold, lineHeight = 15.sp)
+                            }
+                        }
+                        CaptionTemplate.CASCADE -> Column(Modifier.align(Alignment.Center)) {
+                            Text("step", color = ink, fontSize = 11.sp, fontFamily = sans, fontWeight = FontWeight.Bold, lineHeight = 11.sp)
+                            Text("by", color = ink, fontSize = 11.sp, fontFamily = sans, fontWeight = FontWeight.Bold, lineHeight = 11.sp, modifier = Modifier.padding(start = 18.dp))
+                            Text("step", color = ink, fontSize = 14.sp, fontFamily = sans, fontWeight = FontWeight.Bold, lineHeight = 14.sp, modifier = Modifier.padding(start = 34.dp))
+                        }
+                        CaptionTemplate.HIGHLIGHT -> Row(Modifier.align(Alignment.BottomCenter)) {
+                            Text("say ", color = ink, fontSize = 12.sp, fontFamily = sans, fontWeight = FontWeight.Bold)
+                            Text("this ", color = Color(0xFFE0B400), fontSize = 13.sp, fontFamily = sans, fontWeight = FontWeight.Bold)
+                            Text("now", color = ink.copy(alpha = 0.45f), fontSize = 12.sp, fontFamily = sans, fontWeight = FontWeight.Bold)
+                        }
+                        CaptionTemplate.LOWER -> Row(Modifier.align(Alignment.BottomStart), verticalAlignment = Alignment.Bottom) {
+                            Text("out ", color = ink, fontSize = 11.sp, fontFamily = sans, fontWeight = FontWeight.Bold)
+                            Text("loud", color = ink, fontSize = 15.sp, fontFamily = serif)
+                        }
+                        CaptionTemplate.HEADLINE -> Text("BIG NEWS", color = ink, fontSize = 16.sp, fontFamily = sans, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.TopCenter))
+                        CaptionTemplate.PUNCH -> Text("WOW", color = ink, fontSize = 24.sp, fontFamily = sans, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.Center))
                     }
                 }
                 Text(t.label, color = ink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
@@ -901,6 +962,10 @@ private fun SubTextSheet(track: SubtitleTrack, fonts: FontLibrary?, set: (Subtit
         st { it.copy(tracking = if (abs(v) < 0.012f) 0f else (v * 100).roundToInt() / 100f) }
     }
     SubSwatches(TextColors, style.color) { c -> st { it.copy(color = c) } }
+    if (style.template == CaptionTemplate.HIGHLIGHT) {
+        SubLabel("Word being said")
+        SubSwatches(TextColors, style.accentColor) { c -> st { it.copy(accentColor = c) } }
+    }
     if (fonts != null) {
         if (style.kinetic) {
             if (style.language == SubtitleLanguage.TELUGU) {
@@ -924,6 +989,10 @@ private fun SubEffectsSheet(track: SubtitleTrack, fonts: FontLibrary?, set: (Sub
     fun st(f: (SubtitleStyle) -> SubtitleStyle) = set(track.copy(style = f(style)))
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         TextFx.entries.forEach { fx -> SubEffectTile(fx, style, fonts, style.effect == fx) { st { it.copy(effect = fx) } } }
+    }
+    SubLabel("Blend with the picture")
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        TextBlend.entries.forEach { b -> SubChip(b.label, style.blend == b) { st { it.copy(blend = b) } } }
     }
     if (style.effect != TextFx.NONE) {
         SubSliderRow("Strength", style.effectAmount, 0f, 1f, "${(style.effectAmount * 100).roundToInt()}%") { v -> st { it.copy(effectAmount = v) } }

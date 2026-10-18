@@ -20,6 +20,12 @@ enum class CaptionTemplate(val label: String, val blurb: String) {
     SCATTER("Scatter", "Phrases land around the frame: one big word, small ones tucked on it"),
     STACK("Stack", "Lines build up in the middle, sans, serif and italic mixed"),
     FOCUS("Focus", "One or two words at a time, centred"),
+    SIDES("Sides", "Words stack down the left and right edges, leaving the middle to the subject"),
+    CASCADE("Cascade", "Each phrase steps down diagonally, word by word"),
+    HIGHLIGHT("Highlight", "The whole line shows; the word being said lights up"),
+    LOWER("Lower third", "Lines build up low on the left, the key word in the serif"),
+    HEADLINE("Headline", "Big capitals across the top of the frame"),
+    PUNCH("Punch", "One huge word at a time"),
 }
 
 /** How a word comes in. */
@@ -149,6 +155,12 @@ object Kinetic {
         CaptionTemplate.SCATTER -> Limits(3, 20)
         CaptionTemplate.STACK -> Limits(2, 15)
         CaptionTemplate.FOCUS -> Limits(2, 14)
+        CaptionTemplate.SIDES -> Limits(3, 22)
+        CaptionTemplate.CASCADE -> Limits(4, 24)
+        CaptionTemplate.HIGHLIGHT -> Limits(6, 34)
+        CaptionTemplate.LOWER -> Limits(4, 26)
+        CaptionTemplate.HEADLINE -> Limits(3, 18)
+        CaptionTemplate.PUNCH -> Limits(2, 14)
         CaptionTemplate.CLASSIC -> Limits(99, 999)
     }
 
@@ -171,6 +183,8 @@ object Kinetic {
                 // A quotation starts its own phrase.
                 if (w.text.first() in opens || cur.size >= lim.words || chars > lim.chars || pause) flush()
                 cur += w
+                // Punch: every word that carries meaning is its own beat (a small word rides with it).
+                if (track.style.template == CaptionTemplate.PUNCH && !isSmall(w.text)) { flush(); continue }
                 if (w.text.last() in ends || w.text.trimEnd('\u201d', '\u2019', '"', '\'', ')').lastOrNull()?.let { it in ends } == true) { flush(); continue }
                 // A phrase closes on its key word ("on my | podcast"), keeping a last small word
                 // that ends the sentence ("struggles with?").
@@ -304,18 +318,31 @@ object Kinetic {
         val out = ArrayList<Placed>()
         val m = 0.04f
 
+        fun txt(w: Word) = shown(st.template, w.text)
         fun lineWidth(words: List<Word>, font: String, size: Float) =
-            words.sumOf { ruler.width(it.text, font, size).toDouble() }.toFloat() + ruler.width(" ", font, size) * (words.size - 1)
+            words.sumOf { ruler.width(txt(it), font, size).toDouble() }.toFloat() + ruler.width(" ", font, size) * (words.size - 1)
 
         /** Places [words] on one line with its left edge at [left] and centre at [y]. */
         fun line(words: List<Word>, left: Float, y: Float, font: String, size: Float, behind: Boolean, big: Boolean) {
             var x = left
             val space = ruler.width(" ", font, size)
             for (w in words) {
-                val ww = ruler.width(w.text, font, size)
+                val ww = ruler.width(txt(w), font, size)
                 out += Placed(w, x + ww / 2, y, size, font, st.color, behind, big)
                 x += ww + space
             }
+        }
+
+        /** [words] broken into lines no wider than [maxW]. */
+        fun wrap(words: List<Word>, font: String, size: Float, maxW: Float): List<List<Word>> {
+            val lines = ArrayList<List<Word>>()
+            var cur = ArrayList<Word>()
+            for (w in words) {
+                if (cur.isNotEmpty() && lineWidth(cur + w, font, size) > maxW) { lines += cur; cur = ArrayList() }
+                cur += w
+            }
+            if (cur.isNotEmpty()) lines += cur
+            return lines
         }
 
         when (st.template) {
@@ -405,6 +432,115 @@ object Kinetic {
                 // Behind-phrases rise to head height, where the head only covers part of them.
                 line(p.words, 0.5f - lw / 2, if (behind) 0.3f else 0.52f, sans, size, behind, big = true)
             }
+            CaptionTemplate.SIDES -> {
+                // Down one edge of the frame, alternating sides, so the middle stays clear.
+                val left = (p.index + st.seed) % 2 == 0
+                // Narrow enough to stay clear of a centred head and shoulders.
+                val colW = if (aspect > 1f) 0.2f else 0.25f
+                val e = emphasis(p.words)
+                val accent = rnd(p.index, 3, st.seed) < 0.25f && !telugu
+                val bigFont = if (accent) serif else sans
+                var big = (ruler.sizeFor(txt(p.words[e]), bigFont, colW) * scale).coerceIn(0.05f, 0.12f)
+                if (ruler.width(txt(p.words[e]), bigFont, big) > colW * 1.15f) big = ruler.sizeFor(txt(p.words[e]), bigFont, colW * 1.15f)
+                val small = (big * 0.5f).coerceIn(0.035f, 0.06f) * if (scale < 1f) scale else 1f
+                // The key word on a line of its own, the others grouped on small lines.
+                class Ln(val words: List<Word>, val font: String, val size: Float, val big: Boolean)
+                val lines = ArrayList<Ln>()
+                var run = ArrayList<Word>()
+                fun flushRun() { if (run.isNotEmpty()) { wrap(run, sans, small, colW).forEach { lines += Ln(it, sans, small, false) }; run = ArrayList() } }
+                p.words.forEachIndexed { i, w -> if (i == e) { flushRun(); lines += Ln(listOf(w), bigFont, big, true) } else run += w }
+                flushRun()
+                val heights = lines.map { ruler.lineH(it.size) * 0.95f }
+                var y = 0.40f + (rnd(p.index, 4, st.seed) - 0.5f) * 0.16f - heights.sum() / 2
+                for ((k, ln) in lines.withIndex()) {
+                    y += heights[k] / 2
+                    val lw = lineWidth(ln.words, ln.font, ln.size)
+                    val x = if (left) m + 0.01f else 1f - m - 0.01f - lw
+                    line(ln.words, x, y, ln.font, ln.size, false, ln.big)
+                    y += heights[k] / 2
+                }
+            }
+            CaptionTemplate.CASCADE -> {
+                // A staircase: each word a step lower and further along, the key word bigger.
+                val e = emphasis(p.words)
+                val base = 0.072f * scale
+                val sizes = p.words.indices.map { if (it == e) base * 1.4f else base }
+                val widths = p.words.mapIndexed { i, w -> ruler.width(txt(w), sans, sizes[i]) }
+                val n = p.words.size
+                val maxW = widths.maxOrNull() ?: 0f
+                val dx = if (n > 1) min(0.13f, (1f - 2 * m - maxW) / (n - 1)).coerceAtLeast(0f) else 0f
+                val dys = sizes.map { ruler.lineH(it) * 0.92f }
+                val forward = (p.index + st.seed) % 2 == 0
+                var y = 0.5f + (rnd(p.index, 4, st.seed) - 0.5f) * 0.12f - dys.sum() / 2
+                p.words.forEachIndexed { i, w ->
+                    y += dys[i] / 2
+                    val x = if (forward) (0.5f - (dx * (n - 1) + widths.last()) / 2 + dx * i)
+                        else (0.5f + (dx * (n - 1) + widths.first()) / 2 - dx * i - widths[i])
+                    line(listOf(w), x.coerceIn(m, max(m, 1f - m - widths[i])), y, sans, sizes[i], false, i == e)
+                    y += dys[i] / 2
+                }
+            }
+            CaptionTemplate.HIGHLIGHT, CaptionTemplate.LOWER -> {
+                val lower = st.template == CaptionTemplate.LOWER
+                val size = (if (lower) 0.058f else 0.062f) * scale
+                val maxW = (if (lower) 0.7f else 0.84f) * wide
+                val e = emphasis(p.words)
+                val lines = wrap(p.words, sans, size, maxW)
+                val lh = ruler.lineH(size) * 1.02f
+                var y = (if (lower) 0.86f else 0.74f) - lh * lines.size + lh / 2
+                for (ln in lines) {
+                    if (lower) {
+                        // Left-aligned; the key word in the accent face, a size up.
+                        var x = m + 0.03f
+                        for (w in ln) {
+                            val key = w === p.words[e] && !telugu
+                            val f = if (key) serif else sans
+                            val sz = if (key) size * 1.25f else size
+                            val ww = ruler.width(txt(w), f, sz)
+                            out += Placed(w, x + ww / 2, y, sz, f, st.color, false, key)
+                            x += ww + ruler.width(" ", sans, size)
+                        }
+                    } else {
+                        line(ln, 0.5f - lineWidth(ln, sans, size) / 2, y, sans, size, false, false)
+                    }
+                    y += lh
+                }
+            }
+            CaptionTemplate.HEADLINE -> {
+                // Capitals filling the width; a phrase going behind sits across the crown.
+                val behind = behindOn && behindPhrase(p, st.seed)
+                val target = 0.88f
+                var size = (ruler.sizeFor(p.words.joinToString(" ") { txt(it) }, sans, target) * scale).coerceIn(0.06f, 0.2f)
+                val lines = if (size >= 0.085f || p.words.size == 1) listOf(p.words) else {
+                    size = 0.085f * scale
+                    wrap(p.words, sans, size, target)
+                }
+                val lh = ruler.lineH(size) * 0.9f
+                var y = (if (behind) HEAD_TOP - 0.01f else 0.15f) - lh * (lines.size - 1) / 2
+                for (ln in lines) {
+                    var sz = size
+                    val lw0 = lineWidth(ln, sans, sz)
+                    if (lw0 > 1f - 2 * m) sz *= (1f - 2 * m) / lw0
+                    line(ln, 0.5f - lineWidth(ln, sans, sz) / 2, y, sans, sz, behind, true)
+                    y += lh
+                }
+            }
+            CaptionTemplate.PUNCH -> {
+                val e = emphasis(p.words)
+                val behind = behindOn && behindPhrase(p, st.seed) && !isSmall(p.words[e].text)
+                val w = p.words[e]
+                var big = (ruler.sizeFor(txt(w), sans, 0.78f * wide) * scale).coerceIn(0.1f, 0.3f)
+                if (ruler.width(txt(w), sans, big) > 1f - 2 * m) big = ruler.sizeFor(txt(w), sans, 1f - 2 * m)
+                val by = if (behind) HEAD_TOP + 0.02f else 0.5f
+                val bw = ruler.width(txt(w), sans, big)
+                line(listOf(w), 0.5f - bw / 2, by, sans, big, behind, true)
+                val rest = p.words.filterIndexed { i, _ -> i != e }
+                if (rest.isNotEmpty()) {
+                    val small = (big * 0.32f).coerceIn(0.04f, 0.07f)
+                    val lw = lineWidth(rest, sans, small)
+                    line(rest, 0.5f - lw / 2, by - ruler.lineH(big) * 0.55f, sans, small, false, false)
+                }
+            }
             CaptionTemplate.CLASSIC -> Unit
         }
         // The person's own changes win.
@@ -449,6 +585,7 @@ object Kinetic {
         for ((p, block) in visible) {
             val end = if (block.isNotEmpty()) block.last().endMs else p.endMs
             val leaving = ((end - timeMs).toFloat() / OUT_MS).coerceIn(0f, 1f)
+            if (st.template == CaptionTemplate.HIGHLIGHT) { highlight(track, p, timeMs, aspect, fonts, leaving, r, out); continue }
             for (pl in place(track, p, aspect, fonts, stackOf = block)) {
                 if (timeMs < pl.word.startMs) continue
                 val e = track.edits[pl.word.id]?.takeIf { it.text.isEmpty() || it.text == pl.word.text }
@@ -471,15 +608,42 @@ object Kinetic {
                 if (leaving < 1f) { alpha *= leaving; blur += 0.1f * (1f - leaving) }
                 if (alpha <= 0.01f) continue
                 out += TextLayer(
-                    id = layerId(pl.word), text = pl.word.text, font = pl.font, size = pl.size * scale,
+                    id = layerId(pl.word), text = shown(st.template, pl.word.text), font = pl.font, size = pl.size * scale,
                     x = pl.x, y = pl.y + dy * r.lineH(pl.size), color = pl.color, opacity = alpha,
                     tracking = st.tracking, fx = st.effect, fxAmount = st.effectAmount, fxColor = st.effectColor,
-                    behind = pl.behind, reveal = reveal, blur = blur,
+                    behind = pl.behind, reveal = reveal, blur = blur, blend = st.blend,
                 )
             }
         }
         return out
     }
+
+    /**
+     * Highlight: the whole line is up from its first word; words not yet said are dim, the
+     * word being said is in the accent colour and pops a little, words said are full white.
+     */
+    private fun highlight(track: SubtitleTrack, p: Phrase, timeMs: Long, aspect: Float, fonts: FontLibrary?, leaving: Float, r: Ruler, out: ArrayList<TextLayer>) {
+        val st = track.style
+        val enter = ease((timeMs - p.startMs).toFloat() / IN_MS)
+        for (pl in place(track, p, aspect, fonts)) {
+            val edit = track.edits[pl.word.id]?.takeIf { it.text.isEmpty() || it.text == pl.word.text }
+            val said = timeMs >= pl.word.startMs
+            val now = said && timeMs < pl.word.endMs
+            val pop = if (now) ease((timeMs - pl.word.startMs) / 120f) else 0f
+            val alpha = (if (said) 1f else 0.5f) * enter * leaving
+            if (alpha <= 0.01f) continue
+            out += TextLayer(
+                id = layerId(pl.word), text = shown(st.template, pl.word.text), font = pl.font, size = pl.size * (1f + 0.12f * pop),
+                x = pl.x, y = pl.y + 0.25f * (1f - enter) * r.lineH(pl.size),
+                color = if (now && edit?.color == null) st.accentColor else pl.color, opacity = alpha,
+                tracking = st.tracking, fx = st.effect, fxAmount = st.effectAmount, fxColor = st.effectColor,
+                behind = pl.behind, blend = st.blend,
+            )
+        }
+    }
+
+    /** The word as the template shows it (Headline sets capitals). */
+    fun shown(template: CaptionTemplate, text: String) = if (template == CaptionTemplate.HEADLINE) text.uppercase() else text
 
     /** Stack blocks: up to three consecutive phrases, broken by a long silence. */
     fun stackBlocks(all: List<Phrase>, track: SubtitleTrack): List<List<Phrase>> {

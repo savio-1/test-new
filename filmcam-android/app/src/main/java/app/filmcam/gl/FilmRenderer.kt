@@ -263,10 +263,14 @@ class FilmRenderer {
      * Text overlays as premultiplied bitmaps in frame orientation: [front] over everything,
      * [back] behind the subject (cut away by the subject matte). Null clears either.
      */
-    fun setText(front: Bitmap?, back: Bitmap?) {
+    fun setText(front: Bitmap?, back: Bitmap?, frontBlend: Int = 0, backBlend: Int = 0) {
         textFront.set(front)
         textBack.set(back)
+        textFrontBlend = frontBlend
+        textBackBlend = backBlend
     }
+    private var textFrontBlend = 0
+    private var textBackBlend = 0
 
     /**
      * The subject matte: [w]x[h] bytes (0 background .. 255 subject), upright picture space,
@@ -524,6 +528,8 @@ class FilmRenderer {
             set1f("uTextOn", if (withText && textFront.on) 1f else 0f)
             bindTex(11, if (textBack.tex != 0) textBack.tex else edgeTex); set1i("uTextBackTex", 11)
             set1f("uTextBackOn", if (withText && textBack.on) 1f else 0f)
+            set1i("uTextBlend", textFrontBlend)
+            set1i("uTextBackBlend", textBackBlend)
             bindTex(12, if (subjectTex != 0) subjectTex else edgeTex); set1i("uSubject", 12)
             set1f("uSubjectOn", if (hasSubject) 1f else 0f)
             setMat4("uTexMatrix", identity)
