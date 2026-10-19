@@ -1,5 +1,3 @@
-site/tools/home-scene/frames/
-site/tools/home-scene/*.zip
 out/
 __pycache__/
 *.blend1
