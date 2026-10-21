@@ -123,13 +123,16 @@ Burn text into video while you record, and into photos.
     it moves, and someone walking past it is not.
   - **Close to the subject, firm round hair:** the text is cut at the person's own edge, so it
     sits right against a face, an ear or a shoulder. Only where there is hair is the cut-out
-    firmed up: MediaPipe's multiclass selfie model (every third frame) finds the hair, and there
+    firmed up: MediaPipe's multiclass selfie model (four times a second, on its own thread, so
+    the person's cut-out never waits for it) finds the hair, and there
     faint strands count as subject, the zone grows by about 1% of the frame and is held for a
     few frames as it fades, so flyaway or moving hair never lets text peep through. No hair
     (or no hair model) means no margin anywhere.
-  - **Timing:** segmentation runs alongside the film passes. The frame waits up to 12 ms for
-    its own cut-out, so a moving subject and its cut-out stay together. If the model is slower
-    on a phone, the cut-out lands one frame later. Photos wait for their own cut-out.
+  - **Timing:** segmentation runs alongside the film passes. A frame handed to the segmenter
+    waits up to 12 ms for its own cut-out, so a moving subject and its cut-out stay together;
+    while the segmenter is still busy with an earlier frame nothing waits, so the viewfinder
+    and the recording keep their frame rate and the cut-out lands a frame or two later.
+    Photos wait for their own cut-out.
   - **On the CPU:** the models run on the phone's CPU (XNNPACK), at 256 pixels on the long
     side. MediaPipe's GPU delegate is not used: on phones where it can't start, its GL thread
     takes the whole app down a few seconds later.
@@ -435,6 +438,10 @@ Fisheye, Lens). The editor's Original is the app's own Original.
   and compared with the editor's own renders of the same photo: 40 dB and up (no visible
   difference) for the colour, film and B&W looks; the blur and dot looks differ only where the
   editor averages its copies in 8 bits, as its own GPU version does.
+- **Their own program:** the final pass is built twice, with and without the editor's code,
+  so every other look renders exactly as fast as before they were added. On a big video frame
+  (over 3 MP) the zoom, spin and motion blurs take 8 copies instead of 16 and soften between
+  them, so the encoder keeps up; photos take every copy.
 - **Adjust works on them:** grain, vignette, halation, bloom, leaks, dust, fringing, sharpness,
   clarity, fisheye and the blurs change the look's own effects; the Basic tools go on top.
 

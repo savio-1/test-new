@@ -447,7 +447,11 @@ class FilmEngine {
         if (!m.idle) return
         renderer.readSegInput(src, turns, w, h, buf)
         m.submit(buf, w, h)
+        subjectSubmitted = true
     }
+
+    /** A frame went to the segmenter this frame (so it is worth waiting a moment for). */
+    private var subjectSubmitted = false
 
     /**
      * Gives the renderer the newest matte, after waiting up to [waitMs] for this frame's:
@@ -460,7 +464,10 @@ class FilmEngine {
             if (subjectSeq != -1L) { renderer.setSubjectMask(null, 0, 0); subjectSeq = -1L }
             return
         }
-        m.await(waitMs)
+        // Only wait for this frame's own cut-out. While the segmenter is still on an older
+        // frame, waiting would only stall the viewfinder and the recording.
+        if (subjectSubmitted) m.await(waitMs)
+        subjectSubmitted = false
         val matte = m.latest ?: return
         if (matte.seq != subjectSeq) {
             subjectSeq = matte.seq

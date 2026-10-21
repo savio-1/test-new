@@ -495,9 +495,10 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
     @Volatile private var hqActive = false
 
     /**
-     * With high-quality processing on video, checks over the first second and a half that the
-     * camera keeps the frame rate. If frames come slower and it isn't the exposure holding them
-     * (a dark scene may lengthen frames on purpose), the fast modes come back.
+     * With high-quality processing on video, keeps checking (every second and a half, for as
+     * long as it is on) that the camera holds the frame rate: a phone that copes at first may
+     * not once it is warm, or while recording. If frames come slower and it isn't the exposure
+     * holding them (a dark scene may lengthen frames on purpose), the fast modes come back.
      */
     private fun watchFrameRate(result: TotalCaptureResult) {
         val ts = result.get(CaptureResult.SENSOR_TIMESTAMP) ?: return
@@ -508,8 +509,9 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
         val interval = (ts - hqFirstNs) / (hqFrames - 1).toDouble()
         val target = 1e9 / fps
         val exposure = result.get(CaptureResult.SENSOR_EXPOSURE_TIME) ?: 0L
-        hqActive = false
+        hqFrames = 0
         if (interval > target * 1.12 && exposure < interval * 0.8) {
+            hqActive = false
             Log.w(TAG, "high-quality video processing runs at ${"%.1f".format(1e9 / interval)} fps; using the fast modes")
             hqVideoRejected = true
             applyRepeating()

@@ -12,6 +12,7 @@ consts = dict(re.findall(r'const val (\w+) = """(.*?)"""', src, re.S))
 for k, v in list(consts.items()):
     consts[k] = v.replace('$DEVELOP_BODY', consts['DEVELOP_BODY'])
 shaders = {k: consts[k] for k in ['VERTEX', 'DEVELOP_2D', 'DEVELOP_OES', 'TRAIL', 'BRIGHT', 'BLUR', 'GAUSS', 'FINAL']}
+shaders['FINAL_STUDIO'] = shaders['FINAL'].replace('#version 300 es\n', '#version 300 es\n#define STUDIO 1\n', 1)
 shaders['DEVELOP_2D_MRT'] = consts['DEVELOP_2D'].replace('precision highp float;', 'precision highp float;\n#define MRT 1', 1)
 
 

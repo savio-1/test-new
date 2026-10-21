@@ -1,4 +1,9 @@
 #version 300 es
+// STUDIO 1 builds the program for the editor's looks (FilmLook.studio); other looks use the
+// program without that code, so they pay nothing for it.
+#ifndef STUDIO
+#define STUDIO 0
+#endif
 precision highp float;
 precision highp int;
 precision mediump sampler3D;
@@ -91,10 +96,9 @@ uniform int uBorder;
 uniform int uStampStyle;
 uniform float uStampAspect;
 
-// The photo editor's looks (FilmLook.studio): the effects above, drawn its way. In studio mode
+// The photo editor's looks (FilmLook.studio): the effects above, drawn its way. In the studio program
 // uGlowTight / uStreakTex hold the halation's two halos, uGlowWide the bloom, uDiffuseTex the
 // graded picture blurred for tilt-shift or the soft blur, uClarTex blurred for clarity.
-uniform float uStudio;
 uniform sampler2D uClarTex;
 uniform vec2 uStudioGain;   // halation halo gains
 uniform float uStudioSoft;  // 1: uDiffuseTex holds the soft blur
@@ -577,6 +581,7 @@ vec2 coverCrop(vec2 q) {
 bool insidePic(vec2 q) { return q.x >= 0.0 && q.y >= 0.0 && q.x <= 1.0 && q.y <= 1.0; }
 vec3 screenA(vec3 d, vec3 g, float a) { return d + (1.0 - (1.0 - d) * (1.0 - g) - d) * a; }
 
+#if STUDIO
 // The camera's picture at q (picture uv, y up), softened by about sigma output pixels.
 vec3 srcAt(vec2 q, float sigma) {
     vec2 u = coverCrop(q);
@@ -596,7 +601,12 @@ vec3 studioColour(vec3 c) {
     if (uExposureGain != 1.0) c = linearToSrgb(srgbToLinear(clamp(c, 0.0, 1.0)) * uExposureGain);
     return uLutOn > 0.5 ? mix(c, applyLut(c), uIntensity) : c;
 }
-vec3 graded(vec3 c) { return uStudio > 0.5 ? studioColour(c) : c; }
+
+// What the generic effects resample is graded too, so they match the look.
+vec3 graded(vec3 c) { return studioColour(c); }
+#else
+vec3 graded(vec3 c) { return c; }
+#endif
 
 // Grey noise in cells of a 1080 p picture, re-dealt every frame.
 float noiseAt(vec2 q) {
@@ -604,6 +614,7 @@ float noiseAt(vec2 q) {
     return (rnd(uvec3(uvec2(ivec2(cell) + 8192), uSeed + 71u)) - 0.5) * uNoise * (120.0 / 255.0);
 }
 
+#if STUDIO
 // Colour, noise, sharpening, clarity, bloom and halation at one point.
 vec3 studioPoint(vec2 q, float soft) {
     vec3 a = studioColour(srcAt(q, soft));
@@ -732,6 +743,7 @@ vec4 leakBlob(vec2 p, vec2 c, vec2 r, vec3 c0, float a0, float p1, vec3 c1, floa
     if (t < p1) return vec4(mix(c0, c1, t / p1), mix(a0, a1, t / p1));
     return vec4(c1, mix(a1, a2, (t - p1) / (1.0 - p1)));
 }
+#endif
 
 void main() {
     vec2 fragUV = (gl_FragCoord.xy + uTileOffset) / uTargetSize;
@@ -756,13 +768,16 @@ void main() {
 
     // ---- lens distortion: barrel, up to a full circular fisheye
     vec2 q = cp;
-    if (uDistortion > 0.0 && uStudio > 0.5) {
+#if STUDIO
+    if (uDistortion > 0.0) {
         // The editor's fisheye: barrel over the whole picture; outside it stays black.
         vec2 n = cp * 2.0 - 1.0;
         q = (n * (1.0 + 0.6 * uDistortion * (dot(n, n) - 1.0)) + 1.0) * 0.5;
         if (!insidePic(q)) mask = 0.0;
         q = clamp(q, 0.0, 1.0);
-    } else if (uDistortion > 0.0) {
+    }
+#else
+    if (uDistortion > 0.0) {
         vec2 d = (cp - 0.5) * asp;
         float norm = uCircle > 0.5 ? 0.5 * min(rectAspect, 1.0) : 0.5 * length(asp);
         float rn = length(d) / norm;
@@ -774,6 +789,7 @@ void main() {
             mask *= 1.0 - smoothstep(1.0 - 3.0 * px / norm, 1.0, rn);
         }
     }
+#endif
 
     // ---- frame slip: the frame line rolls into the gate
     if (uSlip != 0.0) {
@@ -805,7 +821,8 @@ void main() {
     float lod = uLowRes * 2.6 + uCornerBlur * 4.0 * smoothstep(0.25, 1.0, cornerDist);
     gExtraLod = lod;
     vec3 c;
-    if (uStudio > 0.5) {
+#if STUDIO
+    {
         // The editor's look: its colour and effects in its order (see studioImage).
         float bw = 1.0;
         if (uBlurFocus > 0.0) {
@@ -814,7 +831,9 @@ void main() {
             bw = smoothstep(uBlurFocus * 0.7, uBlurFocus * 0.7 + 0.45, r);
         }
         c = studioImage(q, bw);
-    } else {
+    }
+#else
+    {
         vec2 dir = u - 0.5;
         float ca = uAberration * 0.006;
         c.r = sampleAt(u + dir * ca, lod).r;
@@ -867,6 +886,7 @@ void main() {
             }
         }
     }
+#endif
 
     // ---- interlace: odd lines still show the previous field
     if (uInterlace > 0.0) {
@@ -910,12 +930,14 @@ void main() {
     float self = l0 * smoothstep(uHalThreshold, uHalThreshold + 0.3, l0);
 
     // ---- emulsion (a studio look's colour is already in)
-    if (uStudio < 0.5) {
+#if !STUDIO
+    {
         if (uExposureGain != 1.0) c = linearToSrgb(srgbToLinear(clamp(c, 0.0, 1.0)) * uExposureGain);
         vec3 stock = uLutOn > 0.5 ? applyLut(c) : grade(c);
         c = mix(c, stock, uIntensity);
         if (uNoise > 0.0) c += noiseAt(q);
     }
+#endif
     if (uStyleOn > 0.5) c = photoStyle(c);
     if (dot(abs(uAdjA), vec4(1.0)) + dot(abs(uAdjB), vec4(1.0)) > 0.0) {
         float localLuma = uAdjB.w != 0.0 ? dot(sampleAt(u, 4.5), LUMA) : 0.0;
@@ -923,7 +945,8 @@ void main() {
     }
 
     // ---- halation, bloom and streaks, as light (then back to display space)
-    if (uStudio < 0.5) {
+#if !STUDIO
+    {
         vec3 gT = texture(uGlowTight, s).rgb;
         vec3 gW = texture(uGlowWide, s).rgb;
         vec3 lin = c * c;
@@ -951,6 +974,7 @@ void main() {
         }
         c = sqrt(max(lin, 0.0));
     }
+#endif
 
     // ---- on-camera flash: hot centre, fast fall-off
     if (uFlash > 0.0) {
@@ -959,12 +983,15 @@ void main() {
         c = mix(c, c * c * (3.0 - 2.0 * c), uFlash * 0.35);
     }
 
+#if STUDIO
     // The editor's finishes work in picture pixels, y down.
     vec2 Pp = vec2(cp.x, 1.0 - cp.y) * gContent;
     float W = gContent.x, H = gContent.y;
+#endif
 
     // ---- light leaks: exposures that sneaked in from the edges
-    if (uLeak > 0.0 && uStudio > 0.5) {
+#if STUDIO
+    if (uLeak > 0.0) {
         // Three soft blobs of light from the left edge, drifting and pulsing.
         float y1 = H * (0.36 + sin(uTime * 0.45) * 0.12), y2 = H * (0.78 + sin(uTime * 0.6 + 2.0) * 0.08);
         vec3 lc = vec3(1.0, 90.0 / 255.0, 31.0 / 255.0), pink = vec3(1.0, 40.0 / 255.0, 90.0 / 255.0);
@@ -976,7 +1003,9 @@ void main() {
         c = screenA(c, b1.rgb, b1.a * k);
         c = screenA(c, b2.rgb, b2.a * k);
         c = screenA(c, b3.rgb, b3.a * k);
-    } else if (uLeak > 0.0) {
+    }
+#else
+    if (uLeak > 0.0) {
         vec3 leak = vec3(0.0);
         vec2 qq = cp * asp;
         for (int i = 0; i < 3; i++) {
@@ -991,6 +1020,7 @@ void main() {
         leak = mix(leak, vec3(dot(leak, LUMA)), uMono);
         c = screenBlend(c, leak * uLeak);
     }
+#endif
 
     // ---- prism rainbow: an arc bending across the frame
     if (uPrism > 0.0) {
@@ -1002,25 +1032,28 @@ void main() {
     }
 
     // ---- vignette
-    if (uStudio > 0.5) {
-        float r0 = min(W, H) * 0.25, r1 = length(vec2(W, H)) * 0.5;
-        c *= 1.0 - clamp((length(Pp - vec2(W, H) * 0.5) - r0) / (r1 - r0), 0.0, 1.0) * uVignette * 0.75;
-    } else {
-        c *= mix(1.0, 1.0 - smoothstep(0.3, 1.15, cornerDist) * 0.85, uVignette);
-    }
+#if STUDIO
+    float r0 = min(W, H) * 0.25, r1 = length(vec2(W, H)) * 0.5;
+    c *= 1.0 - clamp((length(Pp - vec2(W, H) * 0.5) - r0) / (r1 - r0), 0.0, 1.0) * uVignette * 0.75;
+#else
+    c *= mix(1.0, 1.0 - smoothstep(0.3, 1.15, cornerDist) * 0.85, uVignette);
+#endif
 
     // ---- flicker and colour density pumping
     c *= uGain;
 
     // ---- grain: two octaves of value noise, strongest in the mid-tones
-    if (uGrain > 0.0 && uStudio > 0.5) {
+#if STUDIO
+    if (uGrain > 0.0) {
         // The editor's grain: grey cells laid on with an overlay blend.
         vec2 cell = floor(Pp / max(1.0, uGrainSize * min(W, H) / 1080.0));
         float g = rnd(uvec3(uvec2(ivec2(cell) + 8192), uSeed + 83u));
         vec3 d = clamp(c, 0.0, 1.0);
         vec3 ov = mix(2.0 * d * g, 1.0 - 2.0 * (1.0 - d) * (1.0 - g), step(0.5, d));
         c = mix(d, ov, min(uGrain, 1.0) * 0.55);
-    } else if (uGrain > 0.0) {
+    }
+#else
+    if (uGrain > 0.0) {
         vec2 gp = cp * L.size * (1080.0 / uGrainSize);       // short side = 1080 px
         float g = (vnoise(gp, uSeed) - 0.5) + 0.55 * (vnoise(gp * 2.17 + 13.7, uSeed + 7u) - 0.5);
         // Clumping: grain is not uniform, it gathers in soft patches.
@@ -1035,6 +1068,7 @@ void main() {
         float w = mix(1.0, 4.0 * l * (1.0 - l), 0.65) + 0.15;
         c += grain * uGrain * 0.26 * w;
     }
+#endif
 
     // ---- tape noise and scanlines
     if (uVhs > 0.0) {
@@ -1047,7 +1081,8 @@ void main() {
     }
 
     // ---- dust and scratches
-    if (uDust > 0.0 && uStudio > 0.5) {
+#if STUDIO
+    if (uDust > 0.0) {
         // Specks dealt 12 times a second (as many as on a 1080 p picture), and a few thin
         // scratches that stay for 9 of those frames.
         uint frame = uint(max(uTime, 0.0) * 12.0);
@@ -1078,7 +1113,9 @@ void main() {
                         0.2 + rnd(h + uvec3(0u, 0u, 3u)) * 0.3);
             }
         }
-    } else if (uDust > 0.0) {
+    }
+#else
+    if (uDust > 0.0) {
         vec2 dp = cp * asp * 16.0;
         vec2 cell = floor(dp);
         uvec3 h = uvec3(uvec2(ivec2(cell) + 4096), uSeed);
@@ -1101,6 +1138,7 @@ void main() {
             c = mix(c, vec3(0.9, 0.88, 0.84), ln * 0.55 * uScratchAlpha);
         }
     }
+#endif
 
     // ---- roll burn: the leader flaring out when the camera starts and stops
     if (uRollBurn > 0.0) {

@@ -133,7 +133,11 @@ class FilmRenderer {
     private val bright = Program(Shaders.VERTEX, Shaders.BRIGHT)
     private val blur = Program(Shaders.VERTEX, Shaders.BLUR)
     private val gauss = Program(Shaders.VERTEX, Shaders.GAUSS)
-    private val final = Program(Shaders.VERTEX, Shaders.FINAL)
+    private val final = Program(Shaders.VERTEX, Shaders.finalFor(studio = false))
+    /** The final pass for the editor's looks: built the first time one is used. */
+    private var studioProgram: Program? = null
+    private val finalStudio: Program
+        get() = studioProgram ?: Program(Shaders.VERTEX, Shaders.finalFor(studio = true)).also { studioProgram = it }
     private val segInput = Program(Shaders.VERTEX, Shaders.SEG_INPUT)
 
     val glowFormat: Int =
@@ -600,7 +604,7 @@ class FilmRenderer {
     ) {
         GLES30.glViewport(0, 0, targetW, targetH)
         val s = look.stock
-        with(final) {
+        with(if (look.studio) finalStudio else final) {
             use()
             bindTex(0, src.image); set1i("uImage", 0)
             bindTex(1, src.previous); set1i("uPrevImage", 1)
@@ -713,14 +717,15 @@ class FilmRenderer {
             GLES30.glUniform4f(loc("uAdjA"), look.warmth, look.tint, look.contrast, look.saturation)
             // A studio look sharpens and adds clarity the editor's way, in its own place in the order.
             GLES30.glUniform4f(loc("uAdjB"), look.highlights, look.shadows, look.vibrance, if (look.studio) 0f else look.clarity)
-            set1f("uStudio", if (look.studio) 1f else 0f)
             set1f("uSharpen", if (look.studio) look.sharpness else 0f)
             set1f("uClarity", if (look.studio) look.clarity else 0f)
             val hk = look.halation.coerceIn(0f, 1f)
             set2f("uStudioGain", Math.pow(2.0, 1.0 + Math.round(hk * 2f)).toFloat(), Math.pow(2.0, 1.0 + Math.round(hk * 3f)).toFloat())
             val glowLong = max(src.glow.w, src.glow.h)
             set1f("uStudioSoft", if (look.tiltShift <= 0f && studioSoftSigma(look) * glowLong >= 1f) 1f else 0f)
-            set1i("uSmearCap", if (still) 40 else 16)
+            // Zoom, spin and motion blurs: every copy for a photo; fewer on a big video frame,
+            // where the shader softens between them instead (the encoder must keep up).
+            set1i("uSmearCap", if (still) 40 else if (fullW.toLong() * fullH > 3_000_000L) 8 else 16)
             set1f("uNoise", look.noise)
             set1f("uHalftone", if (look.studio) look.halftone else 0f)
             set1f("uThreshold", if (look.studio) look.threshold else 0f)
@@ -754,7 +759,7 @@ class FilmRenderer {
     fun halationThreshold(look: FilmLook) = 0.62f - 0.2f * look.halation
 
     fun release() {
-        listOf(developOes, develop2d, trail, bright, blur, final, segInput).forEach { it.release() }
+        listOfNotNull(developOes, develop2d, trail, bright, blur, gauss, final, studioProgram, segInput).forEach { it.release() }
         if (segFbo != 0) GlUtil.deleteFramebuffers(segFbo)
         GLES30.glDeleteBuffers(1, intArrayOf(vbo), 0)
         GLES30.glDeleteVertexArrays(1, intArrayOf(vao), 0)

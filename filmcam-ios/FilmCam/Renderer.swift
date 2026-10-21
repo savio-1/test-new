@@ -82,6 +82,8 @@ final class Renderer {
     private let blur: Program
     private let gauss: Program
     private let finalProg: Program
+    /// The final pass for the editor's looks, built the first time one is used.
+    private var studioProg: Program?
     let glowFormat: Int32
     private var vao: GLuint = 0
     private var vbo: GLuint = 0
@@ -346,7 +348,10 @@ final class Renderer {
         let fw = fullW ?? targetW, fh = fullH ?? targetH
         glViewport(0, 0, GLsizei(targetW), GLsizei(targetH))
         let s = spec.stock(look.stock)
-        let p = finalProg
+        if look.studio && studioProg == nil {
+            studioProg = try? Program(vertex: Self.shader("vertex.vert"), fragment: Self.shader("final_studio.frag"))
+        }
+        let p = look.studio ? (studioProg ?? finalProg) : finalProg
         p.use()
         bind(0, src.image); p.i("uImage", 0)
         bind(1, src.previous); p.i("uPrevImage", 1)
@@ -420,13 +425,12 @@ final class Renderer {
         p.f4("uAdjA", look.warmth, look.tint, look.contrast, look.saturation)
         // A studio look sharpens and adds clarity the editor's way, in its own place in the order.
         p.f4("uAdjB", look.highlights, look.shadows, look.vibrance, look.studio ? 0 : look.clarity)
-        p.f("uStudio", look.studio ? 1 : 0)
         p.f("uSharpen", look.studio ? look.sharpness : 0)
         p.f("uClarity", look.studio ? look.clarity : 0)
         let hk = min(max(look.halation, 0), 1)
         p.f2("uStudioGain", powf(2, 1 + (hk * 2).rounded()), powf(2, 1 + (hk * 3).rounded()))
         p.f("uStudioSoft", look.tiltShift <= 0 && studioSoftSigma(look) * Float(max(src.glow.w, src.glow.h)) >= 1 ? 1 : 0)
-        p.i("uSmearCap", still ? 40 : 16)
+        p.i("uSmearCap", still ? 40 : fw * fh > 3_000_000 ? 8 : 16)
         p.f("uNoise", look.noise)
         p.f("uHalftone", look.studio ? look.halftone : 0)
         p.f("uThreshold", look.studio ? look.threshold : 0)

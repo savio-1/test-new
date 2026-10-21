@@ -38,7 +38,7 @@ async function runFilm(DATA, imgUrl, camId, opts) {
     gl.linkProgram(p); if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error('link: ' + gl.getProgramInfoLog(p));
     return p;
   }
-  const P = { bright: prog(S.VERTEX, S.BRIGHT), blur: prog(S.VERTEX, S.BLUR), gauss: prog(S.VERTEX, S.GAUSS), fin: prog(S.VERTEX, S.FINAL),
+  const P = { bright: prog(S.VERTEX, S.BRIGHT), blur: prog(S.VERTEX, S.BLUR), gauss: prog(S.VERTEX, S.GAUSS), fin: prog(S.VERTEX, look.studio ? S.FINAL_STUDIO : S.FINAL),
               dev: prog(S.VERTEX, S.DEVELOP_2D_MRT) };
   const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
   const vb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vb);
@@ -256,7 +256,7 @@ async function runFilm(DATA, imgUrl, camId, opts) {
   gl.uniform1i(U(f, 'uLut'), 10); gl.uniform1f(U(f, 'uLutOn'), lutOn);
   bind(13, gC, 'uClarTex');
   const studio = !!look.studio;
-  f1s('uStudio', studio ? 1 : 0); f1s('uSharpen', studio ? look.sharpness : 0); f1s('uClarity', studio ? look.clarity : 0);
+  f1s('uSharpen', studio ? look.sharpness : 0); f1s('uClarity', studio ? look.clarity : 0);
   const hk = Math.min(1, look.halation);
   gl.uniform2f(U(f, 'uStudioGain'), Math.pow(2, 1 + Math.round(hk * 2)), Math.pow(2, 1 + Math.round(hk * 3)));
   f1s('uStudioSoft', look.tiltShift <= 0 && softSigma * Math.max(gw, gh) >= 1 ? 1 : 0);

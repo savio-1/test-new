@@ -24,9 +24,9 @@ import kotlin.math.min
  *
  * Three on-device models (MediaPipe): DeepLab v3 says what every pixel is (person, horse, dog,
  * car, bike...), the selfie model draws people precisely, and the multiclass selfie model finds
- * their hair. The matte hugs the person's own edge, so text set behind sits right against
- * them; only round hair, where strands and movement would let text peep through, is it firmed
- * up and grown a little. By default every
+ * their hair (a few times a second, on a thread of its own). The matte hugs the person's own
+ * edge, so text set behind sits right against them; only round hair, where strands and
+ * movement would let text peep through, is it firmed up and grown a little. By default every
  * person is the subject: the selfie model runs on every frame, kept to where DeepLab (run every
  * few frames) sees people, so a landscape is never mistaken for a face. A tap picks one subject
  * instead: the connected region under the finger (a rider and their horse are one region),
@@ -57,8 +57,15 @@ class SubjectMasker(private val context: Context) {
     private var peopleTs = 0L
     private var objectsTs = 0L
     private var seq = 0L
-    /** The hair zone (firmed, grown, held), from the multiclass model every few frames. */
-    private var hairZone: ByteArray? = null
+    /**
+     * The hair zone (firmed, grown, held). The multiclass model is slow, so it runs on a thread
+     * of its own, a few times a second, and the person's cut-out never waits for it.
+     */
+    @Volatile private var hairZone: ByteArray? = null
+    private val hairThread = HandlerThread("hair").apply { start() }
+    private val hairHandler = Handler(hairThread.looper)
+    @Volatile private var hairBusy = false
+    private var hairStartNs = 0L
     private var hair: ImageSegmenter? = null
     private var hairFailed = false
     private var hairTs = 0L
@@ -133,10 +140,34 @@ class SubjectMasker(private val context: Context) {
 
     fun release() {
         handler.post {
-            people?.close(); objects?.close(); hair?.close()
-            people = null; objects = null; hair = null
+            people?.close(); objects?.close()
+            people = null; objects = null
         }
+        hairHandler.post { hair?.close(); hair = null }
         thread.quitSafely()
+        hairThread.quitSafely()
+    }
+
+    /** Starts finding the hair in [bmp] (a copy, recycled when done), unless that is already going. */
+    private fun startHair(bmp: Bitmap) {
+        val now = System.nanoTime()
+        if (hairBusy || hairFailed || now - hairStartNs < HAIR_INTERVAL_NS) return
+        hairBusy = true
+        hairStartNs = now
+        val copy = bmp.copy(Bitmap.Config.ARGB_8888, false)
+        hairHandler.post {
+            try {
+                val conf = hairConfidence(BitmapImageBuilder(copy).build())
+                val prev = hairZone?.takeIf { it.size == conf?.size }
+                hairZone = conf?.let { hairZone(it, prev, copy.width, copy.height) }
+            } catch (e: Throwable) {
+                Log.w(TAG, "hair", e)
+                hairFailed = true
+            } finally {
+                copy.recycle()
+                hairBusy = false
+            }
+        }
     }
 
     // ------------------------------------------------------------------ worker
@@ -241,7 +272,6 @@ class SubjectMasker(private val context: Context) {
         }
         val cls = classes!!
         val reg = region
-        if (reg == null) hairZone = null
         val out = ByteBuffer.allocateDirect(n)
         var any = false
         if (reg != null) {
@@ -253,30 +283,20 @@ class SubjectMasker(private val context: Context) {
                 // it is weak) also take DeepLab's own outline, which is fresh every frame then.
                 val conf = personConfidence(img)
                 val near = Regions.dilate(reg, w, h, max(3, w / 14))
-                // Hair: every third frame (offset from DeepLab's), held in between.
-                if (bigSubject && (hairZone?.size != n || frame % 3 == 1L)) {
-                    val hc = hairConfidence(img)
-                    hairZone = hc?.let { c ->
-                        for (i in 0 until n) if (!near[i]) c[i] = 0
-                        hairZone(c, hairZone?.takeIf { it.size == n }, w, h)
-                    }
-                } else if (!bigSubject) {
-                    hairZone = null      // far away, DeepLab's outline already covers them
-                }
+                // Hair: found on its own thread; the newest zone is used, near the person only.
+                // Far away, DeepLab's outline already covers them.
+                if (bigSubject) startHair(bmp)
+                val zone = hairZone?.takeIf { bigSubject && it.size == n }
                 for (i in 0 until n) {
                     var m = if (near[i] && conf != null) (conf[i] * 255f + 0.5f).toInt().coerceIn(0, 255) else 0
                     if ((!bigSubject || conf == null) && reg[i]) m = 255
+                    // The person's own edge everywhere, and the firmer hair zone over their hair.
+                    if (zone != null && near[i]) m = max(m, zone[i].toInt() and 0xFF)
                     if (m > 0) { out.put(i, m.toByte()); if (m > 127) any = true }
                 }
             } else {
                 for (i in 0 until n) if (reg[i]) { out.put(i, 255.toByte()); any = true }
             }
-        }
-        // The person's own edge everywhere, and the firmer hair zone over their hair.
-        val zone = hairZone?.takeIf { it.size == n && reg != null && (target as? Target.One)?.person != false }
-        if (zone != null) for (i in 0 until n) {
-            val z = zone[i].toInt() and 0xFF
-            if (z > (out.get(i).toInt() and 0xFF)) { out.put(i, z.toByte()); if (z > 127) any = true }
         }
         out.position(0)
         latest = Matte(out, w, h, ++seq, empty = !any)
@@ -373,6 +393,11 @@ class SubjectMasker(private val context: Context) {
         private const val PEOPLE_MODEL = "seg/selfie_segmenter.tflite"
         private const val HAIR_MODEL = "seg/selfie_multiclass_256x256.tflite"
         private const val HAIR = 1
+        /**
+         * At most this often (4 times a second): the zone is grown and held, so it keeps up with
+         * moving hair, and the CPU stays free for the camera and the encoder.
+         */
+        private const val HAIR_INTERVAL_NS = 250_000_000L
         private const val OBJECT_MODEL = "seg/deeplab_v3.tflite"
         private const val PERSON = 15
         private val LABELS = listOf(
