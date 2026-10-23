@@ -42,8 +42,8 @@ Requirements: an iPhone on **iOS 17 or later**, a USB cable, and a Mac or a Wind
 4. Select the **FilmCam** target and open **Signing & Capabilities**:
    1. Tick *Automatically manage signing*.
    2. Choose your **Team** (add your Apple ID under Xcode → Settings → Accounts).
-   3. If Xcode says the bundle id is taken, change `app.filmcam.ios` to something of
-      your own, such as `com.yourname.filmcam`.
+   3. If Xcode says the bundle id is taken, change `com.savio.sfilm` to something of
+      your own, such as `com.yourname.sfilm`.
 5. Connect the iPhone and pick it as the run destination. Turn on Developer Mode on the
    phone if Xcode asks (see step 6 above), then press **Run** (⌘R).
 6. The first time, trust the developer profile on the phone (step 5 above).
