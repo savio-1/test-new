@@ -131,7 +131,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -e\nDEST=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"\nSHARED=\"$SRCROOT/../filmcam-shared\"\nASSETS=\"$SRCROOT/../filmcam-android/app/src/main/assets\"\nmkdir -p \"$DEST\"\nrsync -a --delete \"$SHARED/spec/\" \"$DEST/spec/\"\nrsync -a --delete \"$SHARED/shaders/\" \"$DEST/shaders/\"\nrsync -a --delete \"$SHARED/luts/\" \"$DEST/luts/\"\nrsync -a --delete \"$ASSETS/looks/\" \"$DEST/looks/\"\nrsync -a --delete \"$ASSETS/styles/\" \"$DEST/styles/\"\n";
+			shellScript = "set -e\nDEST=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"\nSHARED=\"$SRCROOT/../filmcam-shared\"\nASSETS=\"$SRCROOT/../filmcam-android/app/src/main/assets\"\nmkdir -p \"$DEST\"\nrsync -a --delete \"$SHARED/spec/\" \"$DEST/spec/\"\nrsync -a --delete \"$SHARED/shaders/\" \"$DEST/shaders/\"\nrsync -a --delete \"$SHARED/luts/\" \"$DEST/luts/\"\nrsync -a --delete \"$ASSETS/looks/\" \"$DEST/looks/\"\nif [ -d \"$ASSETS/styles\" ]; then rsync -a --delete \"$ASSETS/styles/\" \"$DEST/styles/\"; fi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

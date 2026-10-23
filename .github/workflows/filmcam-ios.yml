@@ -32,6 +32,7 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             build > xcodebuild.log 2>&1 || true
           grep -E "error:|BUILD (SUCCEEDED|FAILED)" xcodebuild.log | sort -u | head -150 || true
+          ! grep -q "BUILD FAILED" xcodebuild.log
           test -d build/Release-iphoneos/FilmCam.app
           ls build/Release-iphoneos/FilmCam.app build/Release-iphoneos/FilmCam.app/spec build/Release-iphoneos/FilmCam.app/luts | head -40
 
