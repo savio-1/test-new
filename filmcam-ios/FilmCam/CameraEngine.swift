@@ -130,6 +130,8 @@ final class CameraEngine: NSObject {
             session.addOutput(videoOutput)
         }
         // Stills come from the photo output; the viewfinder only needs screen-sized frames.
+        // iOS throws if the automatic sizing is still on when this is set (it starts on).
+        videoOutput.automaticallyConfiguresOutputBufferDimensions = false
         videoOutput.deliversPreviewSizedOutputBuffers = !video
         if !session.outputs.contains(photoOutput), session.canAddOutput(photoOutput) {
             session.addOutput(photoOutput)
