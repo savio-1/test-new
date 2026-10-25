@@ -1,7 +1,28 @@
+import AVFoundation
 import SwiftUI
 import UniformTypeIdentifiers
 
 /// The viewfinder: the GL layer the render queue draws the final pass into.
+/// The camera's own preview, for log (the file is flat; the screen shows it as the camera sees it).
+struct CameraPreview: UIViewRepresentable {
+    let session: AVCaptureSession
+
+    final class PreviewView: UIView {
+        override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
+        var preview: AVCaptureVideoPreviewLayer { layer as! AVCaptureVideoPreviewLayer }
+    }
+
+    func makeUIView(context: Context) -> PreviewView {
+        let v = PreviewView()
+        v.backgroundColor = .black
+        v.preview.session = session
+        v.preview.videoGravity = .resizeAspectFill
+        return v
+    }
+
+    func updateUIView(_ uiView: PreviewView, context: Context) {}
+}
+
 struct ViewfinderGL: UIViewRepresentable {
     let engine: CameraEngine
 
@@ -140,7 +161,7 @@ struct CameraPage: View {
     }
 
     @ViewBuilder private func tray(_ chrome: Double) -> some View {
-        let shown: Dock = (model.recording && model.dock != .TEXT) ? .NONE : model.dock
+        let shown: Dock = (model.recording && model.dock != .TEXT) || model.logActive ? .NONE : model.dock
         Group {
             switch shown {
             case .LOOKS: LooksTray(chrome: chrome)
@@ -197,10 +218,10 @@ private struct TopBar: View {
             }
             .frame(maxWidth: .infinity)
             Button {
-                if !model.recording { model.dock = model.dock == .LOOKS ? .NONE : .LOOKS }
+                if !model.recording && !model.logActive { model.dock = model.dock == .LOOKS ? .NONE : .LOOKS }
             } label: {
                 VStack(spacing: 1) {
-                    Text(model.camera.name).font(UiType.sans(18, .medium)).foregroundStyle(p.text).lineLimit(1)
+                    Text(model.logActive ? "Log" : model.camera.name).font(UiType.sans(18, .medium)).foregroundStyle(p.text).lineLimit(1)
                         .id(model.camera.id)
                         .transition(.opacity.combined(with: .offset(y: 6)))
                     Text(subtitle).font(UiType.mono(9)).tracking(1.2).foregroundStyle(p.muted).lineLimit(1)
@@ -224,7 +245,9 @@ private struct TopBar: View {
 
     private var subtitle: String {
         var parts: [String]
-        if model.edit != nil {
+        if model.logActive {
+            parts = model.logCurveInUse == .APPLE_LOG ? ["Apple Log", "10-bit", "Rec.2020"] : ["HLG", "10-bit", "Rec.2020"]
+        } else if model.edit != nil {
             parts = ["Developing", model.spec.stock(model.look.stock).name]
         } else if model.isOriginal {
             parts = ["No look", model.mode == .VIDEO ? "Video" : "Photo"]
@@ -254,6 +277,9 @@ private struct QuickBar: View {
             } else if model.mode == .VIDEO {
                 QuickChip(quick: .RATIO, glyph: Ico.ratio, text: model.videoRatio.label(model.sideways))
                 QuickChip(quick: .VIDEO, glyph: nil, text: "\(model.videoRes.label) · \(model.fps)")
+                if model.caps.hlg || model.caps.appleLog {
+                    QuickChip(quick: .LOG, glyph: Ico.log, text: model.log ? "Log" : "Std", active: model.log)
+                }
                 QuickChip(quick: .TIMER, glyph: Ico.timer, text: timerLabel(model.timerSeconds), active: model.timerSeconds > 0)
             } else {
                 QuickChip(quick: .RATIO, glyph: Ico.ratio, text: model.photoRatio.label(model.sideways))
@@ -334,7 +360,8 @@ private struct Viewfinder: View {
             let box = fit(geo.size, aspect)
             ZStack {
                 ViewfinderGL(engine: model.engine)
-                if model.dock == .TEXT {
+                if model.logActive { CameraPreview(session: model.engine.session) }
+                if model.dock == .TEXT && !model.logActive {
                     TextEditorLayer()
                 } else if model.edit == nil {
                     gestures(box)
@@ -444,7 +471,8 @@ private struct StatusPill: View {
     @EnvironmentObject var model: AppModel
 
     var body: some View {
-        let status: String? = model.savingVideo ? "Saving" : model.developing > 0 ? "Developing" : nil
+        let status: String? = model.savingVideo ? "Saving" : model.developing > 0 ? "Developing"
+            : model.logActive ? "Log · 10-bit" : nil
         if let status {
             HStack(spacing: 7) {
                 ProgressView().controlSize(.mini).tint(.white)
@@ -587,7 +615,7 @@ private struct DockBar: View {
                 let sel = model.dock == d
                 let glyph: Glyph = d == .LOOKS ? Ico.film : d == .ADJUST ? Ico.adjust : d == .FRAME ? Ico.frame : Ico.text
                 Button {
-                    guard !model.recording || d == .TEXT else { return }
+                    guard (!model.recording || d == .TEXT) && !model.logActive else { return }
                     model.quick = nil
                     model.dock = sel ? .NONE : d
                 } label: {
@@ -602,6 +630,7 @@ private struct DockBar: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(GentlePress())
+                .opacity(model.logActive ? 0.35 : 1)
                 .frame(maxWidth: .infinity)
             }
         }

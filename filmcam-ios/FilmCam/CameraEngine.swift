@@ -46,6 +46,8 @@ struct CameraConfig: Equatable {
     var fps = 30
     var photoSize: PhotoSize?
     var stabilization = false
+    /// Log video: flat 10-bit straight from the sensor into the file (no film look).
+    var log: LogCurveChoice?
 }
 
 /// What the camera can do, reported after each configuration.
@@ -63,6 +65,10 @@ struct CameraCaps: Equatable {
     var zoomStops: [Float] = [1]
     var zoom: Float = 1
     var encoderInfo = ""
+    var hlg = false
+    var appleLog = false
+    /// Log is on and the camera took it (the file is 10-bit log; the screen shows the camera's preview).
+    var logActive = false
 }
 
 /// Camera, live film rendering and capture. Frames from AVFoundation (BGRA, already turned
@@ -109,6 +115,9 @@ final class CameraEngine: NSObject {
     private var aspect: Float = 3.0 / 4.0
     private var videoMode = false
     private var workSide = 1920
+    /// Log: camera frames go straight to the file; the screen shows the camera's own preview.
+    private var logMode = false
+    private var logWriter: LogWriter?
     private var recordTurns = 0
     private var recordLook: LookRecord?
     private var active = true
@@ -178,6 +187,12 @@ final class CameraEngine: NSObject {
         renderQueue.sync {
             active = false
             if writer != nil { finishRecording() }
+            if let lw = logWriter {
+                logWriter = nil
+                let record = recordLook
+                DispatchQueue.main.async { self.onRecording?(false) }
+                lw.finish { url in self.saveRecording(url, record) }
+            }
             EAGLContext.setCurrent(context)
             glFinish()
         }
@@ -215,6 +230,19 @@ final class CameraEngine: NSObject {
         }.first
     }
 
+    /// A 10-bit format for [res] at [fps] that can film in [space].
+    private static func logFormat(_ dev: AVCaptureDevice, _ res: VideoResolution, _ fps: Int, _ space: AVCaptureColorSpace) -> AVCaptureDevice.Format? {
+        dev.formats.first { f in
+            let d = CMVideoFormatDescriptionGetDimensions(f.formatDescription)
+            return Int(d.width) == res.width && Int(d.height) == res.height
+                && CMFormatDescriptionGetMediaSubType(f.formatDescription) == kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
+                && f.supportedColorSpaces.contains(space)
+                && f.videoSupportedFrameRateRanges.contains { $0.maxFrameRate >= Double(fps) - 0.01 && $0.minFrameRate <= Double(fps) + 0.01 }
+        }
+    }
+
+    private static func logSpace(_ c: LogCurveChoice) -> AVCaptureColorSpace { c == .APPLE_LOG ? .appleLog : .HLG_BT2020 }
+
     private static func supports(_ dev: AVCaptureDevice, _ res: VideoResolution, _ fps: Int) -> Bool {
         videoFormat(dev, res, fps) != nil
     }
@@ -242,6 +270,8 @@ final class CameraEngine: NSObject {
             videoOutput.setSampleBufferDelegate(self, queue: renderQueue)
             session.addOutput(videoOutput)
         }
+        videoOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: video && cfg.log != nil
+            ? kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange : kCVPixelFormatType_32BGRA]
         // Stills come from the photo output; the viewfinder only needs screen-sized frames.
         // iOS throws if the automatic sizing is still on when this is set (it starts on).
         videoOutput.automaticallyConfiguresOutputBufferDimensions = false
@@ -270,13 +300,22 @@ final class CameraEngine: NSObject {
         var fps = cfg.fps
         var res = cfg.videoRes
         let resOK = VideoResolution.allCases.filter { r in [24, 25, 30, 60].contains { Self.supports(dev, r, $0) } }
+        var logOn = false
+        session.automaticallyConfiguresCaptureDeviceForWideColor = !(video && cfg.log != nil)
         if video {
             if !resOK.contains(res) { res = resOK.contains(.FHD) ? .FHD : resOK.last ?? .FHD }
             if !Self.supports(dev, res, fps) { fps = 30 }
-            if let fmt = Self.videoFormat(dev, res, fps) ?? Self.videoFormat(dev, res, 30) {
+            let logFmt = cfg.log.flatMap { Self.logFormat(dev, res, fps, Self.logSpace($0)) }
+            if let fmt = logFmt ?? Self.videoFormat(dev, res, fps) ?? Self.videoFormat(dev, res, 30) {
                 do {
                     try dev.lockForConfiguration()
                     dev.activeFormat = fmt
+                    if logFmt != nil, let c = cfg.log {
+                        dev.activeColorSpace = Self.logSpace(c)
+                        logOn = true
+                    } else if fmt.supportedColorSpaces.contains(.sRGB) {
+                        dev.activeColorSpace = .sRGB
+                    }
                     dev.activeVideoMinFrameDuration = CMTime(value: 1, timescale: CMTimeScale(fps))
                     dev.activeVideoMaxFrameDuration = CMTime(value: 1, timescale: CMTimeScale(fps))
                     dev.unlockForConfiguration()
@@ -331,12 +370,17 @@ final class CameraEngine: NSObject {
         c.videoRes = Set(resOK)
         c.fps = Set([24, 25, 30, 60].filter { Self.supports(dev, res, $0) })
         c.stabilization = dev.activeFormat.isVideoStabilizationModeSupported(.standard)
-        c.encoderInfo = video ? "HEVC · \(res.label) · \(fps) fps" : ""
+        c.encoderInfo = video ? (logOn ? "HEVC 10-bit · " : "HEVC · ") + "\(res.label) · \(fps) fps" : ""
+        c.hlg = Self.logFormat(dev, res, fps, .HLG_BT2020) != nil
+        c.appleLog = Self.logFormat(dev, res, fps, .appleLog) != nil
+        c.logActive = logOn
         caps = c
 
         let side = video ? max(res.width, res.height) : 1920
+        let logMode = logOn
         renderQueue.async {
             self.videoMode = video
+            self.logMode = logMode
             self.workSide = side
             self.lastFilmFrame = -1
         }
@@ -521,6 +565,12 @@ final class CameraEngine: NSObject {
     // MARK: - Live frames (render queue)
 
     private func render(_ sample: CMSampleBuffer) {
+        if logMode {
+            if let lw = logWriter, let pb = CMSampleBufferGetImageBuffer(sample) {
+                lw.append(pb, at: CMSampleBufferGetPresentationTimeStamp(sample))
+            }
+            return
+        }
         guard active, editStill == nil, editOutput == nil, let renderer, let cache, let pb = CMSampleBufferGetImageBuffer(sample) else { return }
         let pts = CMSampleBufferGetPresentationTimeStamp(sample)
         let now = CMTimeGetSeconds(pts)
@@ -639,6 +689,16 @@ final class CameraEngine: NSObject {
         if sound { AudioServicesPlaySystemSound(1117) }
         let turns = quarterTurns
         renderQueue.async {
+            if self.logMode {
+                guard self.logWriter == nil else { return }
+                let angle: CGFloat = [0, .pi / 2, .pi, -.pi / 2][turns & 3]
+                self.logWriter = LogWriter(audio: AVCaptureDevice.authorizationStatus(for: .audio) == .authorized,
+                                           transform: CGAffineTransform(rotationAngle: angle))
+                self.recordLook = record
+                self.liveDenoiser = self.voiceDenoise ? ClipDenoiser() : nil
+                DispatchQueue.main.async { self.onRecording?(true) }
+                return
+            }
             guard self.writer == nil, let p = self.pipeline else { return }
             do {
                 let audio = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
@@ -661,6 +721,13 @@ final class CameraEngine: NSObject {
 
     func stopRecording(sound: Bool) {
         renderQueue.async {
+            if let lw = self.logWriter {
+                self.logWriter = nil
+                let record = self.recordLook
+                DispatchQueue.main.async { self.onRecording?(false); self.onSavingVideo?(true) }
+                lw.finish { url in self.saveRecording(url, record) }
+                return
+            }
             guard self.writer != nil else { return }
             if self.recordBurn && self.active {
                 if self.stopRequested == 0 { self.stopRequested = self.lastFilmFrame }
@@ -677,18 +744,20 @@ final class CameraEngine: NSObject {
         stopRequested = 0
         let record = recordLook
         DispatchQueue.main.async { self.onRecording?(false); self.onSavingVideo?(true) }
-        wr.finish { url in
-            guard let url else {
-                DispatchQueue.main.async { self.onSavingVideo?(false) }
-                self.report("Recording failed")
-                return
-            }
-            let thumb = Self.videoThumbnail(url)
-            MediaLibrary.saveVideo(url, look: record) { item in
-                try? FileManager.default.removeItem(at: url)
-                self.onSavingVideo?(false)
-                self.onSaved?(item, thumb)
-            }
+        wr.finish { url in self.saveRecording(url, record) }
+    }
+
+    private func saveRecording(_ url: URL?, _ record: LookRecord?) {
+        guard let url else {
+            DispatchQueue.main.async { self.onSavingVideo?(false) }
+            report("Recording failed")
+            return
+        }
+        let thumb = Self.videoThumbnail(url)
+        MediaLibrary.saveVideo(url, look: record) { item in
+            try? FileManager.default.removeItem(at: url)
+            self.onSavingVideo?(false)
+            self.onSaved?(item, thumb)
         }
     }
 
@@ -819,6 +888,11 @@ final class CameraEngine: NSObject {
 extension CameraEngine: AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptureAudioDataOutputSampleBufferDelegate {
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         if output === audioOutput {
+            if let lw = logWriter {
+                lw.appendAudio(liveDenoiser?.process(sampleBuffer) ?? sampleBuffer)
+                onAudioSample?(sampleBuffer)
+                return
+            }
             guard let wr = writer else { return }
             wr.appendAudio(liveDenoiser?.process(sampleBuffer) ?? sampleBuffer)
             onAudioSample?(sampleBuffer)

@@ -409,7 +409,23 @@ struct QuickPanel: View {
                           enabled: { _ in model.burstCount != 1 }) { model.setBurst(model.burstCount, $0) }
                 PanelHelp("Press the shutter to start; press again to stop. Works with the self-timer.")
             case .LOG:
-                PanelHelp("Log video is coming to iPhone.")
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Shoot log").font(UiType.sans(14)).foregroundStyle(p.text)
+                        Text("Flat, wide-range footage for grading. No film look.").font(UiType.sans(11)).foregroundStyle(p.muted)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Toggle2(on: model.log) { model.setLog(!model.log) }
+                }
+                if model.log {
+                    if model.caps.appleLog {
+                        PanelLabel("Curve", top: 12)
+                        Segmented(options: LogCurveChoice.allCases, selected: model.logCurveInUse, label: { $0.label }) { model.setLogCurve($0) }
+                    }
+                    PanelHelp(model.logCurveInUse == .APPLE_LOG
+                              ? "10-bit Apple Log straight from the sensor into HEVC: flat and gradeable. In your editor: Apple Log, Rec.2020 colour."
+                              : "10-bit HLG straight from the sensor into HEVC. HLG is an HDR format, not a flat log: on an HDR screen it plays bright and contrasty, as it should. Most range and no banding for grading. In your editor: Rec.2100 HLG, Rec.2020 colour.")
+                }
             }
         }
         .padding(.horizontal, 14).padding(.vertical, 12)
@@ -452,6 +468,9 @@ struct SettingsSheet: View {
                         }
                         if model.caps.stabilization {
                             SettingSwitch(title: "Stabilisation", help: "Steadier, slightly cropped", value: model.stabilization) { model.setStabilization($0) }
+                        }
+                        if model.caps.hlg || model.caps.appleLog {
+                            SettingSwitch(title: "Log", help: "Flat 10-bit video for colour grading", value: model.log) { model.setLog($0) }
                         }
                         SettingSwitch(title: "Reduce background noise", help: "Hiss, hum, fans and traffic taken out of the sound; the voice stays natural",
                                       value: model.voiceDenoise) { model.setVoiceDenoise($0) }

@@ -75,6 +75,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var realShutter: Bool
     @Published private(set) var stabilization: Bool
     @Published private(set) var voiceDenoise: Bool
+    @Published private(set) var log: Bool
+    @Published private(set) var logCurve: LogCurveChoice
     @Published private(set) var quarterTurns = 0
 
     // gallery, viewer and imports
@@ -107,6 +109,10 @@ final class AppModel: ObservableObject {
     var sideways: Bool { frameTurns % 2 == 1 }
     var hasFlash: Bool { caps.hasFlash }
     var rawSupported: Bool { caps.raw }
+    /// Filming log right now: the file is flat 10-bit, without a look.
+    var logActive: Bool { log && mode == .VIDEO && edit == nil && caps.logActive }
+    /// The curve that will be used (Apple Log only on the phones that have it).
+    var logCurveInUse: LogCurveChoice { logCurve == .APPLE_LOG && caps.appleLog ? .APPLE_LOG : .HLG }
 
     /// The frame shape in use, upright: the mode's ratio, or the imported picture's.
     var frameAspect: Float {
@@ -139,6 +145,8 @@ final class AppModel: ObservableObject {
         realShutter = d.bool(forKey: "realShutter")
         stabilization = d.object(forKey: "stabilization") as? Bool ?? true
         voiceDenoise = d.bool(forKey: "voiceDenoise")
+        log = d.bool(forKey: "log")
+        logCurve = LogCurveChoice(rawValue: d.string(forKey: "logCurve") ?? "") ?? .HLG
         timerSeconds = d.integer(forKey: "timer")
         burstCount = d.object(forKey: "burstCount") as? Int ?? 1
         burstInterval = d.object(forKey: "burstInterval") as? Float ?? 1
@@ -224,6 +232,7 @@ final class AppModel: ObservableObject {
         cfg.fps = fps
         cfg.photoSize = photoSize
         cfg.stabilization = stabilization
+        if cfg.video && log { cfg.log = logCurve }
         if cfg.video && AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined {
             AVCaptureDevice.requestAccess(for: .audio) { _ in Task { @MainActor in self.engine.start(cfg) } }
         } else {
@@ -427,6 +436,21 @@ final class AppModel: ObservableObject {
     func setStabilization(_ on: Bool) {
         stabilization = on
         prefs.set(on, forKey: "stabilization")
+        openCamera()
+    }
+
+    func setLog(_ on: Bool) {
+        guard !recording else { return }
+        log = on
+        prefs.set(on, forKey: "log")
+        if on { dock = .NONE }
+        openCamera()
+    }
+
+    func setLogCurve(_ c: LogCurveChoice) {
+        guard !recording else { return }
+        logCurve = c
+        prefs.set(c.rawValue, forKey: "logCurve")
         openCamera()
     }
 
