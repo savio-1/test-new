@@ -498,8 +498,10 @@ final class AppModel: ObservableObject {
             engine.captureSampler(look: look, record: lookRecord)
             return
         }
+        // Don't pile up full-size frames.
+        if developing >= 2 { return }
         flashPulse += 1
-        engine.capturePhoto(look: look, original: isUntouched, flash: flash && hasFlash, raw: raw && rawSupported, record: lookRecord)
+        engine.capturePhoto(look: look, aspect: frameAspect, original: isUntouched, flash: flash && hasFlash, raw: raw && rawSupported, record: lookRecord)
     }
 
     /// The phone's own picture, untouched: saved exactly as the camera made it.
@@ -849,18 +851,19 @@ final class AppModel: ObservableObject {
         s.linesSoFar = 0
         let url = s.url
         let duration = s.durationMs
-        Task.detached(priority: .userInitiated) { [weak self] in
+        // The reading and the request run off the main thread (they are nonisolated async).
+        Task {
             var cues: [Cue] = []
             var failure: String?
             do {
                 guard let audio = try await AudioExtract.extract(url) else { throw TranscribeError("This clip has no sound") }
                 cues = try await t.transcribe(audio, durationMs: duration, onStatus: { st in
-                    Task { @MainActor in if self?.transcriber === t { s.status = st } }
+                    Task { @MainActor in if self.transcriber === t { s.status = st } }
                 }, onText: { text in
                     // Each finished line carries an "end": count them as they stream in.
                     let n = text.components(separatedBy: "\"end\"").count - 1
                     Task { @MainActor in
-                        if self?.transcriber === t, s.status != nil { s.status = "Writing"; s.linesSoFar = n }
+                        if self.transcriber === t, s.status != nil { s.status = "Writing"; s.linesSoFar = n }
                     }
                 })
             } catch let e as TranscribeError {
@@ -868,18 +871,16 @@ final class AppModel: ObservableObject {
             } catch {
                 failure = "Couldn't make subtitles (\(type(of: error)): \(error.localizedDescription))"
             }
-            await MainActor.run { [cues, failure] in
-                guard let self, self.transcriber === t else { return }   // cancelled meanwhile
-                self.transcriber = nil
-                s.status = nil
-                if let failure { s.error = failure; return }
-                if cues.isEmpty { s.error = "No speech found in this clip"; return }
-                // A clip spoken in Telugu opens on Telugu subtitles; otherwise English.
-                let teluguMostly = cues.filter { $0.language.hasPrefix("te") }.count * 2 > cues.count
-                var style = s.track?.style ?? SubtitleStyle()
-                if s.track == nil && teluguMostly { style.language = .TELUGU }
-                if self.subtitles === s { self.updateSubtitles(SubtitleTrack(cues, style)) }
-            }
+            guard self.transcriber === t else { return }   // cancelled meanwhile
+            self.transcriber = nil
+            s.status = nil
+            if let failure { s.error = failure; return }
+            if cues.isEmpty { s.error = "No speech found in this clip"; return }
+            // A clip spoken in Telugu opens on Telugu subtitles; otherwise English.
+            let teluguMostly = cues.filter { $0.language.hasPrefix("te") }.count * 2 > cues.count
+            var style = s.track?.style ?? SubtitleStyle()
+            if s.track == nil && teluguMostly { style.language = .TELUGU }
+            if self.subtitles === s { self.updateSubtitles(SubtitleTrack(cues, style)) }
         }
     }
 

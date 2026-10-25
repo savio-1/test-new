@@ -1,6 +1,6 @@
-# Installing FilmCam on your iPhone
+# Installing S film on your iPhone
 
-FilmCam for iPhone is built by GitHub Actions on a Mac (workflow **FilmCam iOS**,
+S film for iPhone is built by GitHub Actions on a Mac (workflow **FilmCam iOS**,
 `.github/workflows/filmcam-ios.yml`). Every push to `claude/brave-allen-0xuvx9` that
 touches the iOS app or the shared film engine produces an **unsigned** app,
 `FilmCam-unsigned.ipa`.
@@ -30,7 +30,7 @@ Requirements: an iPhone on **iOS 17 or later**, a USB cable, and a Mac or a Wind
    ID under *Developer App*, then **Trust**.
 6. Turn on Developer Mode: **Settings → Privacy & Security → Developer Mode → On**. The
    phone restarts; confirm **Turn On** when it comes back.
-7. Open FilmCam and allow the camera, the microphone (for video) and adding to Photos.
+7. Open S film and allow the camera, the microphone (for video), Photos and speech recognition (for live captions).
 
 ## Option B: Xcode on a Mac (builds from source)
 
@@ -50,30 +50,37 @@ Requirements: an iPhone on **iOS 17 or later**, a USB cable, and a Mac or a Wind
 
 ## What's in the iPhone version
 
-- **Same looks as Android.** It uses the same film engine: the same GLSL shaders, the
-  same film-lab 3D LUTs and the same camera presets, read from
-  `filmcam-shared/spec/filmcam-spec.json`.
-- **Camera.**
-  - A live film viewfinder at 3:4 for photo and 9:16 for video.
-  - Lens stops (0.5× / 1× / 2× or tele, depending on the phone).
-  - Front camera and tap to focus.
-- **Looks, styles and adjustments.**
-  - Looks are grouped by category.
-  - Photographic styles have a tone/colour pad and a palette slider.
-  - Adjust has Basic (exposure, temp, tint, contrast, highlights, shadows, saturation,
-    vibrance, clarity, sharpness, fade), Light, Film and Lens.
-  - Tap the picture to close a panel.
-- **Photos.**
-  - 12 MP photos are re-developed at full resolution and saved as JPEG with their EXIF
-    data.
-  - With the *Original* camera, and no style or adjustment, the iPhone's own picture is
-    saved untouched.
-- **Video.** HEVC video with sound, including film frame rates, roll burn and the
-  camcorder date display.
-- **Sound.** The shutter and record sound can be turned off in Settings. In some regions
-  (Japan, Korea) iOS always plays it.
+The iPhone app follows the Android app feature for feature, in the same editor design.
 
-Not ported yet: gallery and trim (the thumbnail opens Photos), import, log, RAW,
-multi-shot cameras, text overlays and timers. The iOS renderer uses OpenGL ES 3, which
-Apple has deprecated but still ships; a Metal port is the longer-term plan (see
-`filmcam-shared/PORTING-iOS.md`).
+- **Same looks as Android.** The same film engine: the same GLSL shaders, film-lab 3D
+  LUTs, studio looks and camera presets, read from `filmcam-shared/spec/filmcam-spec.json`.
+- **Design.** The monochrome editor palette in dark, light (on a dot grid) or Auto, with
+  Inter and Space Mono and the Android line icons.
+- **Camera.**
+  - Chips above the picture: frame shape (3:4, 4:5, 1:1, 2:3, 9:16, turning with the
+    phone), photo size, RAW, self-timer and interval bursts; video resolution, frame rate
+    and log.
+  - Lens stops and pinch zoom; tap to focus, then drag up or down to set the exposure.
+  - Flash (the torch while filming), front camera, real shutter speed, stabilisation.
+  - Photos held sideways come out landscape, effects and borders turned to match.
+- **Looks.** Favourites, All and every category; a heart and an intensity slider for the
+  chosen look; None takes the look off. Import your own `.cube` LUTs (or a graded Hald
+  image) into Custom.
+- **Adjust.** Basic, Light, Motion, Film, Lens and Retro tools on the ruler (double-tap
+  resets); your settings stay on as you change looks.
+- **Frame.** Borders and date stamps.
+- **Text.** Text layers with font families (and imported fonts or font zips),
+  animations, effects and blends, set in front of or behind the person.
+- **Gallery.** The S film album: swipe through shots, zoom, play, trim clips, share,
+  delete, see the look a shot was made with and put it back on.
+- **Import and develop.** Bring in a photo or clip from Photos, see it through any look,
+  and save a developed copy.
+- **Subtitles.** Generate subtitles with Gemini (your own key), words timed to the voice,
+  kinetic caption templates, styling, SRT export and burn-in; live captions while filming.
+- **Video.** HEVC with sound, film frame rates, roll burn, the camcorder display, and
+  optional background-noise reduction. Log films 10-bit HLG, or Apple Log on iPhone 15
+  Pro and later, straight from the sensor.
+- **Multi-shot cameras.** Half-frame pairs and the four-lens sampler.
+
+The iOS renderer uses OpenGL ES 3, which Apple has deprecated but still ships; a Metal
+port is the longer-term plan (see `filmcam-shared/PORTING-iOS.md`).

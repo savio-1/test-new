@@ -779,12 +779,11 @@ final class CameraEngine: NSObject {
 
     /// [original]: the untouched phone picture (no look, no style): saved exactly as shot.
     /// [raw]: a DNG is kept with it (as the asset's alternate picture).
-    func capturePhoto(look lookIn: Look, original: Bool, flash: Bool, raw: Bool, record: LookRecord?) {
+    func capturePhoto(look lookIn: Look, aspect frameAspect: Float, original: Bool, flash: Bool, raw: Bool, record: LookRecord?) {
         let halfFrame = lookIn.multiShot == "HALF_FRAME"
         var look = lookIn
         if halfFrame { look.frame = "NONE" }
         let turns = quarterTurns
-        let frameAspect = renderQueue.sync { aspect }
         sessionQueue.async {
             guard self.session.isRunning, self.photoOutput.connection(with: .video) != nil else { return }
             let rawType = raw ? self.photoOutput.availableRawPhotoPixelFormatTypes.first { !AVCapturePhotoOutput.isAppleProRAWPixelFormat($0) } : nil
