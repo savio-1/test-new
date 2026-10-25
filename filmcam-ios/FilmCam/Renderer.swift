@@ -177,8 +177,9 @@ final class Renderer {
     private func lut(for id: String) -> GLuint {
         if let t = luts[id] { return t }
         var tex: GLuint = 0
-        if let url = Bundle.main.url(forResource: id, withExtension: "png", subdirectory: "luts"),
-           let src = CGImageSourceCreateWithURL(url as CFURL, nil),
+        let file = Bundle.main.url(forResource: id, withExtension: "png", subdirectory: "luts")
+            ?? (id.hasPrefix(UserLooks.prefix) ? UserLooks.lutURL(id) : nil)
+        if let url = file, let src = CGImageSourceCreateWithURL(url as CFURL, nil),
            let img = CGImageSourceCreateImageAtIndex(src, 0, nil) {
             let n = img.height
             if img.width == n * n {

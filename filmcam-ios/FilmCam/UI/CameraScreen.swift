@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The viewfinder: the GL layer the render queue draws the final pass into.
 struct ViewfinderGL: UIViewRepresentable {
@@ -55,6 +56,10 @@ struct RootView: View {
                 model.imported(url, video: video)
             }, onCancel: { model.pickingMedia = false })
             .ignoresSafeArea()
+        }
+        .fileImporter(isPresented: $model.pickingLut,
+                      allowedContentTypes: [UTType(filenameExtension: "cube") ?? .data, .png, .jpeg, .data]) { result in
+            if case .success(let url) = result { model.importLut(from: url) }
         }
     }
 }

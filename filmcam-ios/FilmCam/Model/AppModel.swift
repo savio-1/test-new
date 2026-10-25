@@ -121,8 +121,11 @@ final class AppModel: ObservableObject {
 
     init() {
         let d = UserDefaults.standard
-        let saved = d.string(forKey: "camera").flatMap { Spec.shared.camera($0) } ?? Spec.shared.original
+        let users = UserLooks.load()
+        let savedId = d.string(forKey: "camera")
+        let saved = savedId.flatMap { id in Spec.shared.camera(id) ?? users.first { $0.id == id } } ?? Spec.shared.original
         camera = saved
+        userLooks = users
         favourites = Set(d.stringArray(forKey: "favourites") ?? [])
         lookOverrides = (d.dictionary(forKey: "lookOverrides") as? [String: Double])?.mapValues { Float($0) } ?? [:]
         theme = ThemeMode(rawValue: d.string(forKey: "theme") ?? "") ?? .DARK
@@ -535,6 +538,7 @@ final class AppModel: ObservableObject {
         if let thumb { thumbnail = thumb }
         if let item {
             lastItem = item
+            if item.isVideo { videoSaved(item) }
             if screen == .GALLERY { refreshGallery() }
         } else if thumb == nil {
             message = "Couldn't save to Photos"
@@ -576,14 +580,19 @@ final class AppModel: ObservableObject {
 
     func closeGallery() { screen = .CAMERA }
 
+    /// The viewer was opened from the camera's thumbnail: closing it goes back there.
+    private var viewerFromCamera = false
+
     func openItem(_ item: MediaItem) {
+        viewerFromCamera = screen == .CAMERA
         viewing = item
         screen = .VIEWER
     }
 
     func closeViewer() {
         viewing = nil
-        screen = .GALLERY
+        screen = viewerFromCamera ? .CAMERA : .GALLERY
+        viewerFromCamera = false
         refreshGallery()
     }
 
@@ -615,7 +624,7 @@ final class AppModel: ObservableObject {
     }
 
     func trimItem(_ item: MediaItem, startMs: Int64, endMs: Int64) {
-        progress = 0
+        progress = 0.5
         progressLabel = "Trimming"
         MediaLibrary.trim(item, startMs: startMs, endMs: endMs) { newItem in
             self.progress = -1
@@ -730,13 +739,43 @@ final class AppModel: ObservableObject {
 
     func openSubtitles(_ item: MediaItem) {}
 
+    /// A clip was just recorded and saved (live subtitles are kept with it).
+    private func videoSaved(_ item: MediaItem) {}
+
     // MARK: - Imported LUTs
 
-    func importLut() {}
+    /// The file picker is open for a .cube LUT (or a graded Hald image).
+    @Published var pickingLut = false
+
+    func importLut() { pickingLut = true }
+
+    /// Reads the LUT, bakes it and puts it on.
+    func importLut(from url: URL) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = Result { try UserLooks.importFile(url) }
+            Task { @MainActor in
+                switch result {
+                case .success(let (cam, rough)):
+                    self.userLooks.append(cam)
+                    UserLooks.save(self.userLooks)
+                    self.setShelf(.CATEGORY, category: "CUSTOM")
+                    self.selectCamera(cam)
+                    self.message = rough ? "Added \(cam.name), but some of its colours jump about (a watermark or text on the image?)"
+                        : "Added \(cam.name)"
+                case .failure(let e):
+                    self.message = (e as? CubeException)?.description ?? "That file isn't a .cube LUT this app can read"
+                }
+            }
+        }
+    }
 
     func removeUserLook(_ id: String) {
-        userLooks.removeAll { $0.id == id }
+        guard let cam = userLooks.first(where: { $0.id == id }) else { return }
         if camera.id == id { removeLook() }
+        userLooks.removeAll { $0.id == id }
+        UserLooks.save(userLooks)
+        UserLooks.remove(id)
+        message = "Removed \(cam.name)"
     }
 
     // MARK: - Text

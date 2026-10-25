@@ -154,7 +154,10 @@ struct Spec: Codable {
         do { return try JSONDecoder().decode(Spec.self, from: data) } catch { fatalError("filmcam-spec.json: \(error)") }
     }()
 
-    func stock(_ id: String) -> Stock { stocks.first { $0.id == id } ?? stocks[0] }
+    /// Stocks of imported looks (UserLooks), by id.
+    static var extraStocks: [String: Stock] = [:]
+
+    func stock(_ id: String) -> Stock { stocks.first { $0.id == id } ?? Self.extraStocks[id] ?? stocks[0] }
     func camera(_ id: String) -> FilmCamera? { cameras.first { $0.id == id } }
     func style(_ id: String) -> PhotoStyle { styles.first { $0.id == id } ?? styles[0] }
     func frameId(_ name: String) -> Int { frames.first { $0.id == name }?.shaderId ?? 0 }
