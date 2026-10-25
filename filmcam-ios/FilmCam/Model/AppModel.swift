@@ -1,5 +1,6 @@
 import AVFoundation
 import Combine
+import CoreMotion
 import ImageIO
 import SwiftUI
 import UIKit
@@ -104,7 +105,9 @@ final class AppModel: ObservableObject {
     private var countdownTimer: Timer?
     private var burstTimer: Timer?
     private var zoomingTimer: Timer?
-    private var orientationObserver: NSObjectProtocol?
+    /// How the phone is held, from gravity: iOS's own orientation stays portrait while the
+    /// rotation lock is on (as it is for many people), and a camera must turn regardless.
+    private let motion = CMMotionManager()
 
     var isOriginal: Bool { camera.id == spec.original.id }
     var evMin: Float { caps.evMin }
@@ -186,9 +189,12 @@ final class AppModel: ObservableObject {
     func appear() {
         guard !started else { return }
         started = true
-        UIDevice.current.beginGeneratingDeviceOrientationNotifications()
-        orientationObserver = NotificationCenter.default.addObserver(forName: UIDevice.orientationDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.orientationChanged() }
+        if motion.isDeviceMotionAvailable {
+            motion.deviceMotionUpdateInterval = 0.1
+            motion.startDeviceMotionUpdates(to: .main) { [weak self] m, _ in
+                guard let g = m?.gravity else { return }
+                MainActor.assumeIsolated { self?.gravityChanged(g.x, g.y, g.z) }
+            }
         }
         requestPermissions()
         watchLiveCaptions()
@@ -230,16 +236,16 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func orientationChanged() {
-        // Clockwise quarter turns from portrait; face up/down keep the last one.
-        let t: Int
-        switch UIDevice.current.orientation {
-        case .portrait: t = 0
-        case .landscapeRight: t = 1
-        case .portraitUpsideDown: t = 2
-        case .landscapeLeft: t = 3
-        default: return
-        }
+    /// Clockwise quarter turns from portrait (as Android's orientation listener): 90° when the
+    /// left side is up. Flat on a table keeps the last one; 55° of hysteresis stops flapping.
+    private func gravityChanged(_ x: Double, _ y: Double, _ z: Double) {
+        if abs(z) > 0.85 { return }
+        var deg = atan2(x, -y) * 180 / .pi
+        if deg < 0 { deg += 360 }
+        let current = Double(quarterTurns * 90)
+        let diff = (deg - current + 540).truncatingRemainder(dividingBy: 360) - 180
+        if abs(diff) < 55 { return }
+        let t = Int((deg + 45) / 90) % 4
         guard t != quarterTurns else { return }
         quarterTurns = t
         engine.quarterTurns = t

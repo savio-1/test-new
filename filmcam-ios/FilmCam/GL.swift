@@ -143,6 +143,33 @@ enum GLU {
 enum Mat {
     static let identity: [Float] = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
 
+    /// a * b (column-major 4x4): b applies first.
+    static func multiply(_ a: [Float], _ b: [Float]) -> [Float] {
+        var out = [Float](repeating: 0, count: 16)
+        for c in 0..<4 { for r in 0..<4 {
+            var v: Float = 0
+            for k in 0..<4 { v += a[k * 4 + r] * b[c * 4 + k] }
+            out[c * 4 + r] = v
+        } }
+        return out
+    }
+
+    /// Upright image uv (row 0 first) -> uv of a frame that still needs [turnsCW] clockwise
+    /// quarter turns, and then a left-right mirror when [mirror], to be upright.
+    static func turned(_ turnsCW: Int, mirror: Bool) -> [Float] {
+        // (u, v) -> raw: 1 turn (v, 1-u), 2 turns (1-u, 1-v), 3 turns (1-v, u).
+        let r: [Float]
+        switch turnsCW & 3 {
+        case 1: r = [0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 1]
+        case 2: r = [-1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 1, 0, 1, 1, 0, 1]
+        case 3: r = [0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1]
+        default: r = identity
+        }
+        guard mirror else { return r }
+        let m: [Float] = [-1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1]
+        return multiply(r, m)
+    }
+
     /// Screen uv (y up) -> uv of an upright image stored row 0 first, showing its central
     /// [sx] x [sy], shifted by ([dx], [dy]) and optionally mirrored.
     static func image(sx: Float, sy: Float, dx: Float = 0, dy: Float = 0, mirror: Bool = false) -> [Float] {

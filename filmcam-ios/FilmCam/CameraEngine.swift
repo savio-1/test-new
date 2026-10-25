@@ -119,6 +119,13 @@ final class CameraEngine: NSObject {
     private var videoMode = false
     private var workSide = 1920
     private var lastRotationFix = 0.0
+    private var rotationFixes = 0
+    private var lastPortraitAngle: [String: CGFloat] = [:]
+    /// The camera (by id) whose video frames the GPU turns, because the connection wouldn't.
+    private var gpuTurnFor: String?
+    /// Render queue: clockwise quarter turns and mirroring the GPU gives each video frame.
+    private var gpuTurn = 0
+    private var gpuMirror = false
     /// Log: camera frames go straight to the file; the screen shows the camera's own preview.
     private var logMode = false
     private var logWriter: LogWriter?
@@ -270,6 +277,8 @@ final class CameraEngine: NSObject {
             session.addInput(input)
             videoInput = input
             device = dev
+            gpuTurnFor = nil
+            renderQueue.async { self.gpuTurn = 0; self.gpuMirror = false; self.rotationFixes = 0 }
         }
 
         if !video, session.canSetSessionPreset(.photo) { session.sessionPreset = .photo }
@@ -420,13 +429,40 @@ final class CameraEngine: NSObject {
     }
 
     /// Frames upright for a phone held in portrait, mirrored for the front camera.
-    private func applyConnections(front: Bool) {
+    /// The angle that makes this camera's frames upright with the phone in portrait: Apple's
+    /// rotation coordinator knows each camera's mounting (asked while the phone is upright;
+    /// 90 otherwise, which is right for the back cameras).
+    private func portraitAngle(_ dev: AVCaptureDevice) -> CGFloat {
+        guard quarterTurns == 0 else { return lastPortraitAngle[dev.uniqueID] ?? 90 }
+        let a = AVCaptureDevice.RotationCoordinator(device: dev, previewLayer: nil).videoRotationAngleForHorizonLevelCapture
+        let snapped = (a / 90).rounded() * 90
+        lastPortraitAngle[dev.uniqueID] = snapped
+        return snapped
+    }
+
+    /// Frames turned upright, mirrored for the front camera. When the camera won't turn its
+    /// video frames (seen on front cameras), the GPU does it instead: the frames then come
+    /// unturned and unmirrored, and [gpuTurn] / [gpuMirror] say what to do with them.
+    private func applyConnections(front: Bool, force: Bool = false) {
+        guard let dev = device else { return }
+        let angle = portraitAngle(dev)
         for conn in [videoOutput.connection(with: .video), photoOutput.connection(with: .video)].compactMap({ $0 }) {
+            let gpu = gpuTurnFor != nil && conn === videoOutput.connection(with: .video)
             if conn.isVideoMirroringSupported {
                 conn.automaticallyAdjustsVideoMirroring = false
-                if conn.isVideoMirrored != front { conn.isVideoMirrored = front }
+                let want = front && !gpu
+                if conn.isVideoMirrored != want { conn.isVideoMirrored = want }
             }
-            if conn.isVideoRotationAngleSupported(90) && conn.videoRotationAngle != 90 { conn.videoRotationAngle = 90 }
+            let want: CGFloat = gpu ? 0 : angle
+            if conn.isVideoRotationAngleSupported(want) && (force || conn.videoRotationAngle != want) {
+                // Turned off and on again: a connection can claim the angle without applying it.
+                if force && want != 0 && conn.isVideoRotationAngleSupported(0) { conn.videoRotationAngle = 0 }
+                conn.videoRotationAngle = want
+            }
+        }
+        if gpuTurnFor != nil {
+            let turn = Int((angle / 90).rounded()) & 3
+            renderQueue.async { self.gpuTurn = turn; self.gpuMirror = front }
         }
     }
 
@@ -607,13 +643,20 @@ final class CameraEngine: NSObject {
         }
 
         let bw = CVPixelBufferGetWidth(pb), bh = CVPixelBufferGetHeight(pb)
-        // Frames always arrive upright (portrait); a sideways one means a connection lost its
-        // rotation: set it again.
-        if bw > bh && now - lastRotationFix > 0.5 {
+        // Frames should arrive upright (portrait). A sideways one means the connection didn't
+        // turn it: set the angle again, twice, then have the GPU turn this camera's frames.
+        let gpuTurned = gpuTurn % 2 == 1
+        if (bw > bh) != gpuTurned && now - lastRotationFix > 0.5 {
             lastRotationFix = now
-            sessionQueue.async { self.applyConnections(front: self.config.front) }
+            rotationFixes += 1
+            let giveUp = rotationFixes > 2
+            sessionQueue.async {
+                if giveUp, self.gpuTurnFor == nil, let d = self.device { self.gpuTurnFor = d.uniqueID }
+                self.applyConnections(front: self.config.front, force: true)
+            }
         }
-        let (w, h) = frameSize(bw, bh)
+        let (ubw, ubh) = gpuTurned ? (bh, bw) : (bw, bh)
+        let (w, h) = frameSize(ubw, ubh)
         guard w >= 16, h >= 16 else { return }
         if pipeline == nil || pipeline!.width != w || pipeline!.height != h {
             pipeline?.release()
@@ -640,10 +683,11 @@ final class CameraEngine: NSObject {
 
         // Crop the buffer to the frame's shape, leaving room for the gate weave.
         var sx: Float = 1, sy: Float = 1
-        let ba = Float(bw) / Float(bh)
+        let ba = Float(ubw) / Float(ubh)
         if ba > aspect { sx = aspect / ba } else { sy = ba / aspect }
         let ov = overscan(look)
-        let texMatrix = Mat.image(sx: sx * ov, sy: sy * ov, dx: fx.weaveX, dy: -fx.weaveY)
+        var texMatrix = Mat.image(sx: sx * ov, sy: sy * ov, dx: fx.weaveX, dy: -fx.weaveY)
+        if gpuTurn != 0 || gpuMirror { texMatrix = Mat.multiply(Mat.turned(gpuTurn, mirror: gpuMirror), texMatrix) }
 
         let persistence = look.persistence(frameSeconds: 1 / 30)
         if persistence > 0 || look.interlace > 0 { p.keepPrevious() }
