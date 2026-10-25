@@ -89,6 +89,32 @@ void main() {
 }
 """
 
+    /**
+     * A finished frame copied to another surface: turned [uRot] quarter turns and, when it
+     * shrinks, averaged over four taps so fine grain doesn't shimmer.
+     */
+    const val COPY = """#version 300 es
+precision mediump float;
+uniform sampler2D uSrc;
+uniform int uRot;
+uniform vec2 uSpread;
+in vec2 vUV;
+out vec4 o;
+vec2 rot(int k, vec2 p) {
+    k = k & 3;
+    if (k == 1) return vec2(p.y, 1.0 - p.x);
+    if (k == 2) return 1.0 - p;
+    if (k == 3) return vec2(1.0 - p.y, p.x);
+    return p;
+}
+void main() {
+    vec2 t = rot(uRot, vUV);
+    vec3 c = texture(uSrc, t + vec2(-uSpread.x, -uSpread.y)).rgb + texture(uSrc, t + vec2(uSpread.x, -uSpread.y)).rgb
+           + texture(uSrc, t + vec2(-uSpread.x, uSpread.y)).rgb + texture(uSrc, t + vec2(uSpread.x, uSpread.y)).rgb;
+    o = vec4(c * 0.25, 1.0);
+}
+"""
+
     const val BRIGHT = """#version 300 es
 precision highp float;
 precision mediump sampler3D;

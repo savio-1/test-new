@@ -441,9 +441,11 @@ class Camera2Controller(context: Context, private val engine: FilmEngine) {
         }
 
         // The camera's best noise reduction and sharpening, in the viewfinder too, so the picture
-        // is as clean as the system camera's. Video gets them as well at up to 30 fps, and drops
-        // back to the fast modes if the phone can't hold the frame rate with them.
-        val hqVideo = video && !still && !hqVideoRejected && cfg.fps <= 30
+        // is as clean as the system camera's. Video gets them as well at up to 30 fps and 1080p,
+        // and drops back to the fast modes if the phone can't hold the frame rate with them. At
+        // 4K the high-quality modes keep the frame rate but add latency, which made 4K
+        // recording judder; there the fast modes stay.
+        val hqVideo = video && !still && !hqVideoRejected && cfg.fps <= 30 && cfg.videoRes.width <= 1920
         if (video && !still) { hqActive = hqVideo; hqFrames = 0 }
         if (!video || still || hqVideo) {
             if (CameraMetadata.NOISE_REDUCTION_MODE_HIGH_QUALITY in c.noiseModes) {

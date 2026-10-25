@@ -139,6 +139,11 @@ class FilmRenderer {
     private val finalStudio: Program
         get() = studioProgram ?: Program(Shaders.VERTEX, Shaders.finalFor(studio = true)).also { studioProgram = it }
     private val segInput = Program(Shaders.VERTEX, Shaders.SEG_INPUT)
+    private val copy = Program(Shaders.VERTEX, Shaders.COPY)
+    private var recTex = 0
+    private var recFbo = 0
+    private var recW = 0
+    private var recH = 0
 
     val glowFormat: Int =
         if (GlUtil.hasExtension("GL_EXT_color_buffer_half_float") || GlUtil.hasExtension("GL_EXT_color_buffer_float"))
@@ -235,6 +240,47 @@ class FilmRenderer {
         GLES30.glDisable(GLES30.GL_BLEND)
         edgeTex = textureFrom(EdgePrint.render(), repeat = true)
         updateOverlays(StampStyle.DATE, recording = false)
+    }
+
+    /**
+     * While recording, the final pass runs once, into this [w]x[h] frame (the encoder's
+     * size), which is then copied to the encoder and the screen: the film pass is the heaviest
+     * part of a frame, and running it twice is what held 4K recording back.
+     */
+    fun recordFrame(w: Int, h: Int): Int {
+        if (w != recW || h != recH || recFbo == 0) {
+            releaseRecordFrame()
+            recTex = GlUtil.createTexture(w, h, GLES30.GL_RGBA8)
+            recFbo = GlUtil.createFramebuffer(recTex)
+            recW = w
+            recH = h
+        }
+        return recFbo
+    }
+
+    /** Copies the recorded frame into the bound framebuffer ([targetW]x[targetH]), turned [rot] quarter turns. */
+    fun copyRecordFrame(targetW: Int, targetH: Int, rot: Int) {
+        GLES30.glViewport(0, 0, targetW, targetH)
+        val (dw, dh) = if (rot % 2 == 1) targetH to targetW else targetW to targetH
+        // Shrinking: four taps a quarter of an output pixel apart. Same size: one exact copy.
+        val sx = if (recW > dw * 1.01f) 0.25f / dw else 0f
+        val sy = if (recH > dh * 1.01f) 0.25f / dh else 0f
+        with(copy) {
+            use()
+            bindTex(0, recTex); set1i("uSrc", 0)
+            setMat4("uTexMatrix", identity)
+            set1i("uRot", rot)
+            set2f("uSpread", sx, sy)
+        }
+        draw()
+    }
+
+    fun releaseRecordFrame() {
+        if (recFbo != 0) { GlUtil.deleteFramebuffers(recFbo); GlUtil.deleteTextures(recTex) }
+        recFbo = 0
+        recTex = 0
+        recW = 0
+        recH = 0
     }
 
     private fun draw() {

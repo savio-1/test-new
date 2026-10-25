@@ -269,6 +269,12 @@ class FilmEngine {
         }
         inp.st.getTransformMatrix(stMatrix)
         val rec = recording
+        // A late callback for a frame already drawn (the camera ran ahead, and updateTexImage
+        // kept the newest): drawing it again only puts the GPU further behind.
+        val ts = inp.st.timestamp
+        if (rec != null && !rec.offline) recCalls++
+        if (rec?.offline != true && ts != 0L && ts == lastFrameTs) return
+        lastFrameTs = ts
         // An export runs on the video's own clock; everything else on the wall clock.
         val now = if (rec?.offline == true) inp.st.timestamp else System.nanoTime()
         val disp = display
@@ -282,6 +288,35 @@ class FilmEngine {
             renderer.developCamera(p, inp.tex, texMatrix, persistence)
         }
         rec?.onFrame?.invoke()
+    }
+
+    private var lastFrameTs = 0L
+
+    /**
+     * While recording, the share of the encoder's size the film pass runs at (then scaled up
+     * into the encoder). It starts full; if the phone draws fewer frames than the camera
+     * sends (it can't keep up at this size), it steps down to 0.75 and then 0.5. What it
+     * learns is kept for later takes at the same size.
+     */
+    private var recScale = 1f
+    private var recScaleFor = 0
+    private var recWindowNs = 0L
+    private var recCalls = 0
+    private var recDrawn = 0
+
+    private fun keepUp(pixels: Int, now: Long) {
+        if (pixels != recScaleFor) { recScaleFor = pixels; recScale = 1f; recWindowNs = 0L }
+        recDrawn++
+        if (recWindowNs == 0L) { recWindowNs = now; recCalls = 0; recDrawn = 0; return }
+        if (now - recWindowNs < 1_000_000_000L) return
+        // Fewer frames drawn than the camera delivered: the GPU is the bottleneck.
+        if (recCalls >= 10 && recDrawn < recCalls * 0.9f && recScale > 0.5f) {
+            recScale = if (recScale > 0.8f) 0.75f else 0.5f
+            Log.w(TAG, "recording drew $recDrawn of $recCalls frames; film pass at ${(recScale * 100).roundToInt()}% of the video size")
+        }
+        recWindowNs = now
+        recCalls = 0
+        recDrawn = 0
     }
 
     /** The turns of the frame: how the phone is held, or upright while editing an import. */
@@ -324,6 +359,30 @@ class FilmEngine {
         val t = (now - timeBaseNs) / 1e9f
         if (turns % 2 == 0) updateText(p.width, p.height, textSide, t) else updateText(p.height, p.width, textSide, t)
         finishSubject(waitMs = if (rec?.offline == true) 1_000L else 12L)
+        if (rec != null && !rec.offline && logDisplay == logEncode) {
+            // Recording: the film pass once, at the encoder's size, then copied to the screen
+            // (turned upright, shrunk) and to the encoder.
+            val w = rec.recorder.width
+            val h = rec.recorder.height
+            keepUp(w * h, now)
+            val sw = max(16, (w * recScale).roundToInt() / 2 * 2)
+            val sh = max(16, (h * recScale).roundToInt() / 2 * 2)
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, renderer.recordFrame(sw, sh))
+            renderer.drawFinal(src, look, fx, sw, sh, rec.targetRot, turns, logMode = logEncode)
+            if (disp != null && displayW > 0) {
+                GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
+                renderer.copyRecordFrame(displayW, displayH, (4 - rec.targetRot) % 4)
+                egl.swap(disp)
+            }
+            egl.makeCurrent(rec.surface)
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
+            renderer.copyRecordFrame(w, h, 0)
+            egl.setPresentationTime(rec.surface, now)
+            egl.swap(rec.surface)
+            egl.makeCurrent(disp ?: pbuffer)
+            if (rec.stopAtNs in 1..now) finishRecording()
+            return
+        }
         if (disp != null && displayW > 0) {
             GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
             renderer.drawFinal(src, look, fx, displayW, displayH, 0, turns, logMode = logDisplay)
@@ -598,6 +657,7 @@ class FilmEngine {
                 recorder.start()
                 recording = Recording(surface, recorder, deviceQuarterTurns, System.nanoTime(), look.rollBurn)
                 lastOverlayNs = 0L
+                recWindowNs = 0L
             } catch (e: Exception) {
                 Log.e(TAG, "startRecording", e)
                 recorder.stop()
@@ -649,6 +709,7 @@ class FilmEngine {
         recording = null
         egl.makeCurrent(display ?: pbuffer)
         egl.releaseSurface(rec.surface)
+        renderer.releaseRecordFrame()
         rec.recorder.stop()
         lastOverlayNs = 0L
         if (rec.offline) {
