@@ -118,6 +118,7 @@ final class CameraEngine: NSObject {
     private var aspect: Float = 3.0 / 4.0
     private var videoMode = false
     private var workSide = 1920
+    private var lastRotationFix = 0.0
     /// Log: camera frames go straight to the file; the screen shows the camera's own preview.
     private var logMode = false
     private var logWriter: LogWriter?
@@ -181,6 +182,9 @@ final class CameraEngine: NSObject {
         sessionQueue.async {
             self.config = config
             self.configure(config)
+            // Again once the new configuration is committed: switching cameras makes new
+            // connections then, which would deliver sideways frames.
+            self.applyConnections(front: config.front)
             self.choosePhotoSize(config.photoSize)
             if !self.session.isRunning { self.session.startRunning() }
             self.applyTorch()
@@ -340,13 +344,7 @@ final class CameraEngine: NSObject {
             } catch {}
         }
         videoOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: logOn ? tenBit : kCVPixelFormatType_32BGRA]
-        for conn in [videoOutput.connection(with: .video), photoOutput.connection(with: .video)].compactMap({ $0 }) {
-            if conn.isVideoRotationAngleSupported(90) { conn.videoRotationAngle = 90 }
-            if conn.isVideoMirroringSupported {
-                conn.automaticallyAdjustsVideoMirroring = false
-                conn.isVideoMirrored = front
-            }
-        }
+        applyConnections(front: front)
         if let conn = videoOutput.connection(with: .video), conn.isVideoStabilizationSupported {
             conn.preferredVideoStabilizationMode = video && cfg.stabilization ? .standard : .off
         }
@@ -419,6 +417,17 @@ final class CameraEngine: NSObject {
         caps.photoSizes = sizes
         caps.photoSize = pick
         caps.raw = !photoOutput.availableRawPhotoPixelFormatTypes.isEmpty
+    }
+
+    /// Frames upright for a phone held in portrait, mirrored for the front camera.
+    private func applyConnections(front: Bool) {
+        for conn in [videoOutput.connection(with: .video), photoOutput.connection(with: .video)].compactMap({ $0 }) {
+            if conn.isVideoMirroringSupported {
+                conn.automaticallyAdjustsVideoMirroring = false
+                if conn.isVideoMirrored != front { conn.isVideoMirrored = front }
+            }
+            if conn.isVideoRotationAngleSupported(90) && conn.videoRotationAngle != 90 { conn.videoRotationAngle = 90 }
+        }
     }
 
     /// The torch stands in for the flash while filming.
@@ -598,6 +607,12 @@ final class CameraEngine: NSObject {
         }
 
         let bw = CVPixelBufferGetWidth(pb), bh = CVPixelBufferGetHeight(pb)
+        // Frames always arrive upright (portrait); a sideways one means a connection lost its
+        // rotation: set it again.
+        if bw > bh && now - lastRotationFix > 0.5 {
+            lastRotationFix = now
+            sessionQueue.async { self.applyConnections(front: self.config.front) }
+        }
         let (w, h) = frameSize(bw, bh)
         guard w >= 16, h >= 16 else { return }
         if pipeline == nil || pipeline!.width != w || pipeline!.height != h {

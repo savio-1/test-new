@@ -473,11 +473,60 @@ extension AudioExtract {
         return floats(pcm)
     }
 
-    /// The clip's sound to send to Gemini: 16 kHz mono WAV (about 1.9 MB a minute); nil
-    /// without sound. (Android copies AAC tracks as ADTS instead; WAV works for any clip.)
+    /// The clip's sound to send to Gemini, as small as it comes: an AAC track copied as it is
+    /// into ADTS (as Android does), otherwise 16 kHz mono WAV (about 1.9 MB a minute); nil
+    /// without sound.
     static func extract(_ url: URL) async throws -> ClipAudio? {
+        if let aac = try? await copyAac(url) { return aac }
         guard let pcm = try await decodeMono16k(url) else { return nil }
         return ClipAudio(bytes: wav(pcm, rate: 16_000), mime: "audio/wav")
+    }
+
+    /// An AAC-LC track's packets, each behind its ADTS header; nil for anything else.
+    static func copyAac(_ url: URL) async throws -> ClipAudio? {
+        let asset = AVURLAsset(url: url)
+        guard let track = try await asset.loadTracks(withMediaType: .audio).first,
+              let fd = try await track.load(.formatDescriptions).first,
+              let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(fd)?.pointee,
+              asbd.mFormatID == kAudioFormatMPEG4AAC else { return nil }
+        // For AAC the format flags carry the MPEG-4 object type (2: AAC-LC).
+        let objectType = asbd.mFormatFlags == 0 ? 2 : Int(asbd.mFormatFlags)
+        let rates = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350]
+        guard objectType == 2, let freqIndex = rates.firstIndex(of: Int(asbd.mSampleRate)),
+              (1...7).contains(Int(asbd.mChannelsPerFrame)) else { return nil }
+        let channels = Int(asbd.mChannelsPerFrame)
+        let reader = try AVAssetReader(asset: asset)
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
+        output.alwaysCopiesSampleData = false
+        guard reader.canAdd(output) else { return nil }
+        reader.add(output)
+        guard reader.startReading() else { return nil }
+        var out = Data()
+        while let sb = output.copyNextSampleBuffer() {
+            guard let bb = CMSampleBufferGetDataBuffer(sb) else { continue }
+            let total = CMBlockBufferGetDataLength(bb)
+            guard total > 0 else { continue }
+            var bytes = [UInt8](repeating: 0, count: total)
+            guard CMBlockBufferCopyDataBytes(bb, atOffset: 0, dataLength: total, destination: &bytes) == kCMBlockBufferNoErr else { continue }
+            var descs: UnsafePointer<AudioStreamPacketDescription>?
+            var count = 0
+            CMSampleBufferGetAudioStreamPacketDescriptionsPtr(sb, packetDescriptionsPointerOut: &descs, sizeOut: &count)
+            let n = count / MemoryLayout<AudioStreamPacketDescription>.size
+            if let descs, n > 0 {
+                for i in 0..<n {
+                    let d = descs[i]
+                    let start = Int(d.mStartOffset), size = Int(d.mDataByteSize)
+                    guard size > 0, start >= 0, start + size <= total else { continue }
+                    out.append(contentsOf: adtsHeader(size, objectType: objectType, freqIndex: freqIndex, channels: channels))
+                    out.append(contentsOf: bytes[start..<(start + size)])
+                }
+            } else {
+                out.append(contentsOf: adtsHeader(total, objectType: objectType, freqIndex: freqIndex, channels: channels))
+                out.append(contentsOf: bytes)
+            }
+        }
+        guard reader.status == .completed, !out.isEmpty else { return nil }
+        return ClipAudio(bytes: out, mime: "audio/aac")
     }
 
     /// The clip's length in milliseconds.
