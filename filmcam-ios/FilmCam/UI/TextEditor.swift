@@ -425,16 +425,7 @@ struct TextTray: View {
                     }
                     .buttonStyle(GentlePress())
                 }
-                Button {
-                    // New text always starts in the middle of the frame, without a shadow.
-                    var new = TextLayer()
-                    new.text = ""
-                    new.x = 0.5
-                    new.y = 0.5
-                    model.setTextLayers(model.textLayers + [new])
-                    model.selectedText = new.id
-                    model.editingText = true
-                } label: {
+                Button { model.addText() } label: {
                     IconView(Ico.plus, size: 18, color: p.text)
                         .frame(width: 34, height: 34)
                         .overlay(Circle().stroke(p.line, lineWidth: 1))

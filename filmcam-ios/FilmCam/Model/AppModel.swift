@@ -192,6 +192,7 @@ final class AppModel: ObservableObject {
         }
         requestPermissions()
         watchLiveCaptions()
+        smokeTestIfAsked()
         if MediaLibrary.canRead { refreshThumbnail() }
     }
 
@@ -1131,6 +1132,17 @@ final class AppModel: ObservableObject {
     private var subjectBound = false
 
     var selectedLayer: TextLayer? { textLayers.first { $0.id == selectedText } }
+
+    /// A new, empty text in the middle of the frame (without a shadow), being typed.
+    func addText() {
+        var new = TextLayer()
+        new.text = ""
+        new.x = 0.5
+        new.y = 0.5
+        setTextLayers(textLayers + [new])
+        selectedText = new.id
+        editingText = true
+    }
 
     /// Puts [layer] in place of the layer with its id.
     func replaceText(_ layer: TextLayer) {

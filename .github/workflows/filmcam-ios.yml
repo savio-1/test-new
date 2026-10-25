@@ -55,3 +55,56 @@ jobs:
           name: xcodebuild-log
           path: xcodebuild.log
           if-no-files-found: ignore
+
+  # Runs the app in the iPhone simulator through a scripted text session (SFILM_SMOKE=text:
+  # an imported picture instead of the camera, then text added, typed, styled, animated and
+  # set behind the subject) and fails on a crash, printing the crash report.
+  simulator:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build for the simulator
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project filmcam-ios/FilmCam.xcodeproj \
+            -target FilmCam \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=NO \
+            SYMROOT="$PWD/build" \
+            CODE_SIGNING_ALLOWED=NO \
+            build > sim-build.log 2>&1 || true
+          grep -E "error:|BUILD (SUCCEEDED|FAILED)" sim-build.log | sort -u | head -80 || true
+          test -d build/Debug-iphonesimulator/FilmCam.app
+
+      - name: Run the text session
+        run: |
+          TYPE=$(xcrun simctl list devicetypes | grep -oE "com.apple.CoreSimulator.SimDeviceType.iPhone-1[56](-Pro)?" | head -1)
+          RUNTIME=$(xcrun simctl list runtimes | grep -oE "com.apple.CoreSimulator.SimRuntime.iOS-[0-9-]+" | tail -1)
+          echo "device $TYPE runtime $RUNTIME"
+          UDID=$(xcrun simctl create smoke "$TYPE" "$RUNTIME")
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" build/Debug-iphonesimulator/FilmCam.app
+          BID=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" build/Debug-iphonesimulator/FilmCam.app/Info.plist)
+          for s in camera microphone photos speech-recognition; do xcrun simctl privacy "$UDID" grant $s "$BID" || true; done
+          SIMCTL_CHILD_SFILM_SMOKE=text xcrun simctl launch --console-pty --terminate-running-process "$UDID" "$BID" > run.log 2>&1 &
+          for i in $(seq 1 60); do sleep 1; grep -q "SMOKE OK" run.log && break; done
+          sleep 1
+          cat run.log | tail -80
+          ls -la ~/Library/Logs/DiagnosticReports/ || true
+          for f in ~/Library/Logs/DiagnosticReports/FilmCam*; do [ -f "$f" ] && head -c 20000 "$f"; done
+          grep -q "SMOKE OK" run.log
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: simulator-logs
+          path: |
+            run.log
+            sim-build.log
+            ~/Library/Logs/DiagnosticReports/
+          if-no-files-found: ignore
