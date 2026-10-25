@@ -14,7 +14,7 @@ import Speech
 /// Each line is one recognition request: when the speaker pauses (or a line runs long) the
 /// request is closed and a fresh one takes the next words, while the closed one settles into
 /// its final text. Main thread, except [feed], which the audio queue calls.
-final class LiveCaptioner {
+final class LiveCaptioner: @unchecked Sendable {
     /// The line to show now, or nil for none.
     var onCaption: ((String?) -> Void)?
     /// What the recognizer is doing ("Listening", "Hearing you"...), for the CC pill.
@@ -92,6 +92,7 @@ final class LiveCaptioner {
     /// Starts captioning in [languageTag] ("te-IN", "en-US") for a clip that began at [clipStartedAt].
     func start(languageTag: String, clipStartedAt: Date) {
         if active { endAll() }
+        active = false
         language = languageTag
         clipStart = clipStartedAt
         failures = 0

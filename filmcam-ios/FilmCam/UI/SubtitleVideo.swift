@@ -187,6 +187,7 @@ struct SubVideo: View {
 
     private func tap(_ size: CGSize) -> some Gesture {
         SpatialTapGesture().onEnded { e in
+            subHideKeyboard()
             guard let wp = words else { player.toggle(); return }
             if let hit = wordAt(e.location, size, slop: 6) {
                 player.pause()

@@ -191,6 +191,7 @@ final class AppModel: ObservableObject {
             Task { @MainActor in self?.orientationChanged() }
         }
         requestPermissions()
+        watchLiveCaptions()
         if MediaLibrary.canRead { refreshThumbnail() }
     }
 
@@ -212,6 +213,19 @@ final class AppModel: ObservableObject {
             cancelSeries()
             engine.stop()
         default: break
+        }
+    }
+
+    /// The camera rests while another page is open (and lets the clips there play out loud).
+    func screenChanged(from old: Screen, to new: Screen) {
+        guard hasCamera else { return }
+        if old == .CAMERA && new != .CAMERA {
+            cancelSeries()
+            engine.stop()
+            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+            try? AVAudioSession.sharedInstance().setActive(true)
+        } else if new == .CAMERA && old != .CAMERA {
+            engine.resume(camera: edit == nil)
         }
     }
 
@@ -857,9 +871,9 @@ final class AppModel: ObservableObject {
             var failure: String?
             do {
                 guard let audio = try await AudioExtract.extract(url) else { throw TranscribeError("This clip has no sound") }
-                cues = try await t.transcribe(audio, durationMs: duration, onStatus: { st in
+                cues = try await t.transcribe(audio, durationMs: duration, onStatus: { @Sendable st in
                     Task { @MainActor in if self.transcriber === t { s.status = st } }
-                }, onText: { text in
+                }, onText: { @Sendable text in
                     // Each finished line carries an "end": count them as they stream in.
                     let n = text.components(separatedBy: "\"end\"").count - 1
                     Task { @MainActor in
@@ -946,7 +960,7 @@ final class AppModel: ObservableObject {
         let aspect = s.aspect
         let measurer = CoreTextMeasurer()
         let overlay = TextOverlay()
-        overlay.layersAt = { t in track.layersAt(Int64((Double(t) * 1000).rounded()), aspect: aspect, measurer: measurer) }
+        overlay.layersAt = { @Sendable t in track.layersAt(Int64((Double(t) * 1000).rounded()), aspect: aspect, measurer: measurer) }
         progress = 0
         progressLabel = "Adding subtitles"
         // The copy keeps the look the clip was shot with (it is already in the picture).
@@ -999,7 +1013,7 @@ final class AppModel: ObservableObject {
             c.onProblem = { [weak self] msg in self?.message = msg }
             captioner = c
         }
-        engine.onAudioSample = { [weak c] buffer in c?.feed(buffer) }
+        engine.onAudioSample = { @Sendable [weak c] buffer in c?.feed(buffer) }
         c.start(languageTag: captionLanguage == "te" ? "te-IN" : "en-US", clipStartedAt: captionClipStart)
     }
 

@@ -66,6 +66,7 @@ struct RootView: View {
             Toast()
         }
         .animation(.easeOut(duration: 0.22), value: model.screen)
+        .onChange(of: model.screen) { old, new in model.screenChanged(from: old, to: new) }
         .environment(\.palette, p)
         .preferredColorScheme(model.theme == .SYSTEM ? nil : model.theme == .DARK ? .dark : .light)
         .statusBarHidden(model.screen == .CAMERA)
@@ -436,6 +437,7 @@ private struct Viewfinder: View {
 
     @ViewBuilder private var overlays: some View {
         ZStack {
+            LiveCaptionOverlay()
             VStack {
                 HStack(alignment: .top) {
                     Spacer()

@@ -125,6 +125,7 @@ struct SubEditor: View {
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
             SubToolRail(tools: tools, open: tool) { t in
+                subHideKeyboard()
                 s.tool = t == tool ? nil : t
                 if t != .WORDS { s.selectedWord = nil }
             }

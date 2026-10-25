@@ -109,6 +109,7 @@ struct SubLines: View {
             }
             .padding(.horizontal, 12).padding(.vertical, 6)
         }
+        .scrollDismissesKeyboard(.interactively)
     }
 
     private func row(_ item: SubCueItem, active: Bool, now: Int64) -> some View {

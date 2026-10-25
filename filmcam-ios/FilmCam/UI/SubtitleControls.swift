@@ -33,6 +33,11 @@ func subFont(_ key: String, _ size: CGFloat) -> Font { Font(TextFonts.font(key, 
 /// Two ARGB colours the same, opacity aside.
 func subSameColor(_ a: Int32, _ b: Int32) -> Bool { (UInt32(bitPattern: a) | 0xFF00_0000) == (UInt32(bitPattern: b) | 0xFF00_0000) }
 
+/// Puts the keyboard away (a tap on the clip, or another tool).
+func subHideKeyboard() {
+    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+}
+
 extension Int32 {
     /// An ARGB colour as a SwiftUI one.
     var subColor: Color { Color(argb: UInt32(bitPattern: self)) }
