@@ -276,8 +276,6 @@ final class CameraEngine: NSObject {
             videoOutput.setSampleBufferDelegate(self, queue: renderQueue)
             session.addOutput(videoOutput)
         }
-        videoOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: video && cfg.log != nil
-            ? kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange : kCVPixelFormatType_32BGRA]
         // Stills come from the photo output; the viewfinder only needs screen-sized frames.
         // iOS throws if the automatic sizing is still on when this is set (it starts on).
         videoOutput.automaticallyConfiguresOutputBufferDimensions = false
@@ -331,6 +329,17 @@ final class CameraEngine: NSObject {
             }
         }
 
+        // Log frames stay 10-bit for the file; everything else is drawn from BGRA.
+        let tenBit = kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
+        if logOn && !videoOutput.availableVideoPixelFormatTypes.contains(tenBit) {
+            logOn = false
+            do {
+                try dev.lockForConfiguration()
+                if dev.activeFormat.supportedColorSpaces.contains(.sRGB) { dev.activeColorSpace = .sRGB }
+                dev.unlockForConfiguration()
+            } catch {}
+        }
+        videoOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: logOn ? tenBit : kCVPixelFormatType_32BGRA]
         for conn in [videoOutput.connection(with: .video), photoOutput.connection(with: .video)].compactMap({ $0 }) {
             if conn.isVideoRotationAngleSupported(90) { conn.videoRotationAngle = 90 }
             if conn.isVideoMirroringSupported {
