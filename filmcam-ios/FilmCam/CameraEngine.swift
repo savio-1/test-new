@@ -112,6 +112,17 @@ final class CameraEngine: NSObject {
     private var recordTurns = 0
     private var recordLook: LookRecord?
     private var active = true
+    // Import being developed: its picture or player, drawn by a timer instead of the camera.
+    private var editStill: (tex: GLuint, w: Int, h: Int)?
+    private var editPlayer: AVPlayer?
+    private var editOutput: AVPlayerItemVideoOutput?
+    private var editTimer: DispatchSourceTimer?
+    private var editLoop: NSObjectProtocol?
+    /// Audio from the microphone while recording (live captions listen to it).
+    var onAudioSample: ((CMSampleBuffer) -> Void)?
+    /// Background noise taken out of the sound as it is recorded (set from the main thread).
+    var voiceDenoise = false
+    private var liveDenoiser: ClipDenoiser?
     private let animator = FxAnimator()
     private var fx = FrameFx()
     private var timeBase: Double = -1
@@ -173,9 +184,10 @@ final class CameraEngine: NSObject {
         sessionQueue.async { if self.session.isRunning { self.session.stopRunning() } }
     }
 
-    func resume() {
+    /// Back from the background; [camera] false while an import is shown instead.
+    func resume(camera: Bool = true) {
         renderQueue.async { self.active = true }
-        sessionQueue.async { if !self.session.isRunning { self.session.startRunning() } }
+        if camera { sessionQueue.async { if !self.session.isRunning { self.session.startRunning() } } }
     }
 
     private static func backCamera() -> AVCaptureDevice? {
@@ -509,7 +521,7 @@ final class CameraEngine: NSObject {
     // MARK: - Live frames (render queue)
 
     private func render(_ sample: CMSampleBuffer) {
-        guard active, let renderer, let cache, let pb = CMSampleBufferGetImageBuffer(sample) else { return }
+        guard active, editStill == nil, editOutput == nil, let renderer, let cache, let pb = CMSampleBufferGetImageBuffer(sample) else { return }
         let pts = CMSampleBufferGetPresentationTimeStamp(sample)
         let now = CMTimeGetSeconds(pts)
         if !filmFrameDue(Spec.shared.fps(look.frameRate), now) { return }
@@ -636,6 +648,7 @@ final class CameraEngine: NSObject {
                                               transform: CGAffineTransform(rotationAngle: angle))
                 self.recordTurns = turns
                 self.recordLook = record
+                self.liveDenoiser = self.voiceDenoise ? ClipDenoiser() : nil
                 self.recordStart = self.lastFilmFrame >= 0 ? self.lastFilmFrame : CACurrentMediaTime()
                 self.stopRequested = 0
                 self.recordBurn = self.look.rollBurn
@@ -714,7 +727,7 @@ final class CameraEngine: NSObject {
         }
     }
 
-    private func developStill(_ data: Data, _ look: Look, turns: Int, aspect: Float) -> Data? {
+    private func developStill(_ data: Data, _ look: Look, turns: Int, aspect: Float, digital: Bool = false) -> Data? {
         guard let renderer, let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
         EAGLContext.setCurrent(context)
         let maxSide = min(GLU.maxTextureSize, 8192)
@@ -743,7 +756,7 @@ final class CameraEngine: NSObject {
         }
         let src = FinalSource(image: tex.tex, previous: tex.tex, width: w, height: h,
                               imageMatrix: Mat.image(sx: sx, sy: sy), glow: glow)
-        renderer.digitalExposure = false
+        renderer.digitalExposure = digital
         renderer.updateOverlays(stamp: look.stamp, recording: false)
         renderer.glow(src, look, frameTurns: turns)
         // Text at the still's own size, at rest.
@@ -806,7 +819,9 @@ final class CameraEngine: NSObject {
 extension CameraEngine: AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptureAudioDataOutputSampleBufferDelegate {
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         if output === audioOutput {
-            writer?.appendAudio(sampleBuffer)
+            guard let wr = writer else { return }
+            wr.appendAudio(liveDenoiser?.process(sampleBuffer) ?? sampleBuffer)
+            onAudioSample?(sampleBuffer)
         } else {
             render(sampleBuffer)
         }
@@ -847,5 +862,319 @@ extension CameraEngine: AVCapturePhotoCaptureDelegate {
                 self.report("Could not develop the photo")
             }
         }
+    }
+}
+
+
+/// A clip to develop into a new take.
+struct ClipJob {
+    var url: URL
+    var look: Look
+    /// Frame shape (upright width / height); nil keeps the clip's own.
+    var aspect: Float?
+    /// Text for each frame (TextRequest.time is the clip time in seconds).
+    var text: TextLayerSource?
+    var denoise = false
+    var record: LookRecord?
+}
+
+// MARK: - Imports: developing pictures and clips from the library
+
+extension CameraEngine {
+    /// Shows [url] in the viewfinder instead of the camera, with the look on it.
+    func startEdit(url: URL, video: Bool) {
+        sessionQueue.async { if self.session.isRunning { self.session.stopRunning() } }
+        renderQueue.async {
+            self.stopEditLocked()
+            EAGLContext.setCurrent(self.context)
+            if video {
+                let asset = AVURLAsset(url: url)
+                let item = AVPlayerItem(asset: asset)
+                item.videoComposition = AVMutableVideoComposition(propertiesOf: asset)
+                let out = AVPlayerItemVideoOutput(pixelBufferAttributes: [
+                    kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+                    kCVPixelBufferOpenGLESCompatibilityKey as String: true,
+                    kCVPixelBufferIOSurfacePropertiesKey as String: [String: Any](),
+                ])
+                item.add(out)
+                let player = AVPlayer(playerItem: item)
+                player.isMuted = true
+                self.editLoop = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { _ in
+                    player.seek(to: .zero)
+                    player.play()
+                }
+                self.editPlayer = player
+                self.editOutput = out
+                DispatchQueue.main.async { player.play() }
+            } else if let src = CGImageSourceCreateWithURL(url as CFURL, nil) {
+                let opts: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                                             kCGImageSourceCreateThumbnailWithTransform: true,
+                                             kCGImageSourceThumbnailMaxPixelSize: 2048]
+                if let img = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) {
+                    self.editStill = GLU.texture(from: img, mipmapped: true)
+                }
+            }
+            let timer = DispatchSource.makeTimerSource(queue: self.renderQueue)
+            timer.schedule(deadline: .now(), repeating: 1.0 / 30)
+            timer.setEventHandler { [weak self] in self?.renderEdit() }
+            timer.resume()
+            self.editTimer = timer
+        }
+    }
+
+    /// Back to the camera (the caller restarts it).
+    func stopEdit() {
+        renderQueue.async { self.stopEditLocked() }
+    }
+
+    private func stopEditLocked() {
+        editTimer?.cancel()
+        editTimer = nil
+        if let l = editLoop { NotificationCenter.default.removeObserver(l) }
+        editLoop = nil
+        editPlayer?.pause()
+        editPlayer = nil
+        editOutput = nil
+        if let s = editStill {
+            EAGLContext.setCurrent(context)
+            GLU.delete(textures: [s.tex])
+        }
+        editStill = nil
+        lastFilmFrame = -1
+    }
+
+    /// One viewfinder frame of the import.
+    private func renderEdit() {
+        guard active, let renderer, let cache else { return }
+        EAGLContext.setCurrent(context)
+        if let layer = pendingLayer {
+            pendingLayer = nil
+            target.attach(context, layer)
+        }
+        let now = CACurrentMediaTime()
+        if timeBase < 0 { timeBase = now }
+        var srcTex: GLuint = 0
+        var bw = 0, bh = 0
+        var cvTex: CVOpenGLESTexture?
+        if let s = editStill {
+            srcTex = s.tex; bw = s.w; bh = s.h
+        } else if let out = editOutput {
+            let t = out.itemTime(forHostTime: now)
+            guard out.hasNewPixelBuffer(forItemTime: t), let pb = out.copyPixelBuffer(forItemTime: t, itemTimeForDisplay: nil) else { return }
+            bw = CVPixelBufferGetWidth(pb); bh = CVPixelBufferGetHeight(pb)
+            CVOpenGLESTextureCacheCreateTextureFromImage(kCFAllocatorDefault, cache, pb, nil, E(GL_TEXTURE_2D), GL_RGBA,
+                                                         GLsizei(bw), GLsizei(bh), GLenum(0x80E1), E(GL_UNSIGNED_BYTE), 0, &cvTex)
+            guard let c = cvTex else { return }
+            srcTex = CVOpenGLESTextureGetName(c)
+            glBindTexture(E(GL_TEXTURE_2D), srcTex)
+            glTexParameteri(E(GL_TEXTURE_2D), E(GL_TEXTURE_MIN_FILTER), GL_LINEAR)
+            glTexParameteri(E(GL_TEXTURE_2D), E(GL_TEXTURE_WRAP_S), GL_CLAMP_TO_EDGE)
+            glTexParameteri(E(GL_TEXTURE_2D), E(GL_TEXTURE_WRAP_T), GL_CLAMP_TO_EDGE)
+        } else {
+            return
+        }
+        defer { CVOpenGLESTextureCacheFlush(cache, 0) }
+        if !filmFrameDue(Spec.shared.fps(look.frameRate), now) { return }
+        let (w, h) = frameSize(bw, bh)
+        guard w >= 16, h >= 16 else { return }
+        if pipeline == nil || pipeline!.width != w || pipeline!.height != h {
+            pipeline?.release()
+            pipeline = Pipeline(w, h, glowFormat: renderer.glowFormat)
+        }
+        let p = pipeline!
+        let t = Float(now - timeBase)
+        animator.next(look, time: t, &fx)
+        fx.rollBurn = 0
+        var sx: Float = 1, sy: Float = 1
+        let ba = Float(bw) / Float(bh)
+        if ba > aspect { sx = aspect / ba } else { sy = ba / aspect }
+        let ov = overscan(look)
+        let persistence = look.persistence(frameSeconds: 1 / 30)
+        if persistence > 0 || look.interlace > 0 { p.keepPrevious() }
+        renderer.digitalExposure = true
+        renderer.updateOverlays(stamp: look.stamp, recording: false)
+        renderer.develop(p, source: srcTex, texMatrix: Mat.image(sx: sx * ov, sy: sy * ov, dx: fx.weaveX, dy: -fx.weaveY), persistence: persistence)
+        let src = FinalSource(image: p.current, previous: p.previous, width: p.width, height: p.height, imageMatrix: Mat.identity, glow: p.glow)
+        renderer.glow(src, look, frameTurns: 0)
+        applyText(src, turns: 0, time: t, still: false)
+        if target.fbo != 0 {
+            glBindFramebuffer(E(GL_FRAMEBUFFER), target.fbo)
+            renderer.drawFinal(src, look, fx, targetW: target.width, targetH: target.height, targetRot: 0, frameRot: 0)
+            target.present(context)
+        }
+        glBindFramebuffer(E(GL_FRAMEBUFFER), 0)
+    }
+
+    /// Develops an imported picture with [look] at full size and saves it as a new take.
+    func developPhoto(url: URL, look: Look, aspect: Float, record: LookRecord?, done: @escaping (MediaItem?) -> Void) {
+        DispatchQueue.main.async { self.onDeveloping?(1) }
+        renderQueue.async {
+            guard let data = try? Data(contentsOf: url), let out = self.developStill(data, look, turns: 0, aspect: aspect, digital: true) else {
+                DispatchQueue.main.async { self.onDeveloping?(-1); done(nil) }
+                return
+            }
+            let thumb = Self.thumbnail(out)
+            MediaLibrary.savePhoto(out, look: record) { item in
+                self.onDeveloping?(-1)
+                if item != nil || thumb != nil { self.onSaved?(item, thumb) }
+                done(item)
+            }
+        }
+    }
+
+    /// Develops a clip frame by frame (look, text, the clip's sound) into a new take.
+    /// [progress] and [done] run on the main thread.
+    func developClip(_ job: ClipJob, progress: @escaping (Float) -> Void, done: @escaping (MediaItem?) -> Void) {
+        renderQueue.async {
+            let url = self.runClip(job) { f in DispatchQueue.main.async { progress(f) } }
+            guard let url else { DispatchQueue.main.async { done(nil) }; return }
+            let thumb = Self.videoThumbnail(url)
+            MediaLibrary.saveVideo(url, look: job.record) { item in
+                if item != nil || thumb != nil { self.onSaved?(item, thumb) }
+                done(item)
+            }
+        }
+    }
+
+    /// The developing itself, on the render queue; the finished file, or nil.
+    private func runClip(_ job: ClipJob, progress: (Float) -> Void) -> URL? {
+        guard let renderer, let cache else { return nil }
+        EAGLContext.setCurrent(context)
+        let asset = AVURLAsset(url: job.url)
+        guard let track = asset.tracks(withMediaType: .video).first, let reader = try? AVAssetReader(asset: asset) else { return nil }
+        let comp = AVMutableVideoComposition(propertiesOf: asset)
+        let vout = AVAssetReaderVideoCompositionOutput(videoTracks: [track], videoSettings: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+            kCVPixelBufferOpenGLESCompatibilityKey as String: true,
+            kCVPixelBufferIOSurfacePropertiesKey as String: [String: Any](),
+        ])
+        vout.videoComposition = comp
+        vout.alwaysCopiesSampleData = false
+        guard reader.canAdd(vout) else { return nil }
+        reader.add(vout)
+        var aout: AVAssetReaderTrackOutput?
+        if let at = asset.tracks(withMediaType: .audio).first {
+            let o = AVAssetReaderTrackOutput(track: at, outputSettings: [
+                AVFormatIDKey: kAudioFormatLinearPCM, AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false,
+                AVLinearPCMIsBigEndianKey: false, AVLinearPCMIsNonInterleaved: false,
+                AVSampleRateKey: 44_100, AVNumberOfChannelsKey: 1,
+            ])
+            if reader.canAdd(o) { reader.add(o); aout = o }
+        }
+        guard reader.startReading() else { return nil }
+
+        // The output: the frame shape cut from the upright clip, up to 4K.
+        let rw = Int(comp.renderSize.width), rh = Int(comp.renderSize.height)
+        guard rw > 0, rh > 0 else { return nil }
+        let a = job.aspect ?? Float(rw) / Float(rh)
+        var cw = Float(rw), ch = Float(rh)
+        if cw / ch > a { cw = ch * a } else { ch = cw / a }
+        let scale = min(1, 3840 / max(cw, ch))
+        let w = max(16, Int((cw * scale).rounded()) / 16 * 16), h = max(16, Int((ch * scale).rounded()) / 16 * 16)
+        guard let wr = try? VideoWriter(width: w, height: h, audio: aout != nil, realtime: false) else { reader.cancelReading(); return nil }
+
+        let look = job.look
+        let pipe = Pipeline(w, h, glowFormat: renderer.glowFormat)
+        let outTex = GLU.texture(w, h)
+        let outFbo = GLU.framebuffer(outTex)
+        let anim = FxAnimator()
+        var frameFx = FrameFx()
+        let savedText = textSource
+        textSource = job.text
+        defer {
+            textSource = savedText
+            pipe.release()
+            GLU.delete(framebuffers: [outFbo]); GLU.delete(textures: [outTex])
+            glBindFramebuffer(E(GL_FRAMEBUFFER), 0)
+        }
+        let duration = max(CMTimeGetSeconds(asset.duration), 0.01)
+        let fps = Spec.shared.fps(look.frameRate)
+        var lastFilm = -1.0
+        var pendingAudio: CMSampleBuffer?
+        var denoiser: ClipDenoiser? = job.denoise ? ClipDenoiser() : nil
+        var frames = 0
+
+        func pumpAudio(until t: Double) {
+            guard let aout else { return }
+            while true {
+                if pendingAudio == nil { pendingAudio = aout.copyNextSampleBuffer() }
+                guard let s = pendingAudio else { return }
+                if CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(s)) > t { return }
+                let outS = denoiser?.process(s) ?? s
+                wr.appendAudioWaiting(outS)
+                pendingAudio = nil
+            }
+        }
+
+        while let sample = vout.copyNextSampleBuffer() {
+            guard let pb = CMSampleBufferGetImageBuffer(sample) else { continue }
+            let pts = CMSampleBufferGetPresentationTimeStamp(sample)
+            let now = CMTimeGetSeconds(pts)
+            // Stop-motion frame rates hold each picture: the frames between are left out.
+            if fps > 0 {
+                let interval = 1 / Double(fps)
+                if lastFilm >= 0 && now - lastFilm < interval - 0.003 { continue }
+                lastFilm = lastFilm < 0 ? now : lastFilm + interval
+            }
+            let bw = CVPixelBufferGetWidth(pb), bh = CVPixelBufferGetHeight(pb)
+            var cvTex: CVOpenGLESTexture?
+            CVOpenGLESTextureCacheCreateTextureFromImage(kCFAllocatorDefault, cache, pb, nil, E(GL_TEXTURE_2D), GL_RGBA,
+                                                         GLsizei(bw), GLsizei(bh), GLenum(0x80E1), E(GL_UNSIGNED_BYTE), 0, &cvTex)
+            guard let camTex = cvTex else { continue }
+            let name = CVOpenGLESTextureGetName(camTex)
+            glBindTexture(E(GL_TEXTURE_2D), name)
+            glTexParameteri(E(GL_TEXTURE_2D), E(GL_TEXTURE_MIN_FILTER), GL_LINEAR)
+            glTexParameteri(E(GL_TEXTURE_2D), E(GL_TEXTURE_WRAP_S), GL_CLAMP_TO_EDGE)
+            glTexParameteri(E(GL_TEXTURE_2D), E(GL_TEXTURE_WRAP_T), GL_CLAMP_TO_EDGE)
+
+            let t = Float(now)
+            anim.next(look, time: t, &frameFx)
+            frameFx.rollBurn = 0
+            var sx: Float = 1, sy: Float = 1
+            let ba = Float(bw) / Float(bh)
+            if ba > a { sx = a / ba } else { sy = ba / a }
+            let ov = overscan(look)
+            let persistence = look.persistence(frameSeconds: 1 / 30)
+            if persistence > 0 || look.interlace > 0 { pipe.keepPrevious() }
+            renderer.digitalExposure = true
+            renderer.updateOverlays(stamp: look.stamp, recording: false)
+            renderer.develop(pipe, source: name, texMatrix: Mat.image(sx: sx * ov, sy: sy * ov, dx: frameFx.weaveX, dy: -frameFx.weaveY),
+                             persistence: persistence)
+            let src = FinalSource(image: pipe.current, previous: pipe.previous, width: pipe.width, height: pipe.height,
+                                  imageMatrix: Mat.identity, glow: pipe.glow)
+            renderer.glow(src, look, frameTurns: 0)
+            applyText(src, turns: 0, time: t, still: false)
+            glBindFramebuffer(E(GL_FRAMEBUFFER), outFbo)
+            renderer.drawFinal(src, look, frameFx, targetW: w, targetH: h, targetRot: 0, frameRot: 0)
+
+            guard let outPb = wr.nextBuffer() else { CVOpenGLESTextureCacheFlush(cache, 0); continue }
+            var outCv: CVOpenGLESTexture?
+            CVOpenGLESTextureCacheCreateTextureFromImage(kCFAllocatorDefault, cache, outPb, nil, E(GL_TEXTURE_2D), GL_RGBA,
+                                                         GLsizei(w), GLsizei(h), GLenum(0x80E1), E(GL_UNSIGNED_BYTE), 0, &outCv)
+            if let outCv {
+                let fbo = GLU.framebuffer(CVOpenGLESTextureGetName(outCv))
+                glBindFramebuffer(E(GL_READ_FRAMEBUFFER), outFbo)
+                glBindFramebuffer(E(GL_DRAW_FRAMEBUFFER), fbo)
+                glBlitFramebuffer(0, 0, GLint(w), GLint(h), 0, GLint(h), GLint(w), 0, E(GL_COLOR_BUFFER_BIT), E(GL_NEAREST))
+                glFinish()
+                GLU.delete(framebuffers: [fbo])
+                wr.appendWaiting(outPb, at: pts)
+            }
+            CVOpenGLESTextureCacheFlush(cache, 0)
+            pumpAudio(until: now + 0.5)
+            frames += 1
+            if frames % 8 == 0 { progress(Float(min(now / duration, 1))) }
+        }
+        pumpAudio(until: .infinity)
+        if let d = denoiser, let tail = d.finish() { wr.appendAudioWaiting(tail) }
+        denoiser = nil
+        let ok = reader.status == .completed
+        let sem = DispatchSemaphore(value: 0)
+        var result: URL?
+        wr.finish { u in result = u; sem.signal() }
+        sem.wait()
+        progress(1)
+        if !ok, let r = result { try? FileManager.default.removeItem(at: r); return nil }
+        return result
     }
 }

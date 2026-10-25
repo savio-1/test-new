@@ -49,6 +49,13 @@ struct RootView: View {
         .statusBarHidden(model.screen == .CAMERA)
         .onAppear { model.appear() }
         .onChange(of: phase) { _, ph in model.scenePhase(ph) }
+        .sheet(isPresented: $model.pickingMedia) {
+            MediaPicker(onPick: { url, video in
+                model.pickingMedia = false
+                model.imported(url, video: video)
+            }, onCancel: { model.pickingMedia = false })
+            .ignoresSafeArea()
+        }
     }
 }
 

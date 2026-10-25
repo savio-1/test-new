@@ -13,7 +13,9 @@ final class VideoWriter {
     private var started = false
     private(set) var finished = false
 
-    init(width: Int, height: Int, audio: Bool, transform: CGAffineTransform = .identity) throws {
+    /// [realtime]: frames come from the camera (late ones are dropped); otherwise a clip is
+    /// being developed and every frame waits its turn.
+    init(width: Int, height: Int, audio: Bool, transform: CGAffineTransform = .identity, realtime: Bool = true) throws {
         self.width = width
         self.height = height
         url = FileManager.default.temporaryDirectory.appendingPathComponent("Sfilm_\(Int(Date().timeIntervalSince1970)).mov")
@@ -26,7 +28,7 @@ final class VideoWriter {
             AVVideoHeightKey: height,
             AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: bits],
         ])
-        videoInput.expectsMediaDataInRealTime = true
+        videoInput.expectsMediaDataInRealTime = realtime
         videoInput.transform = transform
         adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: videoInput, sourcePixelBufferAttributes: [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
@@ -43,7 +45,7 @@ final class VideoWriter {
                 AVSampleRateKey: 44_100,
                 AVEncoderBitRateKey: 128_000,
             ])
-            a.expectsMediaDataInRealTime = true
+            a.expectsMediaDataInRealTime = realtime
             if writer.canAdd(a) { writer.add(a); audioInput = a } else { audioInput = nil }
         } else {
             audioInput = nil
@@ -66,6 +68,34 @@ final class VideoWriter {
             started = true
         }
         if videoInput.isReadyForMoreMediaData { adaptor.append(buffer, withPresentationTime: time) }
+    }
+
+    /// Waits (up to a few seconds) until [input] takes more.
+    private func waitReady(_ input: AVAssetWriterInput) -> Bool {
+        var waited = 0
+        while !input.isReadyForMoreMediaData {
+            if writer.status != .writing || waited > 5000 { return false }
+            usleep(1000)
+            waited += 1
+        }
+        return true
+    }
+
+    /// Developing: appends the frame, waiting for the encoder.
+    @discardableResult
+    func appendWaiting(_ buffer: CVPixelBuffer, at time: CMTime) -> Bool {
+        guard !finished else { return false }
+        if !started {
+            writer.startSession(atSourceTime: time)
+            started = true
+        }
+        return waitReady(videoInput) && adaptor.append(buffer, withPresentationTime: time)
+    }
+
+    @discardableResult
+    func appendAudioWaiting(_ sample: CMSampleBuffer) -> Bool {
+        guard started, !finished, let a = audioInput else { return false }
+        return waitReady(a) && a.append(sample)
     }
 
     func appendAudio(_ sample: CMSampleBuffer) {

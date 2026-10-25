@@ -1,5 +1,6 @@
 import AVFoundation
 import Combine
+import ImageIO
 import SwiftUI
 import UIKit
 
@@ -9,6 +10,7 @@ import UIKit
 final class AppModel: ObservableObject {
     let spec = Spec.shared
     let engine = CameraEngine()
+    let textOverlay = TextOverlay()
     private let prefs = UserDefaults.standard
 
     // look
@@ -146,6 +148,7 @@ final class AppModel: ObservableObject {
         look.exposureEv = 0
 
         engine.shutterSound = shutterSound
+        engine.voiceDenoise = voiceDenoise
         engine.onCaps = { [weak self] c in self?.capsChanged(c) }
         engine.onZoom = { [weak self] z in self?.zoom = z }
         engine.onSaved = { [weak self] item, thumb in self?.saved(item, thumb) }
@@ -156,6 +159,8 @@ final class AppModel: ObservableObject {
         engine.onSavingVideo = { [weak self] on in self?.savingVideo = on }
         engine.onDeveloping = { [weak self] d in if let s = self { s.developing = max(0, s.developing + d) } }
         engine.onError = { [weak self] m in self?.message = m }
+        textOverlay.update(textLayers)
+        engine.textSource = textOverlay
         pushLook()
     }
 
@@ -183,9 +188,9 @@ final class AppModel: ObservableObject {
     }
 
     func scenePhase(_ phase: ScenePhase) {
-        guard started, hasCamera else { return }
+        guard started, hasCamera || edit != nil else { return }
         switch phase {
-        case .active: engine.resume()
+        case .active: engine.resume(camera: edit == nil)
         case .background:
             cancelSeries()
             engine.stop()
@@ -424,6 +429,7 @@ final class AppModel: ObservableObject {
 
     func setVoiceDenoise(_ on: Bool) {
         voiceDenoise = on
+        engine.voiceDenoise = on
         prefs.set(on, forKey: "voiceDenoise")
     }
 
@@ -635,16 +641,94 @@ final class AppModel: ObservableObject {
 
     // MARK: - Imports (developing a picture or clip from the library)
 
+    /// The library picker is open (to bring in a picture or clip to develop).
+    @Published var pickingMedia = false
+
+    func importMedia() {
+        cancelSeries()
+        pickingMedia = true
+    }
+
+    /// A picture or clip from the picker, copied to a temporary file.
+    func imported(_ url: URL?, video: Bool) {
+        guard let url else { message = "Couldn't open that file"; return }
+        beginEdit(url, video: video)
+    }
+
+    /// Develops a picture or clip from the gallery with a look.
+    func editItem(_ item: MediaItem) {
+        progress = 0
+        progressLabel = "Opening"
+        MediaLibrary.file(item) { url in
+            self.progress = -1
+            guard let url else { self.message = "Couldn't open that file"; return }
+            self.beginEdit(url, video: item.isVideo)
+        }
+    }
+
+    private func beginEdit(_ url: URL, video: Bool) {
+        var w = 0, h = 0
+        var ms: Int64 = 0
+        if video {
+            let asset = AVURLAsset(url: url)
+            if let t = asset.tracks(withMediaType: .video).first {
+                let r = CGRect(origin: .zero, size: t.naturalSize).applying(t.preferredTransform)
+                w = Int(abs(r.width)); h = Int(abs(r.height))
+            }
+            ms = Int64(CMTimeGetSeconds(asset.duration) * 1000)
+        } else if let src = CGImageSourceCreateWithURL(url as CFURL, nil),
+                  let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any] {
+            w = props[kCGImagePropertyPixelWidth] as? Int ?? 0
+            h = props[kCGImagePropertyPixelHeight] as? Int ?? 0
+            let o = props[kCGImagePropertyOrientation] as? Int ?? 1
+            if o >= 5 { swap(&w, &h) }
+        }
+        guard w > 0, h > 0 else { message = "Couldn't open that file"; return }
+        if recording { return }
+        edit = EditSession(url: url, video: video, width: w, height: h, durationMs: ms)
+        editRatio = nil
+        dock = .NONE
+        quick = nil
+        screen = .CAMERA
+        viewing = nil
+        pushLook()
+        applyShutter()
+        engine.startEdit(url: url, video: video)
+    }
+
     func cancelEdit() {
+        guard edit != nil else { return }
+        engine.stopEdit()
         edit = nil
         editRatio = nil
         screen = .CAMERA
         pushLook()
+        if hasCamera { openCamera() }
     }
 
-    private func saveEdit() {}
+    /// The shutter while developing: saves a developed copy (the original stays as it is).
+    private func saveEdit() {
+        guard let e = edit else { return }
+        if !e.video {
+            flashPulse += 1
+            engine.developPhoto(url: e.url, look: look, aspect: frameAspect, record: lookRecord) { item in
+                self.message = item != nil ? "Saved a developed copy" : "Couldn't save the photo"
+            }
+            return
+        }
+        progress = 0
+        progressLabel = "Developing"
+        let job = ClipJob(url: e.url, look: look, aspect: editRatio?.value, text: textLayers.isEmpty ? nil : textOverlay,
+                          denoise: voiceDenoise, record: lookRecord)
+        engine.developClip(job, progress: { self.progress = $0 }) { item in
+            self.progress = -1
+            self.message = item != nil ? "Saved a developed copy" : "Couldn't develop the clip"
+        }
+    }
 
-    func importMedia() {}
+    // MARK: - Subtitles
+
+    func openSubtitles(_ item: MediaItem) {}
 
     // MARK: - Imported LUTs
 
@@ -659,6 +743,7 @@ final class AppModel: ObservableObject {
 
     func setTextLayers(_ layers: [TextLayer]) {
         textLayers = layers
+        textOverlay.update(layers)
         prefs.set(TextLayer.listToJson(layers), forKey: "textLayers")
     }
 }
