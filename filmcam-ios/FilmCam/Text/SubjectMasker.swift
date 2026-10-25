@@ -176,7 +176,7 @@ final class SubjectMasker {
             let (px, mw, mh) = Self.bytes(soft)
             publish(px, mw, mh)
         } else {
-            publish(labels.map { $0 == chosen ? 255 : 0 }, w, h)
+            publish(labels.map { $0 == chosen ? UInt8(255) : 0 }, w, h)
         }
     }
 

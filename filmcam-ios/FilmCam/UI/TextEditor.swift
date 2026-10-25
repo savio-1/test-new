@@ -78,8 +78,9 @@ struct FrameMap {
         let a = CGFloat(layer.rotation) * .pi / 180
         let c = cos(a), s = sin(a)
         let cx = CGFloat(layer.x) * fw, cy = CGFloat(layer.y) * fh
-        return [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)].map { (sx: CGFloat, sy: CGFloat) in
-            let dx = sx * (b.width / 2 + pad), dy = sy * (b.height / 2 + pad)
+        let signs: [(CGFloat, CGFloat)] = [(-1, -1), (1, -1), (1, 1), (-1, 1)]
+        return signs.map { s in
+            let dx = s.0 * (b.width / 2 + pad), dy = s.1 * (b.height / 2 + pad)
             return toView(CGPoint(x: (cx + dx * c - dy * s) / fw, y: (cy + dx * s + dy * c) / fh))
         }
     }
@@ -105,7 +106,6 @@ struct FrameMap {
 /// Touches on the picture while the Text tray is open: tap to pick a text (or the subject, with
 /// Depth), double-tap to type, and drag, pinch and twist (together) to move, size and turn the
 /// picked one. Values follow the fingers; shown values snap to the centre lines and right angles.
-@MainActor
 final class TextGestures: ObservableObject {
     weak var model: AppModel?
     var size: CGSize = .zero
@@ -122,16 +122,16 @@ final class TextGestures: ObservableObject {
     private var rawRot: CGFloat = 0
     private var textSize: CGFloat = 0
 
-    private var map: FrameMap { FrameMap(w: max(size.width, 1), h: max(size.height, 1), k: model?.frameTurns ?? 0) }
+    @MainActor private var map: FrameMap { FrameMap(w: max(size.width, 1), h: max(size.height, 1), k: model?.frameTurns ?? 0) }
 
     /// A finger came down: a touch on a text picks it, so a drag anywhere then moves it.
-    func down(_ p: CGPoint) {
+    @MainActor func down(_ p: CGPoint) {
         guard let model, active == 0 else { return }
         let m = map
         if let hit = model.textLayers.last(where: { m.hit($0, p, pad: 24) }) { model.selectedText = hit.id }
     }
 
-    func tap(_ p: CGPoint) {
+    @MainActor func tap(_ p: CGPoint) {
         guard let model else { return }
         let m = map
         let sel = model.selectedLayer
@@ -156,7 +156,7 @@ final class TextGestures: ObservableObject {
         model.selectedText = hit?.id
     }
 
-    func doubleTap(_ p: CGPoint) {
+    @MainActor func doubleTap(_ p: CGPoint) {
         guard let model else { return }
         let m = map
         if let hit = model.textLayers.last(where: { m.hit($0, p, pad: 12) }) {
@@ -165,7 +165,7 @@ final class TextGestures: ObservableObject {
         }
     }
 
-    func began() {
+    @MainActor func began() {
         active += 1
         guard active == 1, let model, let layer = model.selectedLayer else { return }
         start = layer
@@ -178,7 +178,7 @@ final class TextGestures: ObservableObject {
         model.movingText = true
     }
 
-    func ended() {
+    @MainActor func ended() {
         active = max(0, active - 1)
         guard active == 0, moving else { return }
         moving = false
@@ -190,7 +190,7 @@ final class TextGestures: ObservableObject {
     }
 
     /// One step of the fingers: moved by [pan] points, scaled by [zoom], turned [degrees] clockwise.
-    func change(pan: CGSize = .zero, zoom: CGFloat = 1, degrees: CGFloat = 0) {
+    @MainActor func change(pan: CGSize = .zero, zoom: CGFloat = 1, degrees: CGFloat = 0) {
         guard moving, let model, let start else { return }
         let m = map
         let centre = m.toView(CGPoint(x: rawX, y: rawY))
@@ -631,16 +631,16 @@ enum HSV {
         let hh = (h.truncatingRemainder(dividingBy: 360) + 360).truncatingRemainder(dividingBy: 360) / 60
         let i = Int(hh), f = hh - Float(i)
         let p = v * (1 - s), q = v * (1 - s * f), t = v * (1 - s * (1 - f))
-        let (r, g, b): (Float, Float, Float)
+        let rgb: (Float, Float, Float)
         switch i {
-        case 0: (r, g, b) = (v, t, p)
-        case 1: (r, g, b) = (q, v, p)
-        case 2: (r, g, b) = (p, v, t)
-        case 3: (r, g, b) = (p, q, v)
-        case 4: (r, g, b) = (t, p, v)
-        default: (r, g, b) = (v, p, q)
+        case 0: rgb = (v, t, p)
+        case 1: rgb = (q, v, p)
+        case 2: rgb = (p, v, t)
+        case 3: rgb = (p, q, v)
+        case 4: rgb = (t, p, v)
+        default: rgb = (v, p, q)
         }
-        return Int32.argb(1, r, g, b)
+        return Int32.argb(1, rgb.0, rgb.1, rgb.2)
     }
 }
 
@@ -771,8 +771,8 @@ private struct PlaceGrid: View {
     @Environment(\.palette) var p
     let layer: TextLayer
 
-    private let xs: [Float] = [0.2, 0.5, 0.8]
-    private let ys: [Float] = [0.12, 0.5, 0.88]
+    let xs: [Float] = [0.2, 0.5, 0.8]
+    let ys: [Float] = [0.12, 0.5, 0.88]
 
     var body: some View {
         HStack(spacing: 18) {
