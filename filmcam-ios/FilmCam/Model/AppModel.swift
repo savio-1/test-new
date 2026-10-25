@@ -48,6 +48,10 @@ final class AppModel: ObservableObject {
     @Published private(set) var thumbnail: UIImage?
     @Published private(set) var lastItem: MediaItem?
     @Published private(set) var flashPulse = 0
+    /// Half frame: the first half is taken, the shutter takes the second.
+    @Published private(set) var halfFramePending = false
+    /// The four-lens sampler is taking its frames.
+    @Published private(set) var sampling = false
 
     // timer and interval shooting
     @Published private(set) var timerSeconds: Int
@@ -168,6 +172,8 @@ final class AppModel: ObservableObject {
             if on { self?.recordStart = Date() }
         }
         engine.onSavingVideo = { [weak self] on in self?.savingVideo = on }
+        engine.onHalfFrame = { [weak self] on in self?.halfFramePending = on }
+        engine.onSampling = { [weak self] on in self?.sampling = on }
         engine.onDeveloping = { [weak self] d in if let s = self { s.developing = max(0, s.developing + d) } }
         engine.onError = { [weak self] m in self?.message = m }
         textOverlay.update(textLayers)
@@ -266,6 +272,7 @@ final class AppModel: ObservableObject {
     }
 
     func selectCamera(_ cam: FilmCamera) {
+        if cam.look.multiShot != "HALF_FRAME" { engine.dropHalfFrame() }
         camera = cam
         var l = withOverrides(cam.look)
         l.exposureEv = look.exposureEv
@@ -486,6 +493,11 @@ final class AppModel: ObservableObject {
     }
 
     private func takePhoto() {
+        if look.multiShot == "SAMPLER" {
+            guard !sampling else { return }
+            engine.captureSampler(look: look, record: lookRecord)
+            return
+        }
         flashPulse += 1
         engine.capturePhoto(look: look, original: isUntouched, flash: flash && hasFlash, raw: raw && rawSupported, record: lookRecord)
     }
@@ -761,10 +773,291 @@ final class AppModel: ObservableObject {
 
     // MARK: - Subtitles
 
-    func openSubtitles(_ item: MediaItem) {}
+    /// The clip open in the subtitle editor, and its lines (nil when the editor is closed).
+    @Published private(set) var subtitles: SubtitleSession?
+    /// The person's Gemini API key (free from Google AI Studio) and the model to use.
+    @Published private(set) var geminiKey = UserDefaults.standard.string(forKey: "geminiKey") ?? ""
+    @Published private(set) var geminiModel = UserDefaults.standard.string(forKey: "geminiModel") ?? GeminiTranscriber.DEFAULT_MODEL
+    /// Live subtitles while recording, the language spoken ("en" or "te"), the line heard
+    /// just now, and what the recognizer is doing (for the CC pill).
+    @Published private(set) var liveCaptions = UserDefaults.standard.bool(forKey: "liveCaptions")
+    @Published private(set) var captionLanguage = UserDefaults.standard.string(forKey: "captionLanguage") ?? "en"
+    @Published private(set) var liveCaption: String?
+    @Published private(set) var captionState = ""
+    /// The take whose live subtitles can be edited now ("Edit live subtitles ›").
+    @Published private(set) var captionsFor: MediaItem?
+    /// A .srt file to hand to the share sheet.
+    @Published var subtitleShare: URL?
+
+    /// Where closing the subtitle editor goes back to (the viewer, or the camera after a take).
+    private var subtitlesReturn: Screen = .VIEWER
+    private var transcriber: GeminiTranscriber?
+    private var alignTask: Task<Void, Never>?
+    private var captioner: LiveCaptioner?
+    private var captionWatch: AnyCancellable?
+    /// When the take being recorded started (live lines are timed on it), and the lines of the
+    /// take just recorded, waiting for it to be saved.
+    private var captionClipStart = Date()
+    private var pendingCaptions: [Cue]?
+
+    /// Opens [item] (a clip) in the subtitle editor, with the lines saved for it.
+    func openSubtitles(_ item: MediaItem) {
+        guard item.isVideo else { return }
+        if screen != .SUBTITLES { subtitlesReturn = screen }
+        // The font list is read once; have it ready before the editor asks.
+        DispatchQueue.global(qos: .userInitiated).async { _ = FontLibrary.shared.families }
+        SubtitleClip.load(item) { info in
+            guard let info else { self.message = "Couldn't read the clip"; return }
+            let saved = SubtitleStore.load(item.id)
+            let s = SubtitleSession(item: item, url: info.url, aspect: info.aspect, durationMs: info.durationMs)
+            s.track = saved
+            self.subtitles = s
+            self.screen = .SUBTITLES
+            // Lines saved before words were timed (or live ones) get timed now.
+            if let saved, WordAligner.needsAligning(saved) { self.scheduleAlign(s) }
+        }
+    }
+
+    func closeSubtitles() {
+        cancelSubtitles()
+        subtitles = nil
+        if subtitlesReturn == .CAMERA || (subtitlesReturn == .VIEWER && viewing == nil) {
+            screen = .CAMERA
+        } else {
+            screen = subtitlesReturn
+        }
+    }
+
+    func setGemini(key: String, model: String) {
+        geminiKey = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        let m = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        geminiModel = m.isEmpty ? GeminiTranscriber.DEFAULT_MODEL : m
+        prefs.set(geminiKey, forKey: "geminiKey")
+        prefs.set(geminiModel, forKey: "geminiModel")
+    }
+
+    /// Sends the clip's sound to Gemini and makes subtitles of what is said.
+    func generateSubtitles() {
+        guard let s = subtitles, s.status == nil else { return }
+        let key = geminiKey
+        if key.isEmpty { s.error = "Add your Gemini API key first"; return }
+        let t = GeminiTranscriber(apiKey: key, model: geminiModel)
+        transcriber = t
+        s.error = nil
+        s.status = "Reading the sound"
+        s.startedAt = Date()
+        s.linesSoFar = 0
+        let url = s.url
+        let duration = s.durationMs
+        Task.detached(priority: .userInitiated) { [weak self] in
+            var cues: [Cue] = []
+            var failure: String?
+            do {
+                guard let audio = try await AudioExtract.extract(url) else { throw TranscribeError("This clip has no sound") }
+                cues = try await t.transcribe(audio, durationMs: duration, onStatus: { st in
+                    Task { @MainActor in if self?.transcriber === t { s.status = st } }
+                }, onText: { text in
+                    // Each finished line carries an "end": count them as they stream in.
+                    let n = text.components(separatedBy: "\"end\"").count - 1
+                    Task { @MainActor in
+                        if self?.transcriber === t, s.status != nil { s.status = "Writing"; s.linesSoFar = n }
+                    }
+                })
+            } catch let e as TranscribeError {
+                failure = e.message
+            } catch {
+                failure = "Couldn't make subtitles (\(type(of: error)): \(error.localizedDescription))"
+            }
+            await MainActor.run { [cues, failure] in
+                guard let self, self.transcriber === t else { return }   // cancelled meanwhile
+                self.transcriber = nil
+                s.status = nil
+                if let failure { s.error = failure; return }
+                if cues.isEmpty { s.error = "No speech found in this clip"; return }
+                // A clip spoken in Telugu opens on Telugu subtitles; otherwise English.
+                let teluguMostly = cues.filter { $0.language.hasPrefix("te") }.count * 2 > cues.count
+                var style = s.track?.style ?? SubtitleStyle()
+                if s.track == nil && teluguMostly { style.language = .TELUGU }
+                if self.subtitles === s { self.updateSubtitles(SubtitleTrack(cues, style)) }
+            }
+        }
+    }
+
+    func cancelSubtitles() {
+        guard let t = transcriber else { return }
+        t.cancel()
+        transcriber = nil
+        if let s = subtitles { s.status = nil; s.error = "Cancelled" }
+    }
+
+    /// The track changed: kept with the clip, and any retyped words timed to the voice again.
+    func updateSubtitles(_ track: SubtitleTrack) {
+        guard let s = subtitles else { return }
+        s.track = track
+        SubtitleStore.save(track, for: s.item.id)
+        if WordAligner.needsAligning(track) { scheduleAlign(s) }
+    }
+
+    /// Finds when each word of [s]'s lines is said (shortly after a change, so typing isn't
+    /// held up), then puts the times on the track if it hasn't changed meanwhile.
+    private func scheduleAlign(_ s: SubtitleSession, after ms: UInt64 = 500) {
+        alignTask?.cancel()
+        alignTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: ms * 1_000_000)
+            guard !Task.isCancelled, let self, self.subtitles === s, let track = s.track,
+                  WordAligner.needsAligning(track), !s.aligning else { return }
+            s.aligning = true
+            let url = s.url
+            let probs = s.letterProbs
+            let (aligned, lp) = await Task.detached(priority: .userInitiated) {
+                await SubtitleAligning.align(url: url, letterProbs: probs, track: track)
+            }.value
+            s.aligning = false
+            if let lp { s.letterProbs = lp }
+            guard self.subtitles === s, let aligned else { return }
+            // Changed while timing: time the new version instead.
+            if s.track == track { self.updateSubtitles(aligned) } else { self.scheduleAlign(s, after: 100) }
+        }
+    }
+
+    /// The lines as a SubRip file, handed to the share sheet (save to Files, AirDrop...).
+    func saveSrt() {
+        guard let s = subtitles, let track = s.track else { return }
+        let lang = track.style.language
+        let suffix = lang == .ENGLISH ? "en" : lang == .TELUGU ? "te" : "te-en"
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyyMMdd_HHmmss"
+        let name = "FilmCam_\(f.string(from: Date())).\(suffix).srt"
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(name)
+        do {
+            try Data(track.toSrt(lang).utf8).write(to: url, options: .atomic)
+            subtitleShare = url
+        } catch {
+            message = "Couldn't save the .srt"
+        }
+    }
+
+    /// Burns the subtitles into a copy of the clip: every frame goes through the engine with
+    /// the plain Original look (no grain, no grade) and the words showing at its time as text.
+    func burnSubtitles() {
+        guard let s = subtitles, let track = s.track, progress < 0 else { return }
+        let aspect = s.aspect
+        let measurer = CoreTextMeasurer()
+        let overlay = TextOverlay()
+        overlay.layersAt = { t in track.layersAt(Int64((Double(t) * 1000).rounded()), aspect: aspect, measurer: measurer) }
+        progress = 0
+        progressLabel = "Adding subtitles"
+        // The copy keeps the look the clip was shot with (it is already in the picture).
+        let job = ClipJob(url: s.url, look: spec.original.look, aspect: nil, text: overlay,
+                          denoise: track.style.cleanVoice > 0, record: lookOf(s.item))
+        engine.developClip(job, progress: { self.progress = $0 }) { item in
+            self.progress = -1
+            guard let item else { self.message = "Couldn't add the subtitles"; return }
+            self.message = "Saved a copy with subtitles"
+            self.refreshGallery()
+            self.viewing = item
+            if self.subtitles === s { self.subtitles = nil }
+            self.screen = .VIEWER
+        }
+    }
+
+    // MARK: Live subtitles
+
+    /// Follows recording starting and stopping (the viewfinder's caption overlay calls this
+    /// when it first appears).
+    func watchLiveCaptions() {
+        guard captionWatch == nil else { return }
+        captionWatch = $recording.removeDuplicates().dropFirst().receive(on: DispatchQueue.main).sink { [weak self] on in
+            self?.recordingChanged(on)
+        }
+    }
+
+    private func recordingChanged(_ on: Bool) {
+        if on {
+            captionClipStart = Date()
+            captionsFor = nil
+            pendingCaptions = nil
+            if liveCaptions { startCaptions() }
+        } else {
+            keepCaptions()
+        }
+    }
+
+    /// Starts listening to the recording's own sound. Lines show on screen only; they are kept
+    /// with the clip as subtitles to fix, style and burn in afterwards.
+    private func startCaptions() {
+        guard recording else { return }
+        let c: LiveCaptioner
+        if let existing = captioner {
+            c = existing
+        } else {
+            c = LiveCaptioner()
+            c.onCaption = { [weak self] t in self?.liveCaption = t }
+            c.onState = { [weak self] st in self?.captionState = st }
+            c.onProblem = { [weak self] msg in self?.message = msg }
+            captioner = c
+        }
+        engine.onAudioSample = { [weak c] buffer in c?.feed(buffer) }
+        c.start(languageTag: captionLanguage == "te" ? "te-IN" : "en-US", clipStartedAt: captionClipStart)
+    }
+
+    /// Stops listening (captions turned off, or the take ended); the lines so far are kept.
+    @discardableResult
+    private func stopCaptions() -> [Cue] {
+        engine.onAudioSample = nil
+        let cues = captioner?.stop() ?? []
+        liveCaption = nil
+        captionState = ""
+        return cues
+    }
+
+    /// The take ended: its live lines wait for the clip to be saved (see [videoSaved]).
+    private func keepCaptions() {
+        let cues = stopCaptions()
+        captioner?.reset()
+        pendingCaptions = cues.isEmpty ? nil : cues
+    }
 
     /// A clip was just recorded and saved (live subtitles are kept with it).
-    private func videoSaved(_ item: MediaItem) {}
+    private func videoSaved(_ item: MediaItem) {
+        guard let cues = pendingCaptions, !recording else { return }
+        pendingCaptions = nil
+        let te = cues.contains { $0.language == "te" }
+        let en = cues.contains { $0.language != "te" }
+        var style = SubtitleStyle()
+        style.language = te && en ? .BOTH : te ? .TELUGU : .ENGLISH
+        SubtitleStore.save(SubtitleTrack(cues, style), for: item.id)
+        captionsFor = item
+    }
+
+    func setLiveCaptions(_ on: Bool) {
+        guard on else {
+            liveCaptions = false
+            prefs.set(false, forKey: "liveCaptions")
+            stopCaptions()
+            return
+        }
+        LiveCaptioner.authorize { problem in
+            if let problem { self.message = problem; return }
+            self.liveCaptions = true
+            self.prefs.set(true, forKey: "liveCaptions")
+            self.startCaptions()
+        }
+    }
+
+    func setCaptionLanguage(_ lang: String) {
+        captionLanguage = lang
+        prefs.set(lang, forKey: "captionLanguage")
+        if liveCaptions && recording { stopCaptions(); startCaptions() }
+    }
+
+    /// Opens the take just recorded in the subtitle editor, on the lines heard live.
+    func editLiveSubtitles() {
+        guard let item = captionsFor, !recording, !savingVideo else { return }
+        captionsFor = nil
+        openSubtitles(item)
+    }
 
     // MARK: - Imported LUTs
 
@@ -808,5 +1101,75 @@ final class AppModel: ObservableObject {
         textLayers = layers
         textOverlay.update(layers)
         prefs.set(TextLayer.listToJson(layers), forKey: "textLayers")
+    }
+
+    /// Fonts for text and subtitles: bundled, imported and system faces.
+    var fonts: FontLibrary { FontLibrary.shared }
+    /// Bumped when fonts are imported, so the pickers list them.
+    @Published var fontsVersion = 0
+    /// What the text tray's ruler or panel changes.
+    @Published var textTool: TextTool = .FONT
+    /// What text set behind the subject goes behind: "People", or the picked subject.
+    @Published var subjectLabel = "People"
+    /// What the subject cut-out is doing ("Cutting out people", "No person in view", an error).
+    @Published var subjectStatus = ""
+    private var subjectBound = false
+
+    var selectedLayer: TextLayer? { textLayers.first { $0.id == selectedText } }
+
+    /// Puts [layer] in place of the layer with its id.
+    func replaceText(_ layer: TextLayer) {
+        setTextLayers(textLayers.map { $0.id == layer.id ? layer : $0 })
+    }
+
+    func deleteText(_ id: Int64) {
+        setTextLayers(textLayers.filter { $0.id != id })
+        if selectedText == id { selectedText = nil }
+    }
+
+    /// Hears from the subject cut-out (called when the text tray shows).
+    func bindSubject() {
+        guard !subjectBound else { return }
+        subjectBound = true
+        textOverlay.subjects.onStatus = { [weak self] s in self?.subjectStatus = s }
+        textOverlay.subjects.onSubject = { [weak self] label in
+            if let label { self?.subjectLabel = label } else { self?.message = "Nothing to cut out there: tap a person, pet or object" }
+        }
+    }
+
+    /// Text behind the subject goes behind what is under ([x], [y]) (upright frame, 0..1, y down).
+    func pickSubject(_ x: Float, _ y: Float) {
+        bindSubject()
+        textOverlay.subjects.pick(x, y)
+    }
+
+    /// Back to every person in the frame.
+    func resetSubject() {
+        textOverlay.subjects.reset()
+        subjectLabel = "People"
+    }
+
+    /// Font files, or .zip files of a font folder: every face inside is added, grouped by family.
+    func importFonts(_ urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let added = FontLibrary.shared.importAll(urls: urls)
+            Task { @MainActor in self.fontsImported(added) }
+        }
+    }
+
+    private func fontsImported(_ added: [String]) {
+        if added.isEmpty { message = "No fonts this phone can read in that"; return }
+        fontsVersion += 1
+        var fams: [String] = []
+        for k in added {
+            if let f = fonts.entry(k)?.family, !fams.contains(f) { fams.append(f) }
+        }
+        message = fams.count == 1 ? "Added \(fams[0]) (\(added.count) style\(added.count == 1 ? "" : "s"))" : "Added \(fams.count) font families"
+        // The first new family's regular goes on the selected text.
+        if let f = fams.first, let main = fonts.families.first(where: { $0.name == f })?.main, var l = selectedLayer {
+            l.font = main.key
+            replaceText(l)
+        }
     }
 }

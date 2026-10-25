@@ -441,6 +441,8 @@ private struct Viewfinder: View {
                     Spacer()
                     if model.recording {
                         RecordingBadge()
+                    } else if model.halfFramePending {
+                        GlassText("½  Take the second half")
                     } else if model.burstTotal >= 0 {
                         GlassText(model.burstTotal == 0 ? "Burst  \(model.burstTaken)" : "Burst  \(model.burstTaken) / \(model.burstTotal)")
                     }
@@ -471,7 +473,7 @@ private struct StatusPill: View {
     @EnvironmentObject var model: AppModel
 
     var body: some View {
-        let status: String? = model.savingVideo ? "Saving" : model.developing > 0 ? "Developing"
+        let status: String? = model.sampling ? "Sampling" : model.savingVideo ? "Saving" : model.developing > 0 ? "Developing"
             : model.logActive ? "Log · 10-bit" : nil
         if let status {
             HStack(spacing: 7) {
@@ -730,7 +732,7 @@ private struct ShutterButton: View {
             ZStack {
                 Circle().stroke(p.text, lineWidth: 2).padding(1.5)
                 RoundedRectangle(cornerRadius: 74 * inner * corner)
-                    .fill(video ? p.danger : p.text)
+                    .fill(video ? p.danger : model.halfFramePending ? p.accent : p.text)
                     .frame(width: 74 * inner, height: 74 * inner)
                 if model.edit != nil { IconView(Ico.check, size: 28, color: p.bg) }
             }
@@ -738,7 +740,7 @@ private struct ShutterButton: View {
             .contentShape(Circle())
         }
         .buttonStyle(GentlePress())
-        .disabled(model.savingVideo || model.progress >= 0)
+        .disabled(model.savingVideo || model.sampling || model.progress >= 0)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: stop)
     }
 }

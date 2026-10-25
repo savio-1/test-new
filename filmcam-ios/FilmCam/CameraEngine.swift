@@ -97,6 +97,9 @@ final class CameraEngine: NSObject {
     var onRecording: ((Bool) -> Void)?
     var onSavingVideo: ((Bool) -> Void)?
     var onDeveloping: ((Int) -> Void)?
+    /// Half frame: the first half is waiting for the second.
+    var onHalfFrame: ((Bool) -> Void)?
+    var onSampling: ((Bool) -> Void)?
     var onError: ((String) -> Void)?
 
     /// How the phone is held, in clockwise quarter turns from portrait (set from the main thread).
@@ -153,7 +156,10 @@ final class CameraEngine: NSObject {
         var aspect: Float
         var raw: Data?
         var processed: Data?
+        var halfFrame = false
     }
+    /// Half-frame cameras: the first half waits here for the second.
+    private var halfFrameFirst: CGImage?
     private var pendingPhotos: [Int64: PendingPhoto] = [:]
     var shutterSound = true
     private var torchWanted = false
@@ -773,7 +779,10 @@ final class CameraEngine: NSObject {
 
     /// [original]: the untouched phone picture (no look, no style): saved exactly as shot.
     /// [raw]: a DNG is kept with it (as the asset's alternate picture).
-    func capturePhoto(look: Look, original: Bool, flash: Bool, raw: Bool, record: LookRecord?) {
+    func capturePhoto(look lookIn: Look, original: Bool, flash: Bool, raw: Bool, record: LookRecord?) {
+        let halfFrame = lookIn.multiShot == "HALF_FRAME"
+        var look = lookIn
+        if halfFrame { look.frame = "NONE" }
         let turns = quarterTurns
         let frameAspect = renderQueue.sync { aspect }
         sessionQueue.async {
@@ -790,13 +799,39 @@ final class CameraEngine: NSObject {
             settings.maxPhotoDimensions = self.photoOutput.maxPhotoDimensions
             settings.flashMode = flash && self.photoOutput.supportedFlashModes.contains(.on) ? .on : .off
             self.pendingPhotos[settings.uniqueID] = PendingPhoto(look: look, original: original, record: record, turns: turns,
-                                                                 aspect: frameAspect, raw: nil, processed: nil)
+                                                                 aspect: frameAspect, raw: nil, processed: nil, halfFrame: halfFrame)
             DispatchQueue.main.async { self.onDeveloping?(1) }
             self.photoOutput.capturePhoto(with: settings, delegate: self)
         }
     }
 
     private func developStill(_ data: Data, _ look: Look, turns: Int, aspect: Float, digital: Bool = false) -> Data? {
+        guard let out = developStillImage(data, look, turns: turns, aspect: aspect, digital: digital) else { return nil }
+        return Self.jpeg(out, meta: data)
+    }
+
+    /// A JPEG of [img], keeping the shot's EXIF (exposure, lens, time) from [meta] but not its
+    /// orientation: ours is upright.
+    static func jpeg(_ img: CGImage, meta: Data?) -> Data? {
+        let result = NSMutableData()
+        guard let dest = CGImageDestinationCreateWithData(result, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
+        var props: [CFString: Any] = [kCGImageDestinationLossyCompressionQuality: 0.95,
+                                      kCGImagePropertyOrientation: 1]
+        if let meta, let source = CGImageSourceCreateWithData(meta as CFData, nil),
+           let m = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] {
+            for key in [kCGImagePropertyExifDictionary, kCGImagePropertyTIFFDictionary, kCGImagePropertyGPSDictionary] {
+                if var d = m[key] as? [CFString: Any] {
+                    d.removeValue(forKey: kCGImagePropertyTIFFOrientation)
+                    props[key] = d
+                }
+            }
+        }
+        CGImageDestinationAddImage(dest, img, props as CFDictionary)
+        guard CGImageDestinationFinalize(dest) else { return nil }
+        return result as Data
+    }
+
+    private func developStillImage(_ data: Data, _ look: Look, turns: Int, aspect: Float, digital: Bool) -> CGImage? {
         guard let renderer, let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
         EAGLContext.setCurrent(context)
         let maxSide = min(GLU.maxTextureSize, 8192)
@@ -831,24 +866,92 @@ final class CameraEngine: NSObject {
         // Text at the still's own size, at rest.
         applyText(src, turns: turns, time: -1, still: true)
         defer { if textSource != nil { renderer.textFront = 0; renderer.textBack = 0; renderer.subject = 0 } }
-        guard let out = renderer.renderTiled(src, look, stillFx(look), w: odd ? h : w, h: odd ? w : h, turns: turns) else { return nil }
+        return renderer.renderTiled(src, look, stillFx(look), w: odd ? h : w, h: odd ? w : h, turns: turns)
+    }
 
-        let result = NSMutableData()
-        guard let dest = CGImageDestinationCreateWithData(result, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
-        var props: [CFString: Any] = [kCGImageDestinationLossyCompressionQuality: 0.95,
-                                      kCGImagePropertyOrientation: 1]
-        // Keep the shot's EXIF (exposure, lens, time) but not its orientation: ours is upright.
-        if let meta = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] {
-            for key in [kCGImagePropertyExifDictionary, kCGImagePropertyTIFFDictionary, kCGImagePropertyGPSDictionary] {
-                if var d = meta[key] as? [CFString: Any] {
-                    d.removeValue(forKey: kCGImagePropertyTIFFOrientation)
-                    props[key] = d
+    /// Forgets a waiting half frame (the look changed).
+    func dropHalfFrame() {
+        renderQueue.async {
+            guard self.halfFrameFirst != nil else { return }
+            self.halfFrameFirst = nil
+            DispatchQueue.main.async { self.onHalfFrame?(false) }
+        }
+    }
+
+    /// Two half frames side by side on dark film, each cut to 3:4 (HalfFrame.kt).
+    private static func halfFramePair(_ a: CGImage, _ b: CGImage) -> CGImage? {
+        let h = min(min(a.height, b.height), Int((Float(min(a.width, b.width)) * 4 / 3).rounded()))
+        let w = Int((Float(h) * 3 / 4).rounded())
+        let gap = Int((Float(h) * 0.025).rounded())
+        let ow = w * 2 + gap * 3, oh = h + gap * 2
+        guard let ctx = CGContext(data: nil, width: ow, height: oh, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return nil }
+        ctx.setFillColor(CGColor(red: 10 / 255, green: 9 / 255, blue: 8 / 255, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: ow, height: oh))
+        ctx.interpolationQuality = .high
+        for (i, img) in [a, b].enumerated() {
+            let srcW = min(img.width, Int((Float(img.height) * 3 / 4).rounded()))
+            let srcH = min(img.height, Int((Float(srcW) * 4 / 3).rounded()))
+            guard let crop = img.cropping(to: CGRect(x: (img.width - srcW) / 2, y: (img.height - srcH) / 2, width: srcW, height: srcH)) else { continue }
+            ctx.draw(crop, in: CGRect(x: gap + i * (w + gap), y: gap, width: w, height: h))
+        }
+        return ctx.makeImage()
+    }
+
+    /// Four quick exposures from the live view, 0.25 s apart, on one frame: the four-lens
+    /// sampler camera. Each quarter is turned upright for how the phone is held.
+    func captureSampler(look: Look, record: LookRecord?) {
+        let turns = quarterTurns
+        var quarter = look
+        quarter.frame = "NONE"
+        quarter.stamp = "NONE"
+        DispatchQueue.main.async { self.onSampling?(true) }
+        var shots: [CGImage] = []
+        func shoot(_ i: Int) {
+            renderQueue.asyncAfter(deadline: .now() + (i == 0 ? 0 : 0.25)) {
+                guard let renderer = self.renderer, let p = self.pipeline else { finish(); return }
+                EAGLContext.setCurrent(self.context)
+                let odd = turns % 2 == 1
+                let src = FinalSource(image: p.current, previous: p.previous, width: p.width, height: p.height, imageMatrix: Mat.identity, glow: p.glow)
+                renderer.glow(src, quarter, frameTurns: turns)
+                let saved = (renderer.textFront, renderer.textBack, renderer.subject)
+                renderer.textFront = 0; renderer.textBack = 0; renderer.subject = 0
+                if let img = renderer.renderTiled(src, quarter, self.fx, w: odd ? p.height : p.width, h: odd ? p.width : p.height, turns: turns) {
+                    shots.append(img)
                 }
+                (renderer.textFront, renderer.textBack, renderer.subject) = saved
+                if i < 3 { shoot(i + 1) } else { finish() }
             }
         }
-        CGImageDestinationAddImage(dest, out, props as CFDictionary)
-        guard CGImageDestinationFinalize(dest) else { return nil }
-        return result as Data
+        func finish() {
+            DispatchQueue.main.async { self.onSampling?(false) }
+            guard shots.count == 4, let grid = Self.grid(shots, light: look.frame == "WHITE" || look.frame == "MAT"),
+                  let data = Self.jpeg(grid, meta: nil) else {
+                report("Couldn't take the frames")
+                return
+            }
+            DispatchQueue.main.async { self.onDeveloping?(1) }
+            savePhoto(data, raw: nil, record: record)
+        }
+        shoot(0)
+    }
+
+    private static func grid(_ shots: [CGImage], light: Bool) -> CGImage? {
+        let w = shots[0].width, h = shots[0].height
+        let gutter = Int((Float(min(w, h)) * 0.03).rounded())
+        let ow = w * 2 + gutter * 3, oh = h * 2 + gutter * 3
+        guard let ctx = CGContext(data: nil, width: ow, height: oh, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return nil }
+        ctx.setFillColor(light ? CGColor(red: 245 / 255, green: 244 / 255, blue: 240 / 255, alpha: 1)
+                         : CGColor(red: 8 / 255, green: 8 / 255, blue: 8 / 255, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: ow, height: oh))
+        for (i, s) in shots.enumerated() {
+            let x = gutter + (i % 2) * (w + gutter)
+            // CoreGraphics counts rows from the bottom: the first row of shots goes on top.
+            let y = oh - (gutter + (i / 2) * (h + gutter)) - h
+            ctx.draw(s, in: CGRect(x: x, y: y, width: w, height: h))
+        }
+        return ctx.makeImage()
     }
 
     private func stillFx(_ look: Look) -> FrameFx {
@@ -927,6 +1030,28 @@ extension CameraEngine: AVCapturePhotoCaptureDelegate {
         // with a frame shape to cut (then it is developed like the rest).
         if job.original && job.turns == 0 && abs(job.aspect - 0.75) < 0.01 {
             savePhoto(data, raw: job.raw, record: job.record)
+            return
+        }
+        if job.halfFrame {
+            renderQueue.async {
+                guard let img = self.developStillImage(data, job.look, turns: job.turns, aspect: job.aspect, digital: false) else {
+                    DispatchQueue.main.async { self.onDeveloping?(-1) }
+                    self.report("Could not develop the photo")
+                    return
+                }
+                guard let first = self.halfFrameFirst else {
+                    self.halfFrameFirst = img
+                    DispatchQueue.main.async { self.onDeveloping?(-1); self.onHalfFrame?(true) }
+                    return
+                }
+                self.halfFrameFirst = nil
+                DispatchQueue.main.async { self.onHalfFrame?(false) }
+                if let pair = Self.halfFramePair(first, img), let out = Self.jpeg(pair, meta: data) {
+                    self.savePhoto(out, raw: nil, record: job.record)
+                } else {
+                    DispatchQueue.main.async { self.onDeveloping?(-1) }
+                }
+            }
             return
         }
         renderQueue.async {
