@@ -9,9 +9,11 @@ import UIKit
 /// its variation axes. Thread-safe; fonts are cached per key and size.
 enum TextFonts {
     private static let lock = NSLock()
-    /// Graphics fonts by key, variation applied.
+    /// Graphics fonts by file.
     private static var graphics: [String: CGFont] = [:]
     private static var sized: [String: CTFont] = [:]
+    /// The bytes behind each graphics font, held for as long as the font is.
+    private static var fileData: [String: Data] = [:]
 
     /// The font for [key] at [size] points (pixels, for the renderer). Unknown or missing
     /// fonts fall back to the default face, then to the system font.
@@ -53,29 +55,20 @@ enum TextFonts {
         return CTFontCreateWithGraphicsFont(cg, size, nil, desc)
     }
 
-    /// The file's graphics font, with the key's variation applied (CGFont axes go by name, so
-    /// the tags are matched to names through the font's own axis list).
+    /// The file's graphics font (one per file; a variation is set on the CTFont, through its
+    /// descriptor). The file's bytes are kept alive with it: a CGFont made by
+    /// copy(withVariations:) read freed memory when CoreText applied a variation to it.
     private static func graphicsFont(_ key: String, _ spec: FontSpec) -> CGFont? {
+        guard let url = FontLibrary.shared.url(for: spec) else { return nil }
+        let fileKey = url.path
         lock.lock()
-        if let g = graphics[key] { lock.unlock(); return g }
+        if let g = graphics[fileKey] { lock.unlock(); return g }
         lock.unlock()
-        guard let url = FontLibrary.shared.url(for: spec), let provider = CGDataProvider(url: url as CFURL),
-              let base = CGFont(provider) else { return nil }
-        var font = base
-        if !spec.axes.isEmpty, let cgAxes = base.variationAxes as? [[String: Any]] {
-            let ct = CTFontCreateWithGraphicsFont(base, 12, nil, nil)
-            let ctAxes = (CTFontCopyVariationAxes(ct) as? [[String: Any]]) ?? []
-            var values: [String: Any] = [:]
-            for a in spec.axes {
-                // Same order in both lists (the font's fvar order).
-                guard let i = ctAxes.firstIndex(where: { ($0[kCTFontVariationAxisIdentifierKey as String] as? NSNumber)?.uint32Value == a.code }),
-                      i < cgAxes.count, let name = cgAxes[i][CGFont.variationAxisName as String] as? String else { continue }
-                values[name] = NSNumber(value: a.value)
-            }
-            if !values.isEmpty, let v = base.copy(withVariations: values as CFDictionary) { font = v }
-        }
+        guard let data = try? Data(contentsOf: url), let provider = CGDataProvider(data: data as CFData),
+              let font = CGFont(provider) else { return nil }
         lock.lock()
-        graphics[key] = font
+        graphics[fileKey] = font
+        fileData[fileKey] = data
         lock.unlock()
         return font
     }
