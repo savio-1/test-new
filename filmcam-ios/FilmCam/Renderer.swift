@@ -82,6 +82,10 @@ final class Renderer {
     private let blur: Program
     private let gauss: Program
     private let finalProg: Program
+    private let segInput: Program
+    private var segTex: GLuint = 0
+    private var segFbo: GLuint = 0
+    private var segSize = (0, 0)
     /// The final pass for the editor's looks, built the first time one is used.
     private var studioProg: Program?
     let glowFormat: Int32
@@ -96,6 +100,12 @@ final class Renderer {
     private var emptyLut: GLuint = 0
     /// Exposure applied on the GPU (only for pictures the camera didn't expose).
     var digitalExposure = false
+    /// Text layers (premultiplied, upright frame space) and the subject matte, 0 when none.
+    var textFront: GLuint = 0
+    var textBack: GLuint = 0
+    var textBlend: Int32 = 0
+    var textBackBlend: Int32 = 0
+    var subject: GLuint = 0
     let spec = Spec.shared
 
     static func shader(_ name: String) -> String {
@@ -111,6 +121,7 @@ final class Renderer {
         blur = try Program(vertex: vertex, fragment: Self.shader("blur.frag"))
         gauss = try Program(vertex: vertex, fragment: Self.shader("gauss.frag"))
         finalProg = try Program(vertex: vertex, fragment: Self.shader("final.frag"))
+        segInput = try Program(vertex: vertex, fragment: Self.shader("seg_input.frag"))
         glowFormat = GLU.hasExtension("GL_EXT_color_buffer_half_float") || GLU.hasExtension("GL_EXT_color_buffer_float")
             ? GL_RGBA16F : GL_RGBA8
 
@@ -362,9 +373,15 @@ final class Renderer {
         bind(6, osdTex != 0 ? osdTex : edgeTex); p.i("uOsd", 6)
         bind(7, edgeTex); p.i("uEdge", 7)
         bind(8, src.glow.diffuse); p.i("uDiffuseTex", 8)
-        bind(9, edgeTex); p.i("uTextTex", 9)
+        bind(9, textFront != 0 ? textFront : edgeTex); p.i("uTextTex", 9)
+        bind(11, textBack != 0 ? textBack : edgeTex); p.i("uTextBackTex", 11)
+        bind(12, subject != 0 ? subject : edgeTex); p.i("uSubject", 12)
         bind(13, src.glow.clarity); p.i("uClarTex", 13)
-        p.f("uTextOn", 0)
+        p.f("uTextOn", textFront != 0 ? 1 : 0)
+        p.f("uTextBackOn", textBack != 0 ? 1 : 0)
+        p.f("uSubjectOn", subject != 0 ? 1 : 0)
+        p.i("uTextBlend", textBlend)
+        p.i("uTextBackBlend", textBackBlend)
         p.mat4("uTexMatrix", Mat.identity)
         p.mat4("uImageMatrix", src.imageMatrix)
 
@@ -443,8 +460,35 @@ final class Renderer {
         draw()
     }
 
+    /// The picture as the frame shows it (upright for [frameRot]), [w]x[h] RGBA, row 0 at the
+    /// top: what the subject cut-out looks at.
+    func readSegInput(_ src: FinalSource, frameRot: Int, w: Int, h: Int) -> [UInt8] {
+        if segSize != (w, h) {
+            GLU.delete(framebuffers: [segFbo]); GLU.delete(textures: [segTex])
+            segTex = GLU.texture(w, h)
+            segFbo = GLU.framebuffer(segTex)
+            segSize = (w, h)
+        }
+        glBindFramebuffer(E(GL_FRAMEBUFFER), segFbo)
+        glViewport(0, 0, GLsizei(w), GLsizei(h))
+        segInput.use()
+        bind(0, src.image); segInput.i("uImage", 0)
+        segInput.mat4("uTexMatrix", Mat.identity)
+        segInput.mat4("uImageMatrix", src.imageMatrix)
+        segInput.i("uFrameRot", Int32(frameRot))
+        segInput.f("uLod", max(0, log2(Float(max(src.width, src.height)) / Float(max(w, h)))))
+        draw()
+        var out = [UInt8](repeating: 0, count: w * h * 4)
+        glPixelStorei(E(GL_PACK_ALIGNMENT), 1)
+        out.withUnsafeMutableBytes { glReadPixels(0, 0, GLsizei(w), GLsizei(h), E(GL_RGBA), E(GL_UNSIGNED_BYTE), $0.baseAddress) }
+        glPixelStorei(E(GL_PACK_ALIGNMENT), 4)
+        glBindFramebuffer(E(GL_FRAMEBUFFER), 0)
+        return out
+    }
+
     /// Runs the final pass in tiles into an image of [w]x[h].
-    func renderTiled(_ src: FinalSource, _ look: Look, _ fx: FrameFx, w: Int, h: Int) -> CGImage? {
+    /// [turns]: how the phone was held; the output is the upright frame ([w] x [h]).
+    func renderTiled(_ src: FinalSource, _ look: Look, _ fx: FrameFx, w: Int, h: Int, turns: Int = 0) -> CGImage? {
         let tile = min(2048, GLU.maxTextureSize)
         let tex = GLU.texture(tile, tile)
         let fbo = GLU.framebuffer(tex)
@@ -459,7 +503,8 @@ final class Renderer {
             while x0 < w {
                 let tw = min(tile, w - x0)
                 glBindFramebuffer(E(GL_FRAMEBUFFER), fbo)
-                drawFinal(src, look, fx, targetW: tw, targetH: th, targetRot: 0, frameRot: 0, fullW: w, fullH: h, tileX: x0, tileY: y0, still: true)
+                drawFinal(src, look, fx, targetW: tw, targetH: th, targetRot: (4 - turns) % 4, frameRot: turns,
+                          fullW: w, fullH: h, tileX: x0, tileY: y0, still: true)
                 tileBuf.withUnsafeMutableBytes { glReadPixels(0, 0, GLsizei(tw), GLsizei(th), E(GL_RGBA), E(GL_UNSIGNED_BYTE), $0.baseAddress) }
                 // GL rows count from the bottom; the image's from the top.
                 for row in 0..<th {

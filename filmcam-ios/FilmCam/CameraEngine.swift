@@ -7,9 +7,62 @@ import Photos
 import UIKit
 import UniformTypeIdentifiers
 
+/// What the text layers get each frame: the frame's size (upright), the time in seconds
+/// (negative for a still, which shows text at rest) and a way to read the picture for the
+/// subject cut-out (RGBA, row 0 at the top, upright like the frame).
+struct TextRequest {
+    var width: Int
+    var height: Int
+    var time: Float
+    var still: Bool
+    var readPicture: (_ w: Int, _ h: Int) -> [UInt8]
+}
+
+/// Textures for the final pass (0: none). Text is premultiplied RGBA in upright frame space,
+/// row 0 at the top; the matte is the subject in the same space.
+struct TextFrame {
+    var front: GLuint = 0
+    var back: GLuint = 0
+    var frontBlend: Int32 = 0
+    var backBlend: Int32 = 0
+    var subject: GLuint = 0
+}
+
+/// Draws the text layers. Called on the render queue with the GL context current.
+protocol TextLayerSource: AnyObject {
+    func frame(_ req: TextRequest) -> TextFrame
+}
+
 struct ZoomStop: Equatable, Hashable {
     var label: String
     var factor: CGFloat
+}
+
+/// What the session is asked for.
+struct CameraConfig: Equatable {
+    var front = false
+    var video = false
+    var videoRes: VideoResolution = .FHD
+    var fps = 30
+    var photoSize: PhotoSize?
+    var stabilization = false
+}
+
+/// What the camera can do, reported after each configuration.
+struct CameraCaps: Equatable {
+    var photoSizes: [PhotoSize] = []
+    var photoSize: PhotoSize?
+    var videoRes: Set<VideoResolution> = [.FHD]
+    var fps: Set<Int> = [30]
+    var hasFlash = false
+    var evMin: Float = -2
+    var evMax: Float = 2
+    var stabilization = false
+    var raw = false
+    /// Zoom buttons and the current zoom, as the camera app shows them (1 = main lens).
+    var zoomStops: [Float] = [1]
+    var zoom: Float = 1
+    var encoderInfo = ""
 }
 
 /// Camera, live film rendering and capture. Frames from AVFoundation (BGRA, already turned
@@ -27,12 +80,23 @@ final class CameraEngine: NSObject {
     private var audioInput: AVCaptureDeviceInput?
     private(set) var device: AVCaptureDevice?
     private var wideFactor: CGFloat = 1
+    private var config = CameraConfig()
+    private var caps = CameraCaps()
 
     // Main-thread callbacks.
-    var onZoomStops: (([ZoomStop], CGFloat) -> Void)?
-    var onSaved: ((UIImage?) -> Void)?
+    var onCaps: ((CameraCaps) -> Void)?
+    var onZoom: ((Float) -> Void)?
+    /// A take was saved (nil item: it couldn't be, or can't be listed), with a small picture.
+    var onSaved: ((MediaItem?, UIImage?) -> Void)?
     var onRecording: ((Bool) -> Void)?
+    var onSavingVideo: ((Bool) -> Void)?
+    var onDeveloping: ((Int) -> Void)?
     var onError: ((String) -> Void)?
+
+    /// How the phone is held, in clockwise quarter turns from portrait (set from the main thread).
+    var quarterTurns = 0
+    /// Text layers drawn into each frame (set from the main thread, used on the render queue).
+    var textSource: TextLayerSource?
 
     // Render-queue state.
     private var context: EAGLContext!
@@ -44,6 +108,9 @@ final class CameraEngine: NSObject {
     private var look: Look = Spec.shared.original.look
     private var aspect: Float = 3.0 / 4.0
     private var videoMode = false
+    private var workSide = 1920
+    private var recordTurns = 0
+    private var recordLook: LookRecord?
     private var active = true
     private let animator = FxAnimator()
     private var fx = FrameFx()
@@ -58,10 +125,18 @@ final class CameraEngine: NSObject {
     private var videoTexSize = (0, 0)
 
     // Session-queue state.
-    private var pendingPhotos: [Int64: (look: Look, original: Bool)] = [:]
+    private struct PendingPhoto {
+        var look: Look
+        var original: Bool
+        var record: LookRecord?
+        var turns: Int
+        var aspect: Float
+        var raw: Data?
+        var processed: Data?
+    }
+    private var pendingPhotos: [Int64: PendingPhoto] = [:]
     var shutterSound = true
-
-    static let maxWorkSide = 1920
+    private var torchWanted = false
 
     override init() {
         super.init()
@@ -76,11 +151,15 @@ final class CameraEngine: NSObject {
 
     // MARK: - Session
 
-    func start(front: Bool, video: Bool) {
+    func start(_ config: CameraConfig) {
         sessionQueue.async {
-            self.configure(front: front, video: video)
-            self.choosePhotoSize()
+            self.config = config
+            self.configure(config)
+            self.choosePhotoSize(config.photoSize)
             if !self.session.isRunning { self.session.startRunning() }
+            self.applyTorch()
+            let c = self.caps
+            DispatchQueue.main.async { self.onCaps?(c) }
         }
     }
 
@@ -106,7 +185,30 @@ final class CameraEngine: NSObject {
         return nil
     }
 
-    private func configure(front: Bool, video: Bool) {
+    /// The format for [res] at [fps] with plain 8-bit frames (the film pass makes its own colour).
+    private static func videoFormat(_ dev: AVCaptureDevice, _ res: VideoResolution, _ fps: Int) -> AVCaptureDevice.Format? {
+        let plain: Set<FourCharCode> = [kCVPixelFormatType_420YpCbCr8BiPlanarFullRange, kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange]
+        let fits = dev.formats.filter { f in
+            let d = CMVideoFormatDescriptionGetDimensions(f.formatDescription)
+            return Int(d.width) == res.width && Int(d.height) == res.height
+                && plain.contains(CMFormatDescriptionGetMediaSubType(f.formatDescription))
+                && f.videoSupportedFrameRateRanges.contains { $0.maxFrameRate >= Double(fps) - 0.01 && $0.minFrameRate <= Double(fps) + 0.01 }
+        }
+        // Full range first, then the one that can stabilise.
+        return fits.sorted { a, b in
+            let fa = CMFormatDescriptionGetMediaSubType(a.formatDescription) == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+            let fb = CMFormatDescriptionGetMediaSubType(b.formatDescription) == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+            if fa != fb { return fa }
+            return a.isVideoStabilizationModeSupported(.standard) && !b.isVideoStabilizationModeSupported(.standard)
+        }.first
+    }
+
+    private static func supports(_ dev: AVCaptureDevice, _ res: VideoResolution, _ fps: Int) -> Bool {
+        videoFormat(dev, res, fps) != nil
+    }
+
+    private func configure(_ cfg: CameraConfig) {
+        let front = cfg.front, video = cfg.video
         session.beginConfiguration()
         defer { session.commitConfiguration() }
 
@@ -120,8 +222,7 @@ final class CameraEngine: NSObject {
             device = dev
         }
 
-        let preset: AVCaptureSession.Preset = video ? (session.canSetSessionPreset(.hd1920x1080) ? .hd1920x1080 : .high) : .photo
-        if session.canSetSessionPreset(preset) { session.sessionPreset = preset }
+        if !video, session.canSetSessionPreset(.photo) { session.sessionPreset = .photo }
 
         if !session.outputs.contains(videoOutput), session.canAddOutput(videoOutput) {
             videoOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
@@ -153,12 +254,35 @@ final class CameraEngine: NSObject {
             session.removeOutput(audioOutput)
         }
 
+        // Video: the chosen size and frame rate (or the nearest the camera has).
+        var fps = cfg.fps
+        var res = cfg.videoRes
+        let resOK = VideoResolution.allCases.filter { r in [24, 25, 30, 60].contains { Self.supports(dev, r, $0) } }
+        if video {
+            if !resOK.contains(res) { res = resOK.contains(.FHD) ? .FHD : resOK.last ?? .FHD }
+            if !Self.supports(dev, res, fps) { fps = 30 }
+            if let fmt = Self.videoFormat(dev, res, fps) ?? Self.videoFormat(dev, res, 30) {
+                do {
+                    try dev.lockForConfiguration()
+                    dev.activeFormat = fmt
+                    dev.activeVideoMinFrameDuration = CMTime(value: 1, timescale: CMTimeScale(fps))
+                    dev.activeVideoMaxFrameDuration = CMTime(value: 1, timescale: CMTimeScale(fps))
+                    dev.unlockForConfiguration()
+                } catch {}
+            } else if session.canSetSessionPreset(.hd1920x1080) {
+                session.sessionPreset = .hd1920x1080
+            }
+        }
+
         for conn in [videoOutput.connection(with: .video), photoOutput.connection(with: .video)].compactMap({ $0 }) {
             if conn.isVideoRotationAngleSupported(90) { conn.videoRotationAngle = 90 }
             if conn.isVideoMirroringSupported {
                 conn.automaticallyAdjustsVideoMirroring = false
                 conn.isVideoMirrored = front
             }
+        }
+        if let conn = videoOutput.connection(with: .video), conn.isVideoStabilizationSupported {
+            conn.preferredVideoStabilizationMode = video && cfg.stabilization ? .standard : .off
         }
 
         do {
@@ -185,23 +309,85 @@ final class CameraEngine: NSObject {
         }
         stops = stops.filter { $0.factor <= dev.maxAvailableVideoZoomFactor }
         setZoomLocked(dev, wideFactor)
-        let w = wideFactor
-        DispatchQueue.main.async { self.onZoomStops?(stops, w) }
 
+        var c = CameraCaps()
+        c.zoomStops = stops.map { Float($0.factor / wideFactor) }
+        c.zoom = 1
+        c.hasFlash = dev.hasFlash || dev.hasTorch
+        c.evMin = max(dev.minExposureTargetBias, -3)
+        c.evMax = min(dev.maxExposureTargetBias, 3)
+        c.videoRes = Set(resOK)
+        c.fps = Set([24, 25, 30, 60].filter { Self.supports(dev, res, $0) })
+        c.stabilization = dev.activeFormat.isVideoStabilizationModeSupported(.standard)
+        c.encoderInfo = video ? "HEVC · \(res.label) · \(fps) fps" : ""
+        caps = c
+
+        let side = video ? max(res.width, res.height) : 1920
         renderQueue.async {
             self.videoMode = video
+            self.workSide = side
             self.lastFilmFrame = -1
         }
     }
 
-    /// 12 MP stills: full detail without the noise of the remosaiced 48 MP mode. Runs after
-    /// the configuration is committed, when the new format is active.
-    private func choosePhotoSize() {
+    /// The chosen still size, or 12 MP: full detail without the noise of the remosaiced 48 MP
+    /// mode. Runs after the configuration is committed, when the new format is active.
+    private func choosePhotoSize(_ wanted: PhotoSize?) {
         guard let dev = device else { return }
-        let dims = dev.activeFormat.supportedMaxPhotoDimensions
-            .filter { Int($0.width) * Int($0.height) <= 12_600_000 }
-            .max { Int($0.width) * Int($0.height) < Int($1.width) * Int($1.height) }
-        if let d = dims { photoOutput.maxPhotoDimensions = d }
+        let all = dev.activeFormat.supportedMaxPhotoDimensions
+        var sizes: [PhotoSize] = []
+        for d in all where !sizes.contains(where: { $0.mp == PhotoSize(width: Int(d.width), height: Int(d.height)).mp }) {
+            sizes.append(PhotoSize(width: Int(max(d.width, d.height)), height: Int(min(d.width, d.height))))
+        }
+        sizes.sort { $0.pixels < $1.pixels }
+        let pick = wanted.flatMap { w in sizes.first { $0.mp == w.mp } }
+            ?? sizes.filter { $0.pixels <= 12_600_000 }.last ?? sizes.first
+        if let p = pick, let d = all.first(where: { Int(max($0.width, $0.height)) == p.width && Int(min($0.width, $0.height)) == p.height }) {
+            photoOutput.maxPhotoDimensions = d
+        }
+        caps.photoSizes = sizes
+        caps.photoSize = pick
+        caps.raw = !photoOutput.availableRawPhotoPixelFormatTypes.isEmpty
+    }
+
+    /// The torch stands in for the flash while filming.
+    func setTorch(_ on: Bool) {
+        sessionQueue.async {
+            self.torchWanted = on
+            self.applyTorch()
+        }
+    }
+
+    private func applyTorch() {
+        guard let dev = device, dev.hasTorch else { return }
+        let on = torchWanted && config.video
+        do {
+            try dev.lockForConfiguration()
+            if on, dev.isTorchModeSupported(.on) { try dev.setTorchModeOn(level: 1) } else if dev.isTorchModeSupported(.off) { dev.torchMode = .off }
+            dev.unlockForConfiguration()
+        } catch {}
+    }
+
+    /// Real shutter: the sensor exposes for [seconds] (ISO follows to keep the brightness);
+    /// otherwise the camera exposes on its own.
+    func setShutter(real: Bool, seconds: Float) {
+        sessionQueue.async {
+            guard let dev = self.device else { return }
+            do {
+                try dev.lockForConfiguration()
+                defer { dev.unlockForConfiguration() }
+                if real, dev.isExposureModeSupported(.custom) {
+                    let f = dev.activeFormat
+                    let want = CMTime(seconds: Double(seconds), preferredTimescale: 1_000_000)
+                    let d = CMTimeClampToRange(want, range: CMTimeRange(start: f.minExposureDuration, end: f.maxExposureDuration))
+                    let ratio = Float(CMTimeGetSeconds(dev.exposureDuration) / max(CMTimeGetSeconds(d), 1e-6))
+                    let iso = min(max(dev.iso * ratio, f.minISO), f.maxISO)
+                    dev.setExposureModeCustom(duration: d, iso: iso, completionHandler: nil)
+                } else if dev.isExposureModeSupported(.continuousAutoExposure) {
+                    dev.exposureMode = .continuousAutoExposure
+                }
+            } catch {}
+        }
     }
 
     private func setZoomLocked(_ dev: AVCaptureDevice, _ factor: CGFloat) {
@@ -212,19 +398,38 @@ final class CameraEngine: NSObject {
         } catch {}
     }
 
-    func zoom(to factor: CGFloat, animated: Bool = true) {
+    /// Zoom as the camera app counts it (1 = main lens, 0.5 = ultra wide).
+    func zoom(to display: Float, animated: Bool = true) {
         sessionQueue.async {
             guard let dev = self.device else { return }
             do {
                 try dev.lockForConfiguration()
-                let f = min(max(factor, dev.minAvailableVideoZoomFactor), dev.maxAvailableVideoZoomFactor)
+                let f = min(max(CGFloat(display) * self.wideFactor, dev.minAvailableVideoZoomFactor), self.maxZoom(dev))
                 if animated { dev.ramp(toVideoZoomFactor: f, withRate: 6) } else { dev.videoZoomFactor = f }
                 dev.unlockForConfiguration()
+                let shown = Float(f / self.wideFactor)
+                DispatchQueue.main.async { self.onZoom?(shown) }
             } catch {}
         }
     }
 
-    var displayZoomDivisor: CGFloat { wideFactor }
+    /// Pinch: zoom by [scale] from where it is.
+    func zoom(by scale: Float) {
+        sessionQueue.async {
+            guard let dev = self.device else { return }
+            do {
+                try dev.lockForConfiguration()
+                let f = min(max(dev.videoZoomFactor * CGFloat(scale), dev.minAvailableVideoZoomFactor), self.maxZoom(dev))
+                dev.videoZoomFactor = f
+                dev.unlockForConfiguration()
+                let shown = Float(f / self.wideFactor)
+                DispatchQueue.main.async { self.onZoom?(shown) }
+            } catch {}
+        }
+    }
+
+    /// Up to 15x of the main lens (digital zoom past that only smears).
+    private func maxZoom(_ dev: AVCaptureDevice) -> CGFloat { min(dev.maxAvailableVideoZoomFactor, wideFactor * 15) }
 
     func setExposure(_ ev: Float) {
         sessionQueue.async {
@@ -278,7 +483,7 @@ final class CameraEngine: NSObject {
     private func frameSize(_ uw: Int, _ uh: Int) -> (Int, Int) {
         var cw = Float(uw), ch = Float(uh)
         if cw / ch > aspect { cw = ch * aspect } else { ch = cw / aspect }
-        let scale = min(1, Float(Self.maxWorkSide) / max(cw, ch))
+        let scale = min(1, Float(workSide) / max(cw, ch))
         let step = videoMode ? 16 : 2
         return (Int((cw * scale).rounded()) / step * step, Int((ch * scale).rounded()) / step * step)
     }
@@ -355,15 +560,37 @@ final class CameraEngine: NSObject {
         renderer.develop(p, source: name, texMatrix: texMatrix, persistence: persistence)
         let src = FinalSource(image: p.current, previous: p.previous, width: p.width, height: p.height,
                               imageMatrix: Mat.identity, glow: p.glow)
-        renderer.glow(src, look, frameTurns: 0)
+        let turns = writer != nil ? recordTurns : quarterTurns
+        renderer.glow(src, look, frameTurns: turns)
+        applyText(src, turns: turns, time: t, still: false)
 
         if target.fbo != 0 {
             glBindFramebuffer(E(GL_FRAMEBUFFER), target.fbo)
-            renderer.drawFinal(src, look, fx, targetW: target.width, targetH: target.height, targetRot: 0, frameRot: 0)
+            renderer.drawFinal(src, look, fx, targetW: target.width, targetH: target.height, targetRot: 0, frameRot: turns)
             target.present(context)
         }
         if let wr = writer { record(src, wr, pts, now) }
         glBindFramebuffer(E(GL_FRAMEBUFFER), 0)
+    }
+
+    /// Asks the text source for this frame's text (and the subject's matte, when text is set
+    /// behind it) and hands the textures to the final pass.
+    private func applyText(_ src: FinalSource, turns: Int, time: Float, still: Bool) {
+        guard let renderer else { return }
+        guard let ts = textSource else {
+            renderer.textFront = 0; renderer.textBack = 0; renderer.subject = 0
+            return
+        }
+        let (fw, fh) = turns % 2 == 0 ? (src.width, src.height) : (src.height, src.width)
+        let req = TextRequest(width: fw, height: fh, time: time, still: still) { w, h in
+            renderer.readSegInput(src, frameRot: turns, w: w, h: h)
+        }
+        let f = ts.frame(req)
+        renderer.textFront = f.front
+        renderer.textBack = f.back
+        renderer.textBlend = f.frontBlend
+        renderer.textBackBlend = f.backBlend
+        renderer.subject = f.subject
     }
 
     private func record(_ src: FinalSource, _ wr: VideoWriter, _ pts: CMTime, _ now: Double) {
@@ -376,7 +603,7 @@ final class CameraEngine: NSObject {
             videoTexSize = (w, h)
         }
         glBindFramebuffer(E(GL_FRAMEBUFFER), videoFbo)
-        renderer.drawFinal(src, look, fx, targetW: w, targetH: h, targetRot: 0, frameRot: 0)
+        renderer.drawFinal(src, look, fx, targetW: w, targetH: h, targetRot: 0, frameRot: recordTurns)
 
         var cvTex: CVOpenGLESTexture?
         CVOpenGLESTextureCacheCreateTextureFromImage(kCFAllocatorDefault, cache, pb, nil, E(GL_TEXTURE_2D), GL_RGBA,
@@ -396,13 +623,19 @@ final class CameraEngine: NSObject {
 
     // MARK: - Video
 
-    func startRecording(sound: Bool) {
+    func startRecording(sound: Bool, record: LookRecord?) {
         if sound { AudioServicesPlaySystemSound(1117) }
+        let turns = quarterTurns
         renderQueue.async {
             guard self.writer == nil, let p = self.pipeline else { return }
             do {
                 let audio = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
-                self.writer = try VideoWriter(width: p.width, height: p.height, audio: audio)
+                // Frames stay as the screen shows them; the clip is turned upright on playback.
+                let angle: CGFloat = [0, .pi / 2, .pi, -.pi / 2][turns & 3]
+                self.writer = try VideoWriter(width: p.width, height: p.height, audio: audio,
+                                              transform: CGAffineTransform(rotationAngle: angle))
+                self.recordTurns = turns
+                self.recordLook = record
                 self.recordStart = self.lastFilmFrame >= 0 ? self.lastFilmFrame : CACurrentMediaTime()
                 self.stopRequested = 0
                 self.recordBurn = self.look.rollBurn
@@ -429,13 +662,19 @@ final class CameraEngine: NSObject {
         guard let wr = writer else { return }
         writer = nil
         stopRequested = 0
-        DispatchQueue.main.async { self.onRecording?(false) }
+        let record = recordLook
+        DispatchQueue.main.async { self.onRecording?(false); self.onSavingVideo?(true) }
         wr.finish { url in
-            guard let url else { self.report("Recording failed"); return }
+            guard let url else {
+                DispatchQueue.main.async { self.onSavingVideo?(false) }
+                self.report("Recording failed")
+                return
+            }
             let thumb = Self.videoThumbnail(url)
-            Self.save { req in req.addResource(with: .video, fileURL: url, options: nil) } done: { ok in
+            MediaLibrary.saveVideo(url, look: record) { item in
                 try? FileManager.default.removeItem(at: url)
-                DispatchQueue.main.async { self.onSaved?(ok ? thumb : nil) }
+                self.onSavingVideo?(false)
+                self.onSaved?(item, thumb)
             }
         }
     }
@@ -451,19 +690,31 @@ final class CameraEngine: NSObject {
     // MARK: - Photos
 
     /// [original]: the untouched phone picture (no look, no style): saved exactly as shot.
-    func capturePhoto(look: Look, original: Bool) {
+    /// [raw]: a DNG is kept with it (as the asset's alternate picture).
+    func capturePhoto(look: Look, original: Bool, flash: Bool, raw: Bool, record: LookRecord?) {
+        let turns = quarterTurns
+        let frameAspect = renderQueue.sync { aspect }
         sessionQueue.async {
             guard self.session.isRunning, self.photoOutput.connection(with: .video) != nil else { return }
-            let settings = AVCapturePhotoSettings()
-            settings.photoQualityPrioritization = .quality
+            let rawType = raw ? self.photoOutput.availableRawPhotoPixelFormatTypes.first { !AVCapturePhotoOutput.isAppleProRAWPixelFormat($0) } : nil
+            let settings: AVCapturePhotoSettings
+            if let rawType {
+                settings = AVCapturePhotoSettings(rawPixelFormatType: rawType, processedFormat: [AVVideoCodecKey: AVVideoCodecType.jpeg])
+                settings.photoQualityPrioritization = .balanced
+            } else {
+                settings = AVCapturePhotoSettings()
+                settings.photoQualityPrioritization = .quality
+            }
             settings.maxPhotoDimensions = self.photoOutput.maxPhotoDimensions
-            settings.flashMode = .off
-            self.pendingPhotos[settings.uniqueID] = (look, original)
+            settings.flashMode = flash && self.photoOutput.supportedFlashModes.contains(.on) ? .on : .off
+            self.pendingPhotos[settings.uniqueID] = PendingPhoto(look: look, original: original, record: record, turns: turns,
+                                                                 aspect: frameAspect, raw: nil, processed: nil)
+            DispatchQueue.main.async { self.onDeveloping?(1) }
             self.photoOutput.capturePhoto(with: settings, delegate: self)
         }
     }
 
-    private func developStill(_ data: Data, _ look: Look) -> Data? {
+    private func developStill(_ data: Data, _ look: Look, turns: Int, aspect: Float) -> Data? {
         guard let renderer, let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
         EAGLContext.setCurrent(context)
         let maxSide = min(GLU.maxTextureSize, 8192)
@@ -481,6 +732,7 @@ final class CameraEngine: NSObject {
         sx *= z; sy *= z
         let w = max(2, Int((Float(uw) * sx).rounded()) / 2 * 2)
         let h = max(2, Int((Float(uh) * sy).rounded()) / 2 * 2)
+        let odd = turns % 2 == 1
 
         let tex = GLU.texture(from: img, mipmapped: true)
         let glow = Glow(w, h, format: renderer.glowFormat)
@@ -493,8 +745,11 @@ final class CameraEngine: NSObject {
                               imageMatrix: Mat.image(sx: sx, sy: sy), glow: glow)
         renderer.digitalExposure = false
         renderer.updateOverlays(stamp: look.stamp, recording: false)
-        renderer.glow(src, look, frameTurns: 0)
-        guard let out = renderer.renderTiled(src, look, stillFx(look), w: w, h: h) else { return nil }
+        renderer.glow(src, look, frameTurns: turns)
+        // Text at the still's own size, at rest.
+        applyText(src, turns: turns, time: -1, still: true)
+        defer { if textSource != nil { renderer.textFront = 0; renderer.textBack = 0; renderer.subject = 0 } }
+        guard let out = renderer.renderTiled(src, look, stillFx(look), w: odd ? h : w, h: odd ? w : h, turns: turns) else { return nil }
 
         let result = NSMutableData()
         guard let dest = CGImageDestinationCreateWithData(result, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
@@ -539,10 +794,11 @@ final class CameraEngine: NSObject {
         }
     }
 
-    private func savePhoto(_ data: Data) {
+    private func savePhoto(_ data: Data, raw: Data?, record: LookRecord?) {
         let thumb = Self.thumbnail(data)
-        Self.save { req in req.addResource(with: .photo, data: data, options: nil) } done: { ok in
-            DispatchQueue.main.async { self.onSaved?(ok ? thumb : nil) }
+        MediaLibrary.savePhoto(data, raw: raw, look: record) { item in
+            self.onDeveloping?(-1)
+            self.onSaved?(item, thumb)
         }
     }
 }
@@ -565,18 +821,31 @@ extension CameraEngine: AVCapturePhotoCaptureDelegate {
 
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
         let id = photo.resolvedSettings.uniqueID
-        let pending = sessionQueue.sync { pendingPhotos.removeValue(forKey: id) }
-        guard error == nil, let data = photo.fileDataRepresentation(), let job = pending else {
+        guard error == nil, let data = photo.fileDataRepresentation() else { return }
+        sessionQueue.sync {
+            if photo.isRawPhoto { pendingPhotos[id]?.raw = data } else { pendingPhotos[id]?.processed = data }
+        }
+    }
+
+    func photoOutput(_ output: AVCapturePhotoOutput, didFinishCaptureFor resolvedSettings: AVCaptureResolvedPhotoSettings, error: Error?) {
+        let pending = sessionQueue.sync { pendingPhotos.removeValue(forKey: resolvedSettings.uniqueID) }
+        guard let job = pending, let data = job.processed else {
+            DispatchQueue.main.async { self.onDeveloping?(-1) }
             report("Capture failed")
             return
         }
-        if job.original {
-            savePhoto(data)
+        // A picture that keeps the phone's own look is saved as shot, unless it was taken sideways
+        // with a frame shape to cut (then it is developed like the rest).
+        if job.original && job.turns == 0 && abs(job.aspect - 0.75) < 0.01 {
+            savePhoto(data, raw: job.raw, record: job.record)
             return
         }
         renderQueue.async {
-            let out = self.developStill(data, job.look)
-            if let out { self.savePhoto(out) } else { self.report("Could not develop the photo") }
+            let out = self.developStill(data, job.look, turns: job.turns, aspect: job.aspect)
+            if let out { self.savePhoto(out, raw: job.raw, record: job.record) } else {
+                DispatchQueue.main.async { self.onDeveloping?(-1) }
+                self.report("Could not develop the photo")
+            }
         }
     }
 }

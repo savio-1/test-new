@@ -6,7 +6,7 @@ struct FilmCamApp: App {
 
     var body: some Scene {
         WindowGroup {
-            CameraView().environmentObject(model)
+            RootView().environmentObject(model)
         }
     }
 }

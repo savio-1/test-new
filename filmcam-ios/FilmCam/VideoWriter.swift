@@ -13,10 +13,10 @@ final class VideoWriter {
     private var started = false
     private(set) var finished = false
 
-    init(width: Int, height: Int, audio: Bool) throws {
+    init(width: Int, height: Int, audio: Bool, transform: CGAffineTransform = .identity) throws {
         self.width = width
         self.height = height
-        url = FileManager.default.temporaryDirectory.appendingPathComponent("FilmCam_\(Int(Date().timeIntervalSince1970)).mov")
+        url = FileManager.default.temporaryDirectory.appendingPathComponent("Sfilm_\(Int(Date().timeIntervalSince1970)).mov")
         try? FileManager.default.removeItem(at: url)
         writer = try AVAssetWriter(outputURL: url, fileType: .mov)
         let bits = max(8_000_000, width * height * 8)
@@ -27,6 +27,7 @@ final class VideoWriter {
             AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: bits],
         ])
         videoInput.expectsMediaDataInRealTime = true
+        videoInput.transform = transform
         adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: videoInput, sourcePixelBufferAttributes: [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
             kCVPixelBufferWidthKey as String: width,

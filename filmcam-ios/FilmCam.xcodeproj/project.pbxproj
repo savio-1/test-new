@@ -131,7 +131,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -e\nDEST=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"\nSHARED=\"$SRCROOT/../filmcam-shared\"\nASSETS=\"$SRCROOT/../filmcam-android/app/src/main/assets\"\nmkdir -p \"$DEST\"\nrsync -a --delete \"$SHARED/spec/\" \"$DEST/spec/\"\nrsync -a --delete \"$SHARED/shaders/\" \"$DEST/shaders/\"\nrsync -a --delete \"$SHARED/luts/\" \"$DEST/luts/\"\nrsync -a --delete \"$ASSETS/looks/\" \"$DEST/looks/\"\nif [ -d \"$ASSETS/styles\" ]; then rsync -a --delete \"$ASSETS/styles/\" \"$DEST/styles/\"; fi\n";
+			shellScript = "set -e\nDEST=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"\nSHARED=\"$SRCROOT/../filmcam-shared\"\nASSETS=\"$SRCROOT/../filmcam-android/app/src/main/assets\"\nmkdir -p \"$DEST\"\nrsync -a --delete \"$SHARED/spec/\" \"$DEST/spec/\"\nrsync -a --delete \"$SHARED/shaders/\" \"$DEST/shaders/\"\nrsync -a --delete \"$SHARED/luts/\" \"$DEST/luts/\"\nrsync -a --delete \"$ASSETS/looks/\" \"$DEST/looks/\"\nif [ -d \"$ASSETS/styles\" ]; then rsync -a --delete \"$ASSETS/styles/\" \"$DEST/styles/\"; fi\nrsync -a --delete --exclude licenses \"$ASSETS/fonts/\" \"$DEST/fonts/\"\nrsync -a --delete \"$ASSETS/align/\" \"$DEST/align/\"\nrsync -a --delete \"$ASSETS/rnnoise/\" \"$DEST/rnnoise/\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -199,10 +199,12 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = FilmCam;
-				INFOPLIST_KEY_NSCameraUsageDescription = "FilmCam shoots photos and video through its film looks.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "FilmCam records sound with your videos.";
-				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "FilmCam saves your photos and videos to your library.";
+				INFOPLIST_KEY_CFBundleDisplayName = "S film";
+				INFOPLIST_KEY_NSCameraUsageDescription = "S film shoots photos and video through its film looks.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "S film records sound with your videos.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "S film saves your photos and videos to your library.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "S film shows the photos and videos you made with it, and brings in pictures to develop with a look.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "S film turns speech into live subtitles while you film.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleLightContent;
@@ -230,10 +232,12 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = FilmCam;
-				INFOPLIST_KEY_NSCameraUsageDescription = "FilmCam shoots photos and video through its film looks.";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "FilmCam records sound with your videos.";
-				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "FilmCam saves your photos and videos to your library.";
+				INFOPLIST_KEY_CFBundleDisplayName = "S film";
+				INFOPLIST_KEY_NSCameraUsageDescription = "S film shoots photos and video through its film looks.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "S film records sound with your videos.";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "S film saves your photos and videos to your library.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "S film shows the photos and videos you made with it, and brings in pictures to develop with a look.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "S film turns speech into live subtitles while you film.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleLightContent;
