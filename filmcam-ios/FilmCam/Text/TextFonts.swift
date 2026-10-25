@@ -69,7 +69,7 @@ enum TextFonts {
             for a in spec.axes {
                 // Same order in both lists (the font's fvar order).
                 guard let i = ctAxes.firstIndex(where: { ($0[kCTFontVariationAxisIdentifierKey as String] as? NSNumber)?.uint32Value == a.code }),
-                      i < cgAxes.count, let name = cgAxes[i][kCGFontVariationAxisName as String] as? String else { continue }
+                      i < cgAxes.count, let name = cgAxes[i][CGFont.variationAxisName as String] as? String else { continue }
                 values[name] = NSNumber(value: a.value)
             }
             if !values.isEmpty, let v = base.copy(withVariations: values as CFDictionary) { font = v }

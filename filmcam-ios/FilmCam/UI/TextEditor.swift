@@ -76,12 +76,15 @@ struct FrameMap {
     func corners(_ layer: TextLayer, pad: CGFloat) -> [CGPoint] {
         let b = TextRenderer.blockSize(layer, w: fw, h: fh)
         let a = CGFloat(layer.rotation) * .pi / 180
-        let c = cos(a), s = sin(a)
+        let c: CGFloat = cos(a), sn: CGFloat = sin(a)
         let cx = CGFloat(layer.x) * fw, cy = CGFloat(layer.y) * fh
         let signs: [(CGFloat, CGFloat)] = [(-1, -1), (1, -1), (1, 1), (-1, 1)]
-        return signs.map { s in
-            let dx = s.0 * (b.width / 2 + pad), dy = s.1 * (b.height / 2 + pad)
-            return toView(CGPoint(x: (cx + dx * c - dy * s) / fw, y: (cy + dx * s + dy * c) / fh))
+        return signs.map { (sign: (CGFloat, CGFloat)) -> CGPoint in
+            let dx: CGFloat = sign.0 * (b.width / 2 + pad)
+            let dy: CGFloat = sign.1 * (b.height / 2 + pad)
+            let x: CGFloat = (cx + dx * c - dy * sn) / fw
+            let y: CGFloat = (cy + dx * sn + dy * c) / fh
+            return toView(CGPoint(x: x, y: y))
         }
     }
 
