@@ -332,6 +332,17 @@ The **Custom** tab holds creators' grades and your own LUTs.
     colour error of about 2.5 (OKLab ΔE×100; around 2 is barely visible), against 6.2 for
     the ungraded frame. It is not exact: the PowerGrade also adjusts exposure and white
     balance per shot, and its own LUT files aren't public.
+- **S67:** the look of Dazz Cam's S67 filter: reds pushed to a warm orange-red, golden
+  greens, cyan-teal skies, cool mid-greys, creamy highlights and dark corners.
+  - **How it was made:** eight phone photos and the same photos through Dazz's S67. The
+    filter darkens the corners the same way on every frame (a third darker at the corners),
+    which is the app's vignette at 0.47; that is divided out and `customlab.py` fits the
+    colour as a 33³ LUT (smoother than the others: S67 is a gentle global grade). It is a
+    touch softer than the phone's picture (softness 0.12) and adds no grain. The photos are
+    the owner's and stay out of git.
+  - **How close:** each photo predicted from a fit to the other seven lands at a median
+    colour error of about 1.6, against 7.0 for the unfiltered photo; through the app's
+    shaders the colour is within about 1.1 of Dazz's on the eight photos.
 - **Dehancer 250D / Dehancer 500T:** the look of Dehancer Pro (dehancer.com), the film
   emulation plugin, on its default stock (Kodak Vision3 250D daylight) and on Vision3 500T
   tungsten printed with grain and bloom.

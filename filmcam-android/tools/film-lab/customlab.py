@@ -1,6 +1,7 @@
 """FilmCam custom lab: a creator's published grade, measured from their own before/after frames.
 
     python3 customlab.py fetch                       # the published sample pairs (not in git)
+    (pairs given as local:<dir>/<file> are read from .custom-cache/local/, never fetched)
     python3 customlab.py check [look ...]            # accuracy on frames (or halves) left out of the fit
     python3 customlab.py luts <out dir> [look ...]   # assets/luts/cu_<look>.png
     python3 customlab.py preview <out dir> [look ...]   # before | fitted | published, per pair
@@ -53,6 +54,17 @@ LOOKS = {
             (sc('c7260b08-2a6e-4870-9392-b24637e404fd/1.17.2_1.17.2.jpg'), sc('7ea87a75-db1d-46f2-abc6-b82feaf2e6fb/1.17.1_1.17.1.jpg'), None),
         ],
     ),
+    # S67, after the Dazz Cam filter: the owner's own phone photos and the same photos through
+    # Dazz's S67 (kept out of git in .custom-cache/local/s67). Dazz also darkens the corners,
+    # the same on every frame; that is the look's vignette (0.47 here), divided out before
+    # the colour is fitted. Smoother than the others: S67 is a gentle global grade.
+    's67': dict(
+        name='S67',
+        source='Dazz Cam S67: eight phone photos and the same photos through the filter',
+        vignette=0.47,
+        smooth=25.0,
+        pairs=[(f'local:s67/{i}.jpg', f'local:s67/{i}-s67.jpg', None) for i in range(1, 9)],
+    ),
     # Dehancer Pro (dehancer.com): its default stock, Kodak Vision3 250D. The plugin screenshot
     # shows one frame with only the camera input converted (right of the split line) and with
     # the 250D profile (Film Developer: contrast 15, gamma 10, colour separation 100, boost 10).
@@ -79,6 +91,8 @@ LOOKS = {
 # ----------------------------------------------------------------------------- samples
 def local(url):
     import re
+    if url.startswith('local:'):
+        return os.path.join(CACHE, 'local', url[6:])
     return os.path.join(CACHE, re.sub(r'[^A-Za-z0-9._-]', '_', url.split('?')[0].split('://')[-1]))
 
 def fetch():
@@ -86,6 +100,8 @@ def fetch():
     for look in LOOKS.values():
         for pair in look['pairs']:
             for u in pair[:2]:
+                if u.startswith('local:'):
+                    continue
                 p = local(u)
                 if os.path.exists(p):
                     continue
@@ -97,24 +113,52 @@ def fetch():
                 os.replace(p + '.part', p)
                 print('fetched', p)
 
-def load(url, block=4, crop=None):
-    """The picture in 0..1, cropped, block-averaged (grain and JPEG noise average out)."""
+def load(url, block=4, crop=None, size=None):
+    """The picture in 0..1, cropped, block-averaged (grain and JPEG noise average out);
+    [size]: resized to that first (a before frame saved larger than its after)."""
     from PIL import Image
     im = Image.open(local(url)).convert('RGB')
+    if size and im.size != size:
+        im = im.resize(size, Image.LANCZOS)
     if crop:
         im = im.crop(crop)
     a = np.asarray(im, np.float64) / 255.0
     h, w = a.shape[0] // block * block, a.shape[1] // block * block
     return a[:h, :w].reshape(h // block, block, w // block, block, 3).mean((1, 3))
 
+def corner_dist(h, w):
+    """The shader's cornerDist: 0 in the centre, 1 in the corners."""
+    yy, xx = np.mgrid[0:h, 0:w]
+    asp = np.array([w / h, 1.0])
+    d = np.stack([((xx + 0.5) / w - 0.5) * asp[0], ((yy + 0.5) / h - 0.5) * asp[1]], -1)
+    return np.linalg.norm(d, axis=-1) / (0.5 * np.linalg.norm(asp))
+
+def vignette(h, w, v):
+    """The shader's vignette factor (final.frag) at strength [v]."""
+    t = np.clip((corner_dist(h, w) - 0.3) / 0.85, 0, 1)
+    return 1 - t * t * (3 - 2 * t) * 0.85 * v
+
+def load_pair(look, k, block=4):
+    """Pair [k] of [look] as (before, after) with the after's vignette divided out, and
+    the mask of pixels to trust."""
+    from PIL import Image
+    b, a, crop = LOOKS[look]['pairs'][k]
+    size = Image.open(local(a)).size
+    x, y = load(b, block, crop, size), load(a, block, crop)
+    vig = LOOKS[look].get('vignette', 0.0)
+    v = vignette(*y.shape[:2], vig)[..., None]
+    # Clipped after vignetting: the true value is lost.
+    ok = y.max(2) < 0.985 * v[..., 0] if vig else np.ones(y.shape[:2], bool)
+    return x, np.clip(y / v, 0, 1), ok
+
 def samples(look, skip=None):
     """Matching (before, after) colours from every pair but [skip], letterbox bars left out."""
     xs, ys = [], []
-    for k, (b, a, crop) in enumerate(LOOKS[look]['pairs']):
+    for k in range(len(LOOKS[look]['pairs'])):
         if k == skip:
             continue
-        x, y = load(b, crop=crop), load(a, crop=crop)
-        keep = ~((x.max(2) < 0.015) & (y.max(2) < 0.015))
+        x, y, ok = load_pair(look, k, 8 if LOOKS[look].get('vignette') else 4)
+        keep = ok & ~((x.max(2) < 0.015) & (y.max(2) < 0.015))
         # Rows that are black bars in both.
         bars = (x.max((1, 2)) < 0.02) & (y.max((1, 2)) < 0.02)
         keep[bars] = False
@@ -259,15 +303,16 @@ def check(look='sleepycharlie'):
             lut = fit(bx[tr].reshape(-1, 3), ay[tr].reshape(-1, 3), stock=stock)
             report(name, lut, bx[te], ay[te])
     else:
-        for k, (b, a, crop) in enumerate(pairs):
+        for k in range(len(pairs)):
             x, y = samples(look, skip=k)
-            report(f'pair {k}', fit(x, y, stock=stock), load(b, crop=crop), load(a, crop=crop))
+            bx, ay, _ = load_pair(look, k, 8)
+            report(f'pair {k}', fit(x, y, smooth=LOOKS[look].get('smooth', 4.0), stock=stock), bx, ay)
     print('mean median ΔE %.2f (ungraded %.2f)' % (np.mean([r[0] for r in rows]), np.mean([r[1] for r in rows])))
 
 def write_lut(look, path):
     from PIL import Image
     x, y = samples(look)
-    y3 = fit(x, y, stock=LOOKS[look].get('prior')).reshape(N, N, N, 3)   # [b][g][r]
+    y3 = fit(x, y, smooth=LOOKS[look].get('smooth', 4.0), stock=LOOKS[look].get('prior')).reshape(N, N, N, 3)   # [b][g][r]
     img = np.zeros((N, N * N, 3), np.uint8)
     for bi in range(N):
         img[:, bi * N:(bi + 1) * N, :] = np.round(y3[bi] * 255).astype(np.uint8)
@@ -279,8 +324,8 @@ def preview(out, look='sleepycharlie'):
     from PIL import Image
     lut = np.load(os.path.join(CACHE, f'{look}.npy')).reshape(-1, 3)
     os.makedirs(out, exist_ok=True)
-    for k, (b, a, crop) in enumerate(LOOKS[look]['pairs']):
-        bx, ay = load(b, 5, crop), load(a, 5, crop)
+    for k in range(len(LOOKS[look]['pairs'])):
+        bx, ay, _ = load_pair(look, k, 5)
         pred = apply(lut, bx)
         strip = np.concatenate([bx, pred, ay], 1)
         Image.fromarray(np.round(np.clip(strip, 0, 1) * 255).astype(np.uint8)).save(os.path.join(out, f'{look}_{k}.jpg'), quality=88)

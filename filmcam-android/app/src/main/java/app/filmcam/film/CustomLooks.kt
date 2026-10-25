@@ -24,6 +24,8 @@ object CustomLooks {
             halationColor = Rgb(1f, 0.38f, 0.12f)),
         FilmStock(id = "cu_nolanontherunteal", name = "On The Run Teal", colorGrain = 0.1f, monochrome = false, swatch = 0xFF4E8288,
             halationColor = Rgb(1f, 0.38f, 0.12f)),
+        // A phone filter: clean, no grain of its own.
+        FilmStock(id = "cu_s67", name = "S67", colorGrain = 0f, monochrome = false, swatch = 0xFFB0663E),
     )
 
     val CAMERAS: List<FilmCamera> by lazy {
@@ -35,6 +37,16 @@ object CustomLooks {
                 CameraCategory.CUSTOM, FilmLook(
                     stock = FilmStocks.byId("cu_sleepycharlie"), halation = 0.3f, halationSize = 0.35f, bloom = 0.08f,
                     vignette = 0f, aberration = 0f, grain = 0.22f, grainSize = 0.9f, softness = 0f,
+                )),
+            // S67, after the Dazz Cam filter. Colour: fitted to eight phone photos and the same
+            // photos through Dazz's S67 (held-out ΔE about 1.6 vs 7 unfiltered): reds pushed to
+            // warm orange-red, golden greens, cyan-teal skies, cool mid-greys, cream highlights.
+            // Dazz also darkens the corners, the same on every frame (a third darker at the
+            // corners: vignette 0.47), is a touch softer (softness 0.12) and adds no grain.
+            FilmCamera("cu_s67", "S67", "The Dazz S67 filter: orange-red, golden greens, teal skies, dark corners",
+                CameraCategory.CUSTOM, FilmLook(
+                    stock = FilmStocks.byId("cu_s67"), halation = 0f, bloom = 0f,
+                    vignette = 0.47f, aberration = 0f, grain = 0f, softness = 0.12f,
                 )),
             // Noah's Nostalgia (YouTube, Noah Sandvik): no LUT or grade is offered, so the look is
             // measured from his own footage (tools/film-lab/stylelab.py): golden skin, blue skies
