@@ -7,6 +7,7 @@ local.properties
 captures/
 .fuji-cache/
 .custom-cache/
+.guvue-cache/
 .style-cache/
 .nolan-cache/
 .genesis-cache/

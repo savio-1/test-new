@@ -343,6 +343,18 @@ The **Custom** tab holds creators' grades and your own LUTs.
   - **How close:** each photo predicted from a fit to the other seven lands at a median
     colour error of about 1.6, against 7.0 for the unfiltered photo; through the app's
     shaders the colour is within about 1.1 of Dazz's on the eight photos.
+- **GuVue HK / GuVue Film** (their own tabs): the looks of GuVue's two LUT packs
+  (guvueluts.com). HK Series: Amber, Pale Green, Harbour Blue, Island Cyan, Avenue Star,
+  Mong Kok. Film Collection: F01 G200 Gold to F14 Lomo92 Vintage.
+  - **How they were made:** `tools/film-lab/guvuelab.py` fits each look's colour as a 33³
+    LUT to the before/after frames on GuVue's shop. HK frames are Rec.709 pairs. Film frames
+    are Apple Log 2 footage, so they are first rendered the way a phone or Apple's own
+    conversion shows log (Apple Log decoded, Apple Wide Gamut to Rec.709, a filmic roll-off),
+    then fitted. GuVue's looks are colour only, so these add no grain, halation or vignette.
+  - **How close:** on the frames held out of each fit, a median colour error of 0.5-1 for
+    most HK looks (Avenue Star 2.8, Harbour Blue 4.3: one frame of sky over a dark city),
+    and 2.1-3.4 for the Film looks fitted on one scene and checked on the other. GuVue's own
+    .cube files are the exact looks: Import LUT reads them.
 - **Dehancer 250D / Dehancer 500T:** the look of Dehancer Pro (dehancer.com), the film
   emulation plugin, on its default stock (Kodak Vision3 250D daylight) and on Vision3 500T
   tungsten printed with grain and bloom.

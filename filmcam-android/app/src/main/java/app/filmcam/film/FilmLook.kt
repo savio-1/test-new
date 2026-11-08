@@ -198,6 +198,9 @@ enum class CameraCategory(val label: String) {
     ORIGINAL("Original"),
     /** Creators' grades and imported .cube LUTs. */
     CUSTOM("Custom"),
+    /** GuVue's LUT packs (guvueluts.com): the HK Series and the Film Collection. */
+    GUVUE_HK("GuVue HK"),
+    GUVUE_FILM("GuVue Film"),
     /** The photo editor's own looks, by its shelves. */
     STUDIO_FILM("Studio Film"),
     STUDIO_COLOUR("Studio Colour"),
@@ -253,7 +256,7 @@ object FilmCameras {
 
     val ALL: List<FilmCamera> = listOf(
         ORIGINAL,
-    ) + CustomLooks.CAMERAS + StudioLooks.CAMERAS + GenesisLooks.CAMERAS + FujiRecipes.CAMERAS + listOf(
+    ) + CustomLooks.CAMERAS + GuVueLooks.CAMERAS + StudioLooks.CAMERAS + GenesisLooks.CAMERAS + FujiRecipes.CAMERAS + listOf(
         // ------------------------------------------------------------ classic film stocks, straight
         cam("portra", "Portrait 400", "Warm portrait negative · creamy skin", CameraCategory.FILM,
             FilmLook(stock = FilmStocks.PORTRAIT_400, halation = 0.3f, bloom = 0.15f, vignette = 0.18f, aberration = 0.05f)),
